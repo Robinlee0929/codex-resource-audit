@@ -1,6 +1,6 @@
 # Codex Resource Audit v0.1.0
 
-Release notes prepared for the first public source release. The R8 Release Candidate Gate passed and the [public repository](https://github.com/Robinlee0929/codex-resource-audit) is available. The v0.1.0 tag and GitHub Release have not yet been created; v0.1.0 is not yet released.
+Release notes for the first public source release. The R8 Release Candidate Gate passed, the public repository is available, and hosted Windows offline CI passed. v0.1.0 is ready for release.
 
 ## Highlights
 
