@@ -1,0 +1,390 @@
+{
+  "audit_run_id": "synthetic-session-history",
+  "schema_version": "0.1.0",
+  "rule_version": "stage0.1",
+  "root_anchors": [
+    {
+      "audit_run_id": "synthetic-session-history",
+      "anchor_type": "KNOWN_CODEX_INSTANCE",
+      "pid": 6100,
+      "creation_time": "2026-01-01T00:00:00.1234567Z",
+      "executable_path": "C:\\Program Files\\WindowsApps\\OpenAI.Codex_synthetic\\app\\ChatGPT.exe",
+      "operator_verified": true,
+      "known_codex_instance": true
+    }
+  ],
+  "snapshots": [
+    {
+      "audit_run_id": "synthetic-session-history",
+      "snapshot_id": "S0",
+      "capture_start_utc": "2026-01-01T00:00:10Z",
+      "capture_end_utc": "2026-01-01T00:00:11Z",
+      "monotonic_marker": 1,
+      "capture_status": "COMPLETE",
+      "processes": [
+        {
+          "pid": 6100,
+          "ppid": 6000,
+          "name": "ChatGPT.exe",
+          "creation_time": "2026-01-01T00:00:00.1234567+00:00",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Program Files\\WindowsApps\\OpenAI.Codex_synthetic\\app\\ChatGPT.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "OTHER",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6101,
+          "ppid": 6100,
+          "name": "codex.exe",
+          "creation_time": "2026-01-01T00:00:01Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\codex.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "OTHER",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6200,
+          "ppid": 6000,
+          "name": "node.exe",
+          "creation_time": "2026-01-01T00:00:00Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\user-node.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "NODE_RUNTIME",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        }
+      ]
+    },
+    {
+      "audit_run_id": "synthetic-session-history",
+      "snapshot_id": "S1",
+      "capture_start_utc": "2026-01-01T00:01:10Z",
+      "capture_end_utc": "2026-01-01T00:01:11Z",
+      "monotonic_marker": 2,
+      "capture_status": "COMPLETE",
+      "processes": [
+        {
+          "pid": 6100,
+          "ppid": 6000,
+          "name": "ChatGPT.exe",
+          "creation_time": "2026-01-01T00:00:00.1234567+00:00",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Program Files\\WindowsApps\\OpenAI.Codex_synthetic\\app\\ChatGPT.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "OTHER",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6101,
+          "ppid": 6100,
+          "name": "codex.exe",
+          "creation_time": "2026-01-01T00:00:01Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\codex.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "OTHER",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6102,
+          "ppid": 6101,
+          "name": "node.exe",
+          "creation_time": "2026-01-01T00:01:01Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\node.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "NODE_RUNTIME",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6200,
+          "ppid": 6000,
+          "name": "node.exe",
+          "creation_time": "2026-01-01T00:00:00Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\user-node.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "NODE_RUNTIME",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        }
+      ]
+    },
+    {
+      "audit_run_id": "synthetic-session-history",
+      "snapshot_id": "S2",
+      "capture_start_utc": "2026-01-01T00:02:10Z",
+      "capture_end_utc": "2026-01-01T00:02:11Z",
+      "monotonic_marker": 3,
+      "capture_status": "COMPLETE",
+      "processes": [
+        {
+          "pid": 6100,
+          "ppid": 6000,
+          "name": "ChatGPT.exe",
+          "creation_time": "2026-01-01T00:00:00.1234567+00:00",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Program Files\\WindowsApps\\OpenAI.Codex_synthetic\\app\\ChatGPT.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "OTHER",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6101,
+          "ppid": 6100,
+          "name": "codex.exe",
+          "creation_time": "2026-01-01T00:00:01Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\codex.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "OTHER",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6200,
+          "ppid": 6000,
+          "name": "node.exe",
+          "creation_time": "2026-01-01T00:00:00Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\user-node.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "NODE_RUNTIME",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        }
+      ]
+    },
+    {
+      "audit_run_id": "synthetic-session-history",
+      "snapshot_id": "S3",
+      "capture_start_utc": "2026-01-01T00:03:10Z",
+      "capture_end_utc": "2026-01-01T00:03:11Z",
+      "monotonic_marker": 4,
+      "capture_status": "COMPLETE",
+      "processes": [
+        {
+          "pid": 6100,
+          "ppid": 6000,
+          "name": "ChatGPT.exe",
+          "creation_time": "2026-01-01T00:00:00.1234567+00:00",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Program Files\\WindowsApps\\OpenAI.Codex_synthetic\\app\\ChatGPT.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "OTHER",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6101,
+          "ppid": 6100,
+          "name": "codex.exe",
+          "creation_time": "2026-01-01T00:00:01Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\codex.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "OTHER",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6200,
+          "ppid": 6000,
+          "name": "node.exe",
+          "creation_time": "2026-01-01T00:00:00Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\user-node.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "NODE_RUNTIME",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        }
+      ]
+    },
+    {
+      "audit_run_id": "synthetic-session-history",
+      "snapshot_id": "S4",
+      "capture_start_utc": "2026-01-01T00:04:10Z",
+      "capture_end_utc": "2026-01-01T00:04:11Z",
+      "monotonic_marker": 5,
+      "capture_status": "COMPLETE",
+      "processes": [
+        {
+          "pid": 6100,
+          "ppid": 6000,
+          "name": "ChatGPT.exe",
+          "creation_time": "2026-01-01T00:00:00.1234567+00:00",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Program Files\\WindowsApps\\OpenAI.Codex_synthetic\\app\\ChatGPT.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "OTHER",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6101,
+          "ppid": 6100,
+          "name": "codex.exe",
+          "creation_time": "2026-01-01T00:00:01Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\codex.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "OTHER",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        },
+        {
+          "pid": 6200,
+          "ppid": 6000,
+          "name": "node.exe",
+          "creation_time": "2026-01-01T00:00:00Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE",
+          "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Synthetic\\user-node.exe",
+          "command_line": "SYNTHETIC_ARGUMENTS_ONLY",
+          "working_set_bytes": 1024,
+          "capture_status": "COMPLETE",
+          "role_evidence": "NODE_RUNTIME",
+          "lifecycle_scope": "UNKNOWN",
+          "field_availability": {
+            "creation_time": "AVAILABLE",
+            "executable_path": "AVAILABLE",
+            "command_line": "AVAILABLE",
+            "working_set_bytes": "AVAILABLE"
+          }
+        }
+      ]
+    }
+  ],
+  "policies": [],
+  "events": []
+}

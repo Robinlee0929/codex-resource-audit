@@ -1,0 +1,20 @@
+{
+  "audit_run_id": "fixture-pid-reuse", "schema_version": "0.1.0", "rule_version": "stage0.1", "root_anchors": [],
+  "snapshots": [
+    {
+      "audit_run_id": "fixture-pid-reuse", "snapshot_id": "S1", "capture_start_utc": "2026-01-01T02:00:00Z", "capture_end_utc": "2026-01-01T02:00:01Z", "monotonic_marker": 1, "capture_status": "PARTIAL",
+      "processes": [
+        { "pid": 300, "ppid": 1, "name": "old-parent.exe", "creation_time": "2026-01-01T01:00:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "capture_status": "COMPLETE", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 300, "ppid": 1, "name": "new-parent.exe", "creation_time": "2026-01-01T02:00:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "capture_status": "COMPLETE", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 301, "ppid": 300, "name": "child.exe", "creation_time": "2026-01-01T01:30:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "capture_status": "COMPLETE", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 302, "ppid": 303, "name": "time-inverted-child.exe", "creation_time": "2026-01-01T01:00:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "capture_status": "COMPLETE", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 303, "ppid": 1, "name": "late-parent.exe", "creation_time": "2026-01-01T01:01:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "capture_status": "COMPLETE", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 304, "ppid": 303, "name": "missing-time.exe", "creation_time": null, "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "UNKNOWN", "capture_status": "COMPLETE", "field_availability": { "creation_time": "NOT_COLLECTED" } },
+        { "pid": 305, "ppid": 303, "name": "coarse-time.exe", "creation_time": "2026-01-01T01:02:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "COARSE", "capture_status": "COMPLETE", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 306, "ppid": 303, "name": "partial.exe", "creation_time": "2026-01-01T01:03:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "capture_status": "PROCESS_EXITED_DURING_CAPTURE", "field_availability": { "creation_time": "AVAILABLE", "command_line": "PROCESS_EXITED_DURING_CAPTURE" } },
+        { "pid": 307, "ppid": 999, "name": "parent-gone.exe", "creation_time": "2026-01-01T01:04:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "capture_status": "COMPLETE", "field_availability": { "creation_time": "AVAILABLE", "executable_path": "ACCESS_DENIED", "command_line": "ACCESS_DENIED" } }
+      ]
+    }
+  ],
+  "policies": [], "events": []
+}

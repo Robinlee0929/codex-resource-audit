@@ -1,0 +1,56 @@
+{
+  "audit_run_id": "fixture-confirmed-lineage",
+  "schema_version": "0.1.0",
+  "rule_version": "stage0.1",
+  "root_anchors": [
+    {
+      "anchor_type": "KNOWN_CODEX_INSTANCE",
+      "pid": 100,
+      "creation_time": "2026-01-01T00:00:00.0000000Z",
+      "executable_path": "C:\\Program Files\\Codex\\Codex.exe",
+      "operator_verified": true,
+      "known_codex_instance": true
+    }
+  ],
+  "snapshots": [
+    {
+      "audit_run_id": "fixture-confirmed-lineage",
+      "snapshot_id": "S1",
+      "capture_start_utc": "2026-01-01T00:01:00Z",
+      "capture_end_utc": "2026-01-01T00:01:01Z",
+      "monotonic_marker": 1,
+      "capture_status": "COMPLETE",
+      "processes": [
+        {
+          "pid": 100, "ppid": 50, "name": "Codex.exe",
+          "creation_time": "2026-01-01T00:00:00.0000000Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Program Files\\Codex\\Codex.exe", "command_line": "Codex.exe",
+          "working_set_bytes": 1000, "capture_status": "COMPLETE", "role_evidence": "OTHER",
+          "lifecycle_scope": "APP",
+          "field_availability": { "creation_time": "AVAILABLE", "executable_path": "AVAILABLE", "command_line": "AVAILABLE", "working_set_bytes": "AVAILABLE" }
+        },
+        {
+          "pid": 101, "ppid": 100, "name": "node.exe",
+          "creation_time": "2026-01-01T00:00:01.0000000Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Program Files\\Codex\\node.exe", "command_line": "node.exe mcp.js",
+          "working_set_bytes": 2000, "capture_status": "COMPLETE", "role_evidence": "MCP_SERVER",
+          "lifecycle_scope": "SESSION",
+          "field_availability": { "creation_time": "AVAILABLE", "executable_path": "AVAILABLE", "command_line": "AVAILABLE", "working_set_bytes": "AVAILABLE" }
+        },
+        {
+          "pid": 102, "ppid": 101, "name": "chrome.exe",
+          "creation_time": "2026-01-01T00:00:02.0000000Z",
+          "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT",
+          "executable_path": "C:\\Program Files\\Chrome\\chrome.exe", "command_line": "chrome.exe --remote-debugging-port=0",
+          "working_set_bytes": 3000, "capture_status": "COMPLETE", "role_evidence": "BROWSER",
+          "playwright_launch_evidence": true, "lifecycle_scope": "TASK",
+          "field_availability": { "creation_time": "AVAILABLE", "executable_path": "AVAILABLE", "command_line": "AVAILABLE", "working_set_bytes": "AVAILABLE" }
+        }
+      ]
+    }
+  ],
+  "policies": [],
+  "events": []
+}

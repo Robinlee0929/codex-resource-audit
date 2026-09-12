@@ -1,0 +1,20 @@
+{
+  "audit_run_id": "fixture-negative-controls",
+  "schema_version": "0.1.0",
+  "rule_version": "stage0.1",
+  "root_anchors": [],
+  "snapshots": [
+    {
+      "audit_run_id": "fixture-negative-controls", "snapshot_id": "S1", "capture_start_utc": "2026-01-01T01:00:00Z", "capture_end_utc": "2026-01-01T01:00:01Z", "monotonic_marker": 1, "capture_status": "COMPLETE",
+      "processes": [
+        { "pid": 200, "ppid": 1, "name": "chrome.exe", "creation_time": "2026-01-01T00:10:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Chrome\\chrome.exe", "command_line": "chrome.exe --profile-directory=Default", "working_set_bytes": 1, "capture_status": "COMPLETE", "role_evidence": "BROWSER", "lifecycle_scope": "UNKNOWN", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 201, "ppid": 1, "name": "node.exe", "creation_time": "2026-01-01T00:11:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\nodejs\\node.exe", "command_line": "node.exe app.js", "working_set_bytes": 1, "capture_status": "COMPLETE", "role_evidence": "NODE_RUNTIME", "lifecycle_scope": "UNKNOWN", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 202, "ppid": 1, "name": "Code.exe", "creation_time": "2026-01-01T00:12:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Microsoft VS Code\\Code.exe", "command_line": "Code.exe C:\\work\\.codex-similar", "working_set_bytes": 1, "capture_status": "COMPLETE", "role_evidence": "OTHER", "lifecycle_scope": "UNKNOWN", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 203, "ppid": 201, "name": "node.exe", "creation_time": "2026-01-01T00:13:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Users\\PrivatePerson\\AppData\\Local\\ms-playwright\\driver\\node.exe", "command_line": "node.exe playwright.js", "working_set_bytes": 1, "capture_status": "COMPLETE", "role_evidence": "PLAYWRIGHT_DRIVER", "playwright_launch_evidence": true, "lifecycle_scope": "TASK", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 204, "ppid": 200, "name": "chrome.exe", "creation_time": "2026-01-01T00:14:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Chrome\\chrome.exe", "command_line": "chrome.exe --remote-debugging-port=9222", "working_set_bytes": 1, "capture_status": "COMPLETE", "role_evidence": "BROWSER", "existing_browser_attach": true, "lifecycle_scope": "SHARED", "field_availability": { "creation_time": "AVAILABLE" } },
+        { "pid": 205, "ppid": 1, "name": "Codex.exe", "creation_time": "2026-01-01T00:15:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Tools\\NotCodex\\Codex.exe", "command_line": "Codex.exe --remote-debugging-port=0", "working_set_bytes": 999999, "capture_status": "COMPLETE", "role_evidence": "OTHER", "lifecycle_scope": "UNKNOWN", "field_availability": { "creation_time": "AVAILABLE" } }
+      ]
+    }
+  ],
+  "policies": [], "events": []
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "contract_id": "synthetic-controlled-residue-v1",
+  "binding": {
+    "pid": 501,
+    "creation_time_utc": "2026-01-01T04:00:01.0000000Z",
+    "executable_path": "C:\\Program Files\\Codex\\node.exe"
+  },
+  "lifecycle_scope": "TASK",
+  "role": "CONTROLLED_LIFECYCLE_PROBE",
+  "policy_source": "SYNTHETIC_OPERATOR_CONTRACT_NOT_A_LIVE_PROCESS",
+  "exit_trigger_event_id": "task-end",
+  "grace_period_seconds": 10,
+  "anomaly_type": "RESIDUE",
+  "expected_persistence": false,
+  "detached_expected": false
+}

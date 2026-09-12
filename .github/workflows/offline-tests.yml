@@ -1,0 +1,34 @@
+name: Windows offline tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Pester 6.2.0
+        run: |
+          Install-Module -Name Pester -RequiredVersion 6.2.0 -Force -Scope CurrentUser -Repository PSGallery -ErrorAction Stop
+
+      - name: Run offline validation
+        run: |
+          pwsh -NoProfile -File .\scripts\Test-Stage0.ps1 -Offline
+          exit $LASTEXITCODE

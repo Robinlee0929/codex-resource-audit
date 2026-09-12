@@ -1,0 +1,54 @@
+ROOT_CANDIDATES:
+  DATA_SOURCE: LIVE_WINDOWS_CIM
+  CAPTURE_STATUS: COMPLETE
+  CAPTURE_END_UTC: 2026-01-01T00:00:11Z
+  CANDIDATE_COUNT: 2
+  VERIFIED_ROOT: NONE
+  SELECTION_REQUIRED: YES
+  OPERATOR_VERIFICATION_REQUIRED: YES
+  DISPLAY_ORDER_NOT_TRUST_RANKING: capture order only
+  CANDIDATE_ID: display index only; not process identity, Session input or stable across captures
+  TRUST_BOUNDARY:
+    ROOT_CANDIDATE != VERIFIED_ROOT
+    PROCESS_NAME_MATCH != VERIFIED_ROOT
+    CODEX_LIKE_PATH != VERIFIED_ROOT
+    PARENT_RELATIONSHIP != VERIFIED_ROOT
+    DISCOVERY_RESULT != OPERATOR_VERIFICATION
+    AUTOMATIC_SELECTION != OPERATOR_VERIFICATION
+    UNIQUE_CANDIDATE != VERIFIED_ROOT
+    COPY_READY_TEMPLATE != VERIFIED_ROOT
+    TEMPLATE_GENERATED != OPERATOR_ASSERTION
+  OPERATOR_ACTION: Independently verify the intended known Codex instance; only then manually add -OperatorVerifiedKnownCodexInstance to the chosen command.
+  TEMPLATE_CONTEXT: Run from the repository root. Commands below intentionally omit the operator assertion and will be rejected without it.
+  SESSION_REVALIDATION_REQUIRED: Candidate identity must be revalidated against Session observations.
+  NOTE: General Session checks captured observations after collection, not necessarily before the first prompt. No identity is refreshed automatically.
+  CANDIDATE:
+    CANDIDATE_ID: C1
+    CLASSIFICATION: CANDIDATE_ONLY
+    VERIFIED_ROOT: NONE
+    OPERATOR_VERIFICATION_REQUIRED: YES
+    PID: 6100
+    NAME: ChatGPT.exe
+    CREATION_TIME_UTC: 2026-01-01T00:00:00.1234567+00:00
+    EXECUTABLE_PATH: C:\Program Files\WindowsApps\OpenAI.Codex_synthetic\app\ChatGPT.exe
+    OBSERVED_PARENT_PID: 6000
+    CANDIDATE_REASON: EXECUTABLE_PATH_CONTAINS_CODEX
+    IDENTITY_STATUS: COMPLETE
+    TEMPLATE_STATUS: COPY_READY
+    SESSION_TEMPLATE: .\codex-resource-audit.ps1 -Mode Session -RootPid 6100 -RootCreationTimeUtc '2026-01-01T00:00:00.1234567+00:00' -RootExecutablePath 'C:\Program Files\WindowsApps\OpenAI.Codex_synthetic\app\ChatGPT.exe'
+    WARNING: Identity availability is not root eligibility or trust. Candidate discovery does not establish a verified root.
+  CANDIDATE:
+    CANDIDATE_ID: C2
+    CLASSIFICATION: CANDIDATE_ONLY
+    VERIFIED_ROOT: NONE
+    OPERATOR_VERIFICATION_REQUIRED: YES
+    PID: 6101
+    NAME: codex.exe
+    CREATION_TIME_UTC: 2026-01-01T00:00:01Z
+    EXECUTABLE_PATH: C:\Synthetic\codex.exe
+    OBSERVED_PARENT_PID: 6100
+    CANDIDATE_REASON: NAME_CONTAINS_CODEX,EXECUTABLE_PATH_CONTAINS_CODEX
+    IDENTITY_STATUS: COMPLETE
+    TEMPLATE_STATUS: COPY_READY
+    SESSION_TEMPLATE: .\codex-resource-audit.ps1 -Mode Session -RootPid 6101 -RootCreationTimeUtc '2026-01-01T00:00:01Z' -RootExecutablePath 'C:\Synthetic\codex.exe'
+    WARNING: Identity availability is not root eligibility or trust. Candidate discovery does not establish a verified root.

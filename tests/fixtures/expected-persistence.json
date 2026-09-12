@@ -1,0 +1,16 @@
+{
+  "audit_run_id": "fixture-expected-persistence", "schema_version": "0.1.0", "rule_version": "stage0.1",
+  "root_anchors": [{ "anchor_type": "KNOWN_CODEX_INSTANCE", "pid": 400, "creation_time": "2026-01-01T03:00:00Z", "executable_path": "C:\\Program Files\\Codex\\Codex.exe", "operator_verified": true, "known_codex_instance": true }],
+  "snapshots": [
+    { "audit_run_id": "fixture-expected-persistence", "snapshot_id": "S1", "capture_start_utc": "2026-01-01T03:00:05Z", "capture_end_utc": "2026-01-01T03:00:06Z", "monotonic_marker": 1, "capture_status": "COMPLETE", "processes": [
+      { "pid": 400, "ppid": 1, "name": "Codex.exe", "creation_time": "2026-01-01T03:00:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Codex\\Codex.exe", "command_line": "Codex.exe", "capture_status": "COMPLETE", "role_evidence": "OTHER", "lifecycle_scope": "APP", "field_availability": { "creation_time": "AVAILABLE" } },
+      { "pid": 401, "ppid": 400, "name": "node.exe", "creation_time": "2026-01-01T03:00:01Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Codex\\node.exe", "command_line": "node.exe session-helper", "capture_status": "COMPLETE", "role_evidence": "MCP_SERVER", "lifecycle_scope": "SESSION", "expected_persistence": true, "field_availability": { "creation_time": "AVAILABLE" } }
+    ]},
+    { "audit_run_id": "fixture-expected-persistence", "snapshot_id": "S3", "capture_start_utc": "2026-01-01T03:02:00Z", "capture_end_utc": "2026-01-01T03:02:01Z", "monotonic_marker": 2, "capture_status": "COMPLETE", "processes": [
+      { "pid": 400, "ppid": 1, "name": "Codex.exe", "creation_time": "2026-01-01T03:00:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Codex\\Codex.exe", "command_line": "Codex.exe", "capture_status": "COMPLETE", "role_evidence": "OTHER", "lifecycle_scope": "APP", "field_availability": { "creation_time": "AVAILABLE" } },
+      { "pid": 401, "ppid": 400, "name": "node.exe", "creation_time": "2026-01-01T03:00:01Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Codex\\node.exe", "command_line": "node.exe session-helper", "capture_status": "COMPLETE", "role_evidence": "MCP_SERVER", "lifecycle_scope": "SESSION", "expected_persistence": true, "field_availability": { "creation_time": "AVAILABLE" } }
+    ]}
+  ],
+  "policies": [{ "policy_source": "SYNTHETIC_TEST_POLICY", "scope": "SESSION", "role": "MCP_SERVER", "exit_trigger_event_id": "session-end", "grace_period_seconds": 10, "anomaly_type": "RESIDUE", "expected_persistence": true }],
+  "events": [{ "event_id": "task-end", "event_type": "TASK_END", "occurred_utc": "2026-01-01T03:00:10Z" }]
+}

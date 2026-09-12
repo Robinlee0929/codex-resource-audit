@@ -1,0 +1,20 @@
+{
+  "audit_run_id": "fixture-lifecycle-anomalies", "schema_version": "0.1.0", "rule_version": "stage0.1",
+  "root_anchors": [{ "anchor_type": "KNOWN_CODEX_INSTANCE", "pid": 500, "creation_time": "2026-01-01T04:00:00Z", "executable_path": "C:\\Program Files\\Codex\\Codex.exe", "operator_verified": true, "known_codex_instance": true }],
+  "snapshots": [
+    { "audit_run_id": "fixture-lifecycle-anomalies", "snapshot_id": "S1", "capture_start_utc": "2026-01-01T04:00:00Z", "capture_end_utc": "2026-01-01T04:00:05Z", "monotonic_marker": 1, "capture_status": "COMPLETE", "processes": [
+      { "pid": 500, "ppid": 1, "name": "Codex.exe", "creation_time": "2026-01-01T04:00:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Codex\\Codex.exe", "command_line": "Codex.exe", "capture_status": "COMPLETE", "role_evidence": "OTHER", "lifecycle_scope": "APP", "field_availability": { "creation_time": "AVAILABLE" } },
+      { "pid": 501, "ppid": 500, "name": "node.exe", "creation_time": "2026-01-01T04:00:01Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Codex\\node.exe", "command_line": "node.exe task-helper", "capture_status": "COMPLETE", "role_evidence": "NODE_RUNTIME", "lifecycle_scope": "TASK", "field_availability": { "creation_time": "AVAILABLE" } }
+    ]},
+    { "audit_run_id": "fixture-lifecycle-anomalies", "snapshot_id": "S3", "capture_start_utc": "2026-01-01T04:01:00Z", "capture_end_utc": "2026-01-01T04:01:01Z", "monotonic_marker": 2, "capture_status": "COMPLETE", "processes": [
+      { "pid": 500, "ppid": 1, "name": "Codex.exe", "creation_time": "2026-01-01T04:00:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Codex\\Codex.exe", "command_line": "Codex.exe", "capture_status": "COMPLETE", "role_evidence": "OTHER", "lifecycle_scope": "APP", "field_availability": { "creation_time": "AVAILABLE" } },
+      { "pid": 501, "ppid": 500, "name": "node.exe", "creation_time": "2026-01-01T04:00:01Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Codex\\node.exe", "command_line": "node.exe task-helper", "capture_status": "COMPLETE", "role_evidence": "NODE_RUNTIME", "lifecycle_scope": "TASK", "field_availability": { "creation_time": "AVAILABLE" } }
+    ]},
+    { "audit_run_id": "fixture-lifecycle-anomalies", "snapshot_id": "S4", "capture_start_utc": "2026-01-01T04:02:00Z", "capture_end_utc": "2026-01-01T04:02:01Z", "monotonic_marker": 3, "capture_status": "COMPLETE", "processes": [
+      { "pid": 500, "ppid": 1, "name": "Codex.exe", "creation_time": "2026-01-01T04:00:00Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Codex\\Codex.exe", "command_line": "Codex.exe", "capture_status": "COMPLETE", "role_evidence": "OTHER", "lifecycle_scope": "APP", "field_availability": { "creation_time": "AVAILABLE" } },
+      { "pid": 501, "ppid": 500, "name": "node.exe", "creation_time": "2026-01-01T04:00:01Z", "creation_time_source": "SYNTHETIC_FIXTURE", "creation_time_precision": "EXACT", "executable_path": "C:\\Program Files\\Codex\\node.exe", "command_line": "node.exe task-helper", "capture_status": "COMPLETE", "role_evidence": "NODE_RUNTIME", "lifecycle_scope": "TASK", "field_availability": { "creation_time": "AVAILABLE" } }
+    ]}
+  ],
+  "policies": [{ "policy_source": "SYNTHETIC_TEST_POLICY", "scope": "TASK", "role": "NODE_RUNTIME", "exit_trigger_event_id": "task-end", "grace_period_seconds": 10, "anomaly_type": "RESIDUE" }],
+  "events": [{ "event_id": "task-end", "event_type": "TASK_END", "occurred_utc": "2026-01-01T04:00:10Z" }]
+}
