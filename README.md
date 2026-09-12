@@ -66,10 +66,10 @@ PowerShell 7 and **Pester 6.2.0 exactly** are required for the offline suite. Pe
 
 Open an operator-owned PowerShell 7 console. Live Windows validation belongs in that console, outside the Codex execution environment.
 
-1. Clone and enter the repository. Replace `<REPOSITORY_URL>` with the actual clone URL supplied by the maintainer. A public remote has not yet been configured during release preparation; this placeholder is not a published endpoint.
+1. Clone and enter the public repository.
 
    ```powershell
-   git clone '<REPOSITORY_URL>' codex-resource-audit
+   git clone https://github.com/Robinlee0929/codex-resource-audit.git
    Set-Location .\codex-resource-audit
    ```
 
@@ -200,7 +200,7 @@ The runner never installs dependencies. Exit `0` requires all required test IDs 
 
 Tests use synthetic objects/JSON and mocked Session dependencies. They do not query live processes, launch child processes, use browsers, or access network endpoints. Optional Pester TestRegistry and test-result file output are disabled. Run this suite before any operator performs new live validation. Keep the manual controlled probe outside ordinary use and offline testing.
 
-The [Windows offline CI workflow](.github/workflows/offline-tests.yml) is configured for pushes and pull requests to `main`. It installs Pester 6.2.0 and runs the same offline command on `windows-latest`, with no live process or Browser/MCP validation. Hosted execution remains pending until the public repository is available.
+The [Windows offline CI workflow](.github/workflows/offline-tests.yml) is configured for pushes and pull requests to `main`. It installs Pester 6.2.0 and runs the same offline command on `windows-latest`, with no live process or Browser/MCP validation. [Hosted run 34710434003](https://github.com/Robinlee0929/codex-resource-audit/actions/runs/34710434003) passed all 277 tests at public baseline `0b3cad40ee0a6407ea09e7fc322a90f77e6b5697`.
 
 ## Architecture
 
@@ -234,7 +234,7 @@ Live collection is Windows-only. The accepted evidence does not establish univer
 - Stage 0: `CLOSED` at `200004dcfc2089605b6dbcc4f62e3099d8f5211e`, with `GO_WITH_BOUNDED_CLAIMS`.
 - Stage 1: `CLOSED` following operator UX acceptance at implementation baseline `5eba9caafce5c36534321fbd92eb48cabb2c3ad2`; all six UX items are closed and no Stage 1 #7 is required.
 - Latest accepted offline regression (2026-09-12): Pester 6.2.0, **277/277 PASS**, zero failed/skipped/inconclusive/NotRun, exit 0.
-- Current phase: v0.1 release readiness. Synthetic examples and Windows offline CI are defined, and [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md) are prepared. The Release Candidate Gate and publication remain pending; hosted GitHub CI has not run.
+- Current phase: v0.1 release readiness. The R8 Release Candidate Gate passed, the public repository is available, and hosted GitHub CI passed at the initial public baseline. [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md) are prepared; the v0.1.0 tag and GitHub Release have not yet been created. Publication-state documentation changes must pass CI after push before tagging.
 
 CLI Help reflects the accepted Windows Candidates and Session workflow validation and keeps the Browser/MCP limitations explicit. Detailed report headers retain their historical Stage 0 labels for output compatibility; they do not override the accepted qualification status below.
 

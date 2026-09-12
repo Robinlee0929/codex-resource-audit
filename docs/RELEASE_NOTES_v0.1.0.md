@@ -1,6 +1,6 @@
 # Codex Resource Audit v0.1.0
 
-Release notes prepared for the first public source release. Publication and tagging have not occurred; the Release Candidate Gate remains pending.
+Release notes prepared for the first public source release. The R8 Release Candidate Gate passed and the [public repository](https://github.com/Robinlee0929/codex-resource-audit) is available. The v0.1.0 tag and GitHub Release have not yet been created; v0.1.0 is not yet released.
 
 ## Highlights
 
@@ -52,7 +52,14 @@ Inconclusive: 0
 NotRun: 0
 Exit code: 0
 CI_WORKFLOW_DEFINED: YES
-HOSTED_GITHUB_CI: PENDING_PUBLIC_REPOSITORY
+R8_GATE: PASS
+PUBLIC_REPOSITORY: AVAILABLE
+HOSTED_GITHUB_CI: PASS
+HOSTED_OFFLINE_REGRESSION: Pester 6.2.0; 277/277 PASS
+Failed: 0
+Skipped: 0
+Inconclusive: 0
+NotRun: 0
 ```
 
 Accepted evidence includes bounded Windows attribution/negative controls, a controlled residue detector probe, and operator UX acceptance. See [Stage 0 results](STAGE0_RESULTS.md) and [Stage 1 closure](STAGE0_VALIDATION.md#stage-1-closure--operator-ux-acceptance). These records do not establish universal host/version support or real Browser/MCP exit policy.
@@ -63,7 +70,7 @@ The [Windows CI workflow](../.github/workflows/offline-tests.yml) is defined to 
 pwsh -NoProfile -File .\scripts\Test-Stage0.ps1 -Offline
 ```
 
-Hosted GitHub execution is pending, not reported as passing. The suite uses synthetic data and mocked dependencies, not live product collection.
+[Hosted run 34710434003](https://github.com/Robinlee0929/codex-resource-audit/actions/runs/34710434003) completed successfully at public baseline `0b3cad40ee0a6407ea09e7fc322a90f77e6b5697`. The suite uses synthetic data and mocked dependencies, not live product collection. These publication-state documentation changes still require a successful hosted run after push before the v0.1.0 tag/release.
 
 ## Requirements
 
