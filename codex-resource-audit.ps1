@@ -22,6 +22,7 @@ $projectRoot = $PSScriptRoot
 . (Join-Path $projectRoot 'src\Compare-Lifecycle.ps1')
 . (Join-Path $projectRoot 'src\Format-AuditReport.ps1')
 . (Join-Path $projectRoot 'src\Format-RootCandidates.ps1')
+. (Join-Path $projectRoot 'src\Format-OperatorView.ps1')
 . (Join-Path $projectRoot 'src\Select-RootCandidates.ps1')
 . (Join-Path $projectRoot 'src\Resolve-SessionEvidence.ps1')
 . (Join-Path $projectRoot 'src\Read-LifecycleContract.ps1')
@@ -60,58 +61,34 @@ function Show-Help {
     @'
 === CODEX RESOURCE AUDIT ===
 
-This tool performs evidence-based Codex process attribution and lifecycle auditing.
-It never controls, terminates, cleans up, or repairs processes.
+Evidence-based Codex process attribution and lifecycle auditing.
+Read-only: never terminates, cleans up, repairs, suspends, or reprioritizes processes.
 
-Recommended interactive workflow:
-  .\codex-resource-audit.ps1 -Mode Guided
-  GUIDED     Interactive discover, compare, verify, observe, and review workflow.
+Recommended:
+  Guided
+    .\codex-resource-audit.ps1 -Mode Guided
+    Interactive discover -> verify -> observe -> review workflow.
 
-Advanced / diagnostic workflows:
-  .\codex-resource-audit.ps1 -Mode Candidates
-  CANDIDATES Discover possible root candidates for review.
-             Discovery does not establish trust or recommend a root.
+Advanced:
+  Candidates
+    .\codex-resource-audit.ps1 -Mode Candidates
+    Discover possible root candidates. Discovery does not establish trust.
 
-  .\codex-resource-audit.ps1 -Mode Fixture -FixturePath <local-json-file>
-  FIXTURE    Analyze deterministic/offline JSON evidence and emit the canonical report.
+  Fixture
+    .\codex-resource-audit.ps1 -Mode Fixture -FixturePath <local-json-file>
+    Analyze deterministic/offline evidence.
 
-  .\codex-resource-audit.ps1 -Mode Session -RootPid <PID> -RootCreationTimeUtc <ISO-8601-UTC> -RootExecutablePath <exact-OS-path> -OperatorVerifiedKnownCodexInstance
-  SESSION    Advanced direct S0/S1/S2/S3/S4 observation using the existing Session contract.
-             The operator must independently verify the exact current process instance.
+  Session
+    Advanced direct observation with -Mode Session. Requires independently
+    verified exact-process identity parameters; see README.md for the complete
+    supported invocation.
 
-  .\codex-resource-audit.ps1 -Mode Help
-  HELP       Show this text. Help is the default and reads no OS process data.
+  Help
+    .\codex-resource-audit.ps1 -Mode Help
 
-Offline example:
-  .\codex-resource-audit.ps1 -Mode Fixture -FixturePath .\tests\fixtures\negative-controls.json
-
-Required Session parameters (operator must re-verify the exact current instance):
-  -RootPid <PID> -RootCreationTimeUtc <ISO-8601 UTC time>
-  -RootExecutablePath <exact OS executable path>
-  -OperatorVerifiedKnownCodexInstance
-Optional: -FollowUpSeconds <1..3600> (default 30)
-Optional Session only: -LifecycleContractPath <local JSON file>
-Optional Session/Fixture: -IncludeEvidenceSummary (prepend resolved evidence summary;
-the unchanged detailed report remains in the same single success-stream string).
-Optional Candidates only: -IncludeSessionTemplate (candidate-only identity report;
-templates omit operator verification. Independently verify, then manually add the
-existing -OperatorVerifiedKnownCodexInstance switch. Run templates from this repo.)
-Optional Candidates with IncludeSessionTemplate only: -IncludeCandidateGroups
-(Candidate Presentation Grouping; full candidate blocks remain unchanged;
-display groups are not ownership, root eligibility or trust rankings).
-Contract: controlled qualification only; exact S0 identity and confirmed ownership
-required. No contract means no policy. FollowUpSeconds is not lifecycle grace.
-Session summary retains every snapshot and previously observed confirmed processes.
-Session emits one CAPTURE_PROGRESS line per returned S0-S4 snapshot on information
-stream 6. Capture progress does not confirm ownership, lifecycle or contract acceptance.
-NO_LONGER_OBSERVED does not establish process exit or its cause.
-
-Candidates and Session workflows have been validated on Windows using the accepted
-Stage 0 / Stage 1 evidence. Both stages are CLOSED with bounded claims covering the
-recorded workflows and tested controls, not universal Windows/Codex version support.
 Live use belongs in an operator-owned PowerShell 7 session.
-Candidates discovery does not establish trust. Session requires independent operator
-verification and exact PID, creation-time, and executable-path matching.
+Candidate groups are presentation-only, not trust levels or recommendations.
+Session requires exact PID, creation-time, and executable-path matching.
 REAL_BROWSER_MCP_LIFECYCLE_POLICY: EVIDENCE_BLOCKED
 REAL_BROWSER_MCP_RESIDUE_CLAIM: NOT_SUPPORTED
 UNKNOWN is never treated as CODEX ownership. Survival alone does not establish residue.
@@ -136,7 +113,6 @@ if ($PSBoundParameters.ContainsKey('IncludeCandidateGroups') -and ($Mode -ne 'Ca
 
 switch ($Mode) {
     'Guided' {
-        . (Join-Path $projectRoot 'src\Format-OperatorView.ps1')
         . (Join-Path $projectRoot 'src\Read-OperatorInput.ps1')
         . (Join-Path $projectRoot 'src\Format-GuidedCandidates.ps1')
         . (Join-Path $projectRoot 'src\Invoke-GuidedDiscovery.ps1')
@@ -201,18 +177,12 @@ switch ($Mode) {
             Format-RootCandidates -Snapshot $snapshot -Candidates $candidateRows -IncludeCandidateGroups:$IncludeCandidateGroups
             return
         }
-        'DATA_SOURCE: LIVE_WINDOWS_CIM'
-        'CANDIDATES_ARE_NOT_CONFIRMED_ROOTS: TRUE'
-        foreach ($process in Select-RootCandidates -Processes $snapshot.processes) {
-            [pscustomobject]@{
-                CandidatePid          = $process.pid
-                CreationTimeUtc       = $process.creation_time
-                Name                  = ConvertTo-SafeAuditText $process.name
-                ExecutablePath        = ConvertTo-SafeAuditText $process.executable_path
-                Classification        = 'CANDIDATE_ONLY'
-                OperatorActionRequired = $true
-            }
+        $candidateRows = @(Select-RootCandidates -Processes $snapshot.processes)
+        if (Test-RootCandidateHumanConsole -PipelineLength $MyInvocation.PipelineLength) {
+            Format-RootCandidateHumanView -Snapshot $snapshot -Candidates $candidateRows
+            return
         }
+        Format-RootCandidateLegacyOutput -Candidates $candidateRows
         return
     }
     'Session' {
@@ -227,7 +197,7 @@ switch ($Mode) {
         $anchor = New-SessionRootAnchor -AuditRunId $auditRunId -RootPid $RootPid -RootCreationTimeUtc $RootCreationTimeUtc -RootExecutablePath $RootExecutablePath -OperatorVerifiedKnownCodexInstance:$OperatorVerifiedKnownCodexInstance
         $snapshots = [System.Collections.Generic.List[object]]::new()
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S0'))
-        Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S0') -InformationAction Continue
+        Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S0' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S0 -Snapshot $snapshots[-1] }
         if ($null -ne $contract) {
             # Stop before the task prompt if exact S0 binding or ownership fails.
@@ -235,7 +205,7 @@ switch ($Mode) {
         }
         [void](Read-Host 'Start the task, then press Enter to capture S1')
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S1'))
-        Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S1') -InformationAction Continue
+        Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S1' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S1 -Snapshot $snapshots[-1] }
         if ($null -ne $SessionProgressObserver) {
             [void](Read-Host 'When the observed Codex activity is finished, press Enter to declare TASK_END and capture S2')
@@ -244,19 +214,19 @@ switch ($Mode) {
         $eventTime = [datetimeoffset]::UtcNow.ToString('o')
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event TaskEnd -EventTime $eventTime }
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S2'))
-        Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S2') -InformationAction Continue
+        Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S2' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S2 -Snapshot $snapshots[-1] }
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Wait -Stage S3 -Seconds $FollowUpSeconds }
         if ($null -ne $SessionProgressObserver) { Wait-GuidedObservation -Stage S3 -Seconds $FollowUpSeconds }
         else { Start-Sleep -Seconds $FollowUpSeconds }
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S3'))
-        Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S3') -InformationAction Continue
+        Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S3' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S3 -Snapshot $snapshots[-1] }
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Wait -Stage S4 -Seconds $FollowUpSeconds }
         if ($null -ne $SessionProgressObserver) { Wait-GuidedObservation -Stage S4 -Seconds $FollowUpSeconds }
         else { Start-Sleep -Seconds $FollowUpSeconds }
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S4'))
-        Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S4') -InformationAction Continue
+        Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S4' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S4 -Snapshot $snapshots[-1] }
         $sessionEvidence = Resolve-SessionEvidence -Snapshots @($snapshots) -RootAnchors @($anchor) -LifecycleContract $contract
         $attributed = $sessionEvidence.attributed_snapshots

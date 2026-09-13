@@ -210,8 +210,8 @@ Describe 'T6.9.6 resolved live-history compatibility using synthetic evidence on
         $view.still_observed_count | Should -BeExactly '2'
         $view.no_longer_observed_count | Should -BeExactly '1'
         $text=Format-GuidedTaskDelta $view
-        $text | Should -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
-        $text | Should -Match 'STILL_OBSERVED_AT_S4 != RESIDUE'
+        $text | Should -Match 'NO_LONGER_OBSERVED does not establish process exit'
+        $text | Should -Match 'STILL_OBSERVED != RESIDUE'
     }
 
     It 'T696-Q R S missing timestamps and invalid window remain unavailable: <case>' -ForEach @(

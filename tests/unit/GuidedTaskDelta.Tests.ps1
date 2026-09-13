@@ -157,7 +157,7 @@ Describe 'T6.9 Guided Task Delta issue evidence (synthetic only)' {
         $view.still_observed_count | Should -BeExactly '1'
         ($view.task_window_rows | Where-Object name -CEQ 'codex-command-runner.exe').state | Should -BeExactly 'STILL_OBSERVED'
         $text = Format-GuidedTaskDelta $view
-        $text | Should -Match 'STILL_OBSERVED_AT_S4 != RESIDUE'
+        $text | Should -Match 'STILL_OBSERVED != RESIDUE'
         $text | Should -Not -Match '(?m)^\s*(?:RESIDUE|ORPHAN|EXIT_CONFIRMED)\s*:'
     }
 
@@ -165,7 +165,7 @@ Describe 'T6.9 Guided Task Delta issue evidence (synthetic only)' {
         $view = Get-GuidedTaskDeltaView $script:taskDeltaEvidence $script:taskDeltaEvents
         $view.no_longer_observed_count | Should -BeExactly '1'
         ($view.task_window_rows | Where-Object name -CEQ 'node.exe').state | Should -BeExactly 'NO_LONGER_OBSERVED'
-        Format-GuidedTaskDelta $view | Should -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
+        Format-GuidedTaskDelta $view | Should -Match 'NO_LONGER_OBSERVED does not establish process exit'
     }
 
     It 'T69-H PID reuse keeps pre-existing and task-window identities distinct' {

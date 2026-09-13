@@ -17,7 +17,8 @@ function Wait-GuidedObservation {
     <# Called at the existing Session sleep site only. Static Wait notification
        already exists on information stream 6. No per-second stream output.
        One configured deadline includes rendering overhead, avoiding cumulative
-       drift from N repeated one-second sleeps. No capture or lifecycle decision. #>
+       drift from N repeated one-second sleeps. No capture or lifecycle decision.
+       OBSERVATION_INTERVAL != LIFECYCLE_GRACE. #>
     [CmdletBinding()]
     param([Parameter(Mandatory)] [ValidateSet('S3','S4')] [string] $Stage,
         [Parameter(Mandatory)] [ValidateRange(1,3600)] [int] $Seconds)
@@ -31,7 +32,9 @@ function Wait-GuidedObservation {
         while ($true) {
             $remaining = $deadline - (Get-GuidedWaitMilliseconds)
             if ($remaining -le 0) { break }
-            Write-Progress -Id 66 -Activity "Waiting for $Stage - $label" -Status ("{0} seconds remaining" -f [math]::Ceiling($remaining / 1000)) -SecondsRemaining ([int][math]::Ceiling($remaining / 1000)) -PercentComplete ([int][math]::Clamp(100 - $remaining / ($Seconds * 10), 0, 100))
+            # Render the remaining value once. Supplying both Status text and
+            # SecondsRemaining makes ConsoleHost display the same number twice.
+            Write-Progress -Id 66 -Activity "Waiting for $Stage - $label" -Status ("{0}s" -f [math]::Ceiling($remaining / 1000)) -PercentComplete ([int][math]::Clamp(100 - $remaining / ($Seconds * 10), 0, 100))
             $remaining = $deadline - (Get-GuidedWaitMilliseconds)
             if ($remaining -gt 0) { Start-Sleep -Milliseconds ([int][math]::Ceiling([math]::Min(1000, $remaining))) }
         }

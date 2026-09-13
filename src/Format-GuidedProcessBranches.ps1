@@ -343,10 +343,7 @@ function Format-GuidedProcessBranches {
         }
         BranchValue 'Logical session provenance' 'NOT_ESTABLISHED'
         BranchNote 'No explicit structured logical session, conversation, invocation, request, or tool-call identifier exists in the current resolved model.'
-        BranchNote 'PROCESS_BRANCH != LOGICAL_SESSION; PROCESS_PARENTAGE != TOOL_CAUSATION; COMMON_ANCESTOR != COMMON_SESSION.'
-        BranchNote 'SHARED_PARENT != SAME_LOGICAL_SESSION; BRANCH_ID != PROCESS_IDENTITY; BRANCH_ID != SESSION_IDENTITY.'
-        BranchNote 'PROCESS_NAME_HINT != SESSION_IDENTITY; COMMAND_LINE_HINT != SESSION_IDENTITY; SESSION_IDENTIFIER_ABSENT != SESSION_NOT_EXISTING.'
-        BranchNote 'TASK_WINDOW_TIMING != TASK_CAUSATION; STILL_OBSERVED_AT_S4 != RESIDUE; NO_LONGER_OBSERVED != EXIT_CONFIRMED.'
+        BranchNote 'PROCESS_BRANCH != LOGICAL_SESSION; PROCESS_PARENTAGE != TOOL_CAUSATION.'
     )
     $lines -join [Environment]::NewLine
 }

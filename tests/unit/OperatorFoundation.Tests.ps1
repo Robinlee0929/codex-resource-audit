@@ -23,10 +23,10 @@ Describe 'T1 additive CLI and legacy stream compatibility' {
         & $bindingOnly | Should -BeExactly 'Help'
         { & $bindingOnly -Mode Unknown } | Should -Throw
     }
-    It 'O02 Legacy <mode> dispatch is byte-compatible with v0.1.0 after newline normalization' -ForEach @(
+    It 'O02 Protected <mode> dispatch remains pinned after exact presentation additions' -ForEach @(
         @{ mode='Help'; hash='93622D8062B81463B6930077E73CD8971345CC71B565F5B5B484E7F4ED166190' }
         @{ mode='Fixture'; hash='B70766AD8FC75F1F00C1277FC0FFF604184B1A0E89AA94A09B7C79A91CCC1CC0' }
-        @{ mode='Candidates'; hash='10D7788B963ADE9BE325A52836B9DF7E52462B7EC03262443E1B16FB332E11BC' }
+        @{ mode='Candidates'; hash='877BC2023CCFEF9EADC86F1F02B6B09ACA2E187C8EA4EF883ADA7F54FFB95353' }
         @{ mode='Session'; hash='6A1E23FACBF96705D9844F070D49057F6101CD5F9F3B6D29AD10B4F45B35A138' }
     ) {
         $clause = @($script:modeSwitch.Clauses | Where-Object { $_.Item1.Value -eq $mode })
@@ -44,7 +44,7 @@ Describe 'T1 additive CLI and legacy stream compatibility' {
     }
     It 'O03 T7 Help definition remains pinned and emits only one success string under assignment pipeline and merging' {
         $helpDefinition = $script:operatorAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Show-Help' }, $false)
-        Get-OperatorTestHash $helpDefinition.Extent.Text | Should -BeExactly '9A46D19B01AA93F79440FD6915D88047EDFFBA78E4EDC27786F4BDA95F09803D'
+        Get-OperatorTestHash $helpDefinition.Extent.Text | Should -BeExactly '635031788B3BADD8F14A9141A36132F355871C7307D47D5D90CE8ED07A38E158'
         $assigned = @(& $script:operatorEntry -Mode Help)
         $piped = @(& $script:operatorEntry -Mode Help | ForEach-Object { $_ })
         $merged = @(& $script:operatorEntry -Mode Help *>&1)

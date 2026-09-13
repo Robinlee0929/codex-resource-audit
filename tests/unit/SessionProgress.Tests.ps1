@@ -1,6 +1,6 @@
 BeforeAll {
     $script:progressRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Resolve-Attribution','Collect-ProcessSnapshot','Read-LifecycleContract','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport') {
+    foreach ($name in 'Resolve-Attribution','Collect-ProcessSnapshot','Read-LifecycleContract','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Send-SessionProgress') {
         . (Join-Path $script:progressRoot "src\$name.ps1")
     }
     $script:originalResolve = (Get-Command Resolve-SessionEvidence).ScriptBlock
@@ -240,7 +240,7 @@ Describe 'Actual Session branch with offline dependencies' {
             $record | Should -BeOfType [Management.Automation.InformationRecord]
             $record.MessageData | Should -Match '^CAPTURE_PROGRESS:'
         }
-        ([regex]::Matches($script:sessionBodyText, 'Write-Information \(Format-CaptureProgress[^\r\n]+-InformationAction Continue')).Count | Should -Be 5
+        ([regex]::Matches($script:sessionBodyText, 'Write-Information \(Format-SessionCaptureProgressNotification[^\r\n]+-InformationAction Continue')).Count | Should -Be 5
         $script:sessionBodyText | Should -Not -Match '\$InformationPreference\s*='
     }
     It 'G16 Returned PARTIAL or FAILED snapshots are described without claiming successful analysis' {

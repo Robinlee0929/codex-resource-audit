@@ -178,14 +178,17 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
         $view = Get-BranchView $script:branchEvidence
         $view.branches[0].still_observed_at_s4 | Should -BeExactly '2'
         $text = Format-GuidedProcessBranches $view
-        $text | Should -Match 'STILL_OBSERVED_AT_S4 != RESIDUE'
+        $text | Should -Match '\| STILL_OBSERVED'
+        $text | Should -Not -Match 'STILL_OBSERVED_AT_S4 != RESIDUE'
         $text | Should -Not -Match '(?m)^\s*(?:RESIDUE|ORPHAN)\s*:'
     }
 
     It 'T695-K S4 absence remains NO_LONGER_OBSERVED without exit confirmation' {
         $view = Get-BranchView $script:branchEvidence
         $view.branches[0].no_longer_observed_by_s4 | Should -BeExactly '1'
-        (Format-GuidedProcessBranches $view) | Should -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
+        $text = Format-GuidedProcessBranches $view
+        $text | Should -Match '\| NO_LONGER_OBSERVED'
+        $text | Should -Not -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
     }
 
     It 'T695-L branch IDs are deterministic under task-delta stable ordering' {
@@ -219,7 +222,7 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
         $text = Format-GuidedProcessBranches $view
         $text | Should -Match 'PROCESS_BRANCH != LOGICAL_SESSION'
         $text | Should -Match 'PROCESS_PARENTAGE != TOOL_CAUSATION'
-        $text | Should -Match 'SHARED_PARENT != SAME_LOGICAL_SESSION'
+        $text | Should -Not -Match 'SHARED_PARENT != SAME_LOGICAL_SESSION|BRANCH_ID != SESSION_IDENTITY'
         $text | Should -Not -Match '(?i)Codex created (?:two|2) sessions|Browser sessions'
     }
 

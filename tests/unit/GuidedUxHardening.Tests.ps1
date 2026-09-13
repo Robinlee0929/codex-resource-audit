@@ -293,7 +293,8 @@ Describe 'T6.6 Countdown deadline and progress streams with fake monotonic time'
         Mock Start-Sleep { param($Milliseconds) $script:uxMilliseconds += $Milliseconds }
         Mock Write-Progress {
             param($Id,$Activity,$Status,$SecondsRemaining,$PercentComplete,$Completed)
-            $script:uxTicks.Add([pscustomobject]@{activity=$Activity;remaining=$SecondsRemaining;completed=[bool]$Completed;percent=$PercentComplete})
+            $remaining = if ($Status -match '\A([0-9]+)s\z') { [int]$Matches[1] } else { $null }
+            $script:uxTicks.Add([pscustomobject]@{activity=$Activity;status=$Status;remaining=$remaining;seconds_parameter=$SecondsRemaining;completed=[bool]$Completed;percent=$PercentComplete})
             if (-not $Completed) { $script:uxMilliseconds += 125.0 }
         }
         Mock Get-ProcessSnapshot { throw 'Countdown must not collect' }
@@ -307,6 +308,8 @@ Describe 'T6.6 Countdown deadline and progress streams with fake monotonic time'
         $output.Count | Should -Be 0
         $script:uxMilliseconds | Should -Be ($seconds * 1000)
         $script:uxTicks[0].remaining | Should -Be $seconds
+        $script:uxTicks[0].status | Should -BeExactly "${seconds}s"
+        $script:uxTicks[0].seconds_parameter | Should -BeNullOrEmpty
         $script:uxTicks[-1].completed | Should -BeTrue
         $script:uxTicks[0].activity | Should -BeLike "Waiting for $stage*follow-up"
         $remaining=@($script:uxTicks | Where-Object { -not $_.completed } | ForEach-Object remaining)

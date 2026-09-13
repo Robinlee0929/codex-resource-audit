@@ -314,9 +314,19 @@ function Format-GuidedTaskDelta {
                     Add-OperatorStyle -Text ("  {0} | {1} | CREATION UNKNOWN | {2} | {3} | {4}" -f $row.name,$row.pid,$row.first_seen,$row.last_seen,$row.state) -Style Default -ColorCapability $ColorCapability
                 }
             }
-            DeltaNote 'FIRST_SEEN != CREATION_TIME. A process created between captures may first appear at S2 while its exact creation time is before TASK_END.'
-            DeltaNote 'TASK_WINDOW_TIMING != TASK_CAUSATION; TASK_WINDOW_PROCESS != BROWSER_PROCESS.'
-            DeltaNote 'STILL_OBSERVED_AT_S4 != RESIDUE; NO_LONGER_OBSERVED != EXIT_CONFIRMED.'
+            $lateFirstSeen = @($View.task_window_rows | Where-Object first_seen -CIn @('S2','S3','S4')).Count -gt 0
+            if ($View.creation_window_unknown_rows.Count -gt 0 -or $lateFirstSeen) {
+                DeltaNote 'FIRST_SEEN != CREATION_TIME. First observation cannot replace exact creation-window timing.'
+            }
+            if ($View.task_window_rows.Count -gt 0) {
+                DeltaNote 'TASK_WINDOW_TIMING != TASK_CAUSATION.'
+            }
+            if ($View.still_observed_count -ne '0' -and $View.still_observed_count -ne 'UNAVAILABLE') {
+                DeltaNote 'STILL_OBSERVED != RESIDUE.'
+            }
+            if ($View.no_longer_observed_count -ne '0' -and $View.no_longer_observed_count -ne 'UNAVAILABLE') {
+                DeltaNote 'NO_LONGER_OBSERVED does not establish process exit.'
+            }
         }
         ''
         Format-OperatorLine Section -Label 'PRE-EXISTING CODEX PROCESSES OF INTEREST' -ColorCapability $ColorCapability
@@ -329,8 +339,7 @@ function Format-GuidedTaskDelta {
                 Add-OperatorStyle -Text ("  {0} | {1} | {2} | {3} | {4}" -f $row.name,$row.pid,$row.first_seen,$row.last_seen,$row.state) -Style Default -ColorCapability $ColorCapability
             }
         }
-        DeltaNote 'Only processes confirmed Codex-owned at S0 and matching a display-only Codex/computer-use name hint appear here.'
-        DeltaNote 'PRE_EXISTING_AT_S0 != TASK_CREATED; NAME_HINT != OWNERSHIP; PROCESS_NAME_MATCH != OWNERSHIP; PATH_SIMILARITY != OWNERSHIP; COMMAND_LINE_SIMILARITY != OWNERSHIP.'
+        DeltaNote 'Only confirmed Codex-owned S0 processes matching the display-only name hint appear here; PRE_EXISTING_AT_S0 != TASK_CREATED.'
     )
     $lines -join [Environment]::NewLine
 }

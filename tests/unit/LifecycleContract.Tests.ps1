@@ -48,7 +48,10 @@ Describe 'Exact-identity controlled lifecycle contracts (offline only)' {
         $text.IndexOf('-Snapshots @($snapshots[0])') | Should -BeLessThan $text.IndexOf("Read-Host 'Start the task")
         $text | Should -Match "event_id='task-end'; event_type='TASK_END'"
         $text | Should -Not -Match 'grace_period_seconds\s*=\s*\$FollowUpSeconds'
-        (& $entry -Mode Help) | Should -Match 'LifecycleContractPath'
+        $text | Should -Match '\[string\] \$LifecycleContractPath'
+        $help = & $entry -Mode Help
+        $help | Should -Not -Match 'LifecycleContractPath'
+        $help | Should -Match '(?s)README\.md for the complete.*supported invocation'
     }
 
     It 'C03 Invalid schema fields fail closed without coercion' {

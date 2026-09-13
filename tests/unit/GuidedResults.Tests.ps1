@@ -111,7 +111,8 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         @($view.changes.value) | Should -Be @('1','3','1')
         $text=Format-GuidedResults $view
         $changes=$text.Substring($text.IndexOf('=== PROCESS CHANGES ==='),$text.IndexOf('=== TASK DELTA / ISSUE EVIDENCE ===')-$text.IndexOf('=== PROCESS CHANGES ==='))
-        $changes | Should -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
+        $changes | Should -Not -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
+        $text.Substring($text.IndexOf('=== TRUST BOUNDARIES ===')) | Should -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
         $changes | Should -Not -Match '(?i)suspicious|anomal|residue|orphan'
     }
     It 'V09 Missing or malformed history does not establish zero change' {
@@ -171,7 +172,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         $script:last.classifications[2].unknown_reason="PRIVATE_REASON`e[2J"
         $script:life[0].unknown_reason='PRIVATE_LIFECYCLE_REASON'
         $text=Format-GuidedResults (Build-ResultsView)
-        $text | Should -Match '<REDACTED_REASON>|UNMAPPED_REASON'
+        $text | Should -Match 'Other/redacted reason'
         $text | Should -Not -Match 'PRIVATE_REASON|PRIVATE_LIFECYCLE_REASON|\x1B'
     }
     It 'V16 Zero UNKNOWN is shown only for a complete evaluated population' {
@@ -228,7 +229,9 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
     }
     It 'V21 Core trust boundaries remain explicit without inventing an attached-browser condition' {
         $text=Format-GuidedResults (Build-ResultsView)
-        foreach ($boundary in 'UNKNOWN != CODEX','PROCESS_SURVIVAL != RESIDUE','PROCESS_SURVIVAL != ORPHAN','NO_LONGER_OBSERVED != EXIT_CONFIRMED') {
+        foreach ($boundary in 'UNKNOWN != CODEX','PROCESS_SURVIVAL != RESIDUE','PROCESS_SURVIVAL != ORPHAN',
+            'NO_LONGER_OBSERVED != EXIT_CONFIRMED','STILL_OBSERVED != RESIDUE','PRE_EXISTING_AT_S0 != TASK_CREATED',
+            'PROCESS_BRANCH != LOGICAL_SESSION','NEXT_STEP_GUIDANCE != EVIDENCE_CLASSIFICATION') {
             $text | Should -Match ([regex]::Escape($boundary))
         }
         $text | Should -Not -Match 'ATTACHED_BROWSER|suspicious|EXIT_CONFIRMED: YES'

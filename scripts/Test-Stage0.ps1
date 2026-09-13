@@ -83,7 +83,8 @@ $requiredIds = @(
     'X01','X02','X03','X04','X05','X06','X07','X08','X09','X10',
     'K01','K02','K03','K04','K05','K06','K07','K08','K09','K10','K11','K12','K13','K14',
     'K15','K16','K17','K18','K19','K20','K21','K22','K23','K24','K25','K26','K27',
-    'K28','K29','K30','K31','K32'
+    'K28','K29','K30','K31','K32',
+    'T71-A','T71-B','T71-C','T71-D','T71-E','T71-F','T71-G','T71-H','T71-I','T71-J','T71-K','T71-L'
 )
 $executedNames = @($testNodes | Where-Object { $_.Result -notin @('NotRun',$null) } | ForEach-Object Name)
 $missingRequired = @($requiredIds | Where-Object { $id = $_; -not ($executedNames | Where-Object { $_ -match "^$([regex]::Escape($id))\b" }) })

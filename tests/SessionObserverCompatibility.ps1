@@ -20,6 +20,12 @@ function Remove-TestSessionPresentationHooks {
         if ([regex]::Matches($text, [regex]::Escape($line)).Count -ne 1) { throw 'Exact optional Session notification missing or duplicated.' }
         $text = $text.Replace($line, '')
     }
+    foreach ($stage in 'S0','S1','S2','S3','S4') {
+        $styled = "Format-SessionCaptureProgressNotification -Snapshot `$snapshots[-1] -SnapshotId '$stage' -GuidedPresentation:(`$null -ne `$SessionProgressObserver)"
+        $canonical = "Format-CaptureProgress -Snapshot `$snapshots[-1] -SnapshotId '$stage'"
+        if ([regex]::Matches($text,[regex]::Escape($styled)).Count -ne 1) { throw 'Exact Guided capture-metadata styling hook changed.' }
+        $text = $text.Replace($styled,$canonical)
+    }
     $promptBranch = @'
         if ($null -ne $SessionProgressObserver) {
             [void](Read-Host 'When the observed Codex activity is finished, press Enter to declare TASK_END and capture S2')

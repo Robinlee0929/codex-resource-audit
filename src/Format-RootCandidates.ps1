@@ -76,6 +76,84 @@ function Get-RootCandidateFriendlyGroupLabel {
     }
 }
 
+function Test-RootCandidateHumanConsole {
+    <# Conservative presentation routing only. Automation, pipelines,
+       non-interactive hosts and OS-level redirection retain the legacy success
+       stream contract. This test never changes discovery or candidate data. #>
+    param([ValidateRange(1,1024)] [int] $PipelineLength = 1)
+    if ($PipelineLength -ne 1 -or $Host.Name -ne 'ConsoleHost' -or
+        -not [Environment]::UserInteractive) { return $false }
+    foreach ($argument in [Environment]::GetCommandLineArgs()) {
+        if ($argument -match '\A[-/]noni') { return $false }
+    }
+    try {
+        return -not [Console]::IsInputRedirected -and
+            -not [Console]::IsOutputRedirected -and
+            -not [Console]::IsErrorRedirected
+    }
+    catch { return $false }
+}
+
+function Format-RootCandidateHumanView {
+    <# Compact human view over the same safe candidate projection used by
+       Guided. Canonical machine output remains a separate routing decision. #>
+    param(
+        [AllowNull()] [object] $Snapshot,
+        [AllowNull()] [AllowEmptyCollection()] [object[]] $Candidates = $null,
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto'
+    )
+    $capture = Get-RootCandidateField $Snapshot 'capture_status'
+    $captureLabel = if ($capture -is [string] -and $capture -cin @('COMPLETE','PARTIAL','FAILED','UNKNOWN')) { $capture } else { 'UNAVAILABLE' }
+    $records = Get-RootCandidateField $Snapshot 'processes'
+    $available = $null -ne $Candidates -and $records -is [Collections.IList]
+    $rows = @(if ($available) {
+        for ($i = 0; $i -lt $Candidates.Count; $i++) {
+            Get-RootCandidatePresentation -Record $Candidates[$i] -CandidateIndex $i -CaptureLabel $captureLabel
+        }
+    })
+    $lines = @(
+        Format-OperatorLine Section -Label 'ROOT CANDIDATES' -ColorCapability $ColorCapability
+        Format-OperatorLine Status -Label 'Capture' -Value $captureLabel -ColorCapability $ColorCapability
+        Format-OperatorLine KeyValue -Label 'Candidates' -Value $(if ($available) { $rows.Count.ToString([cultureinfo]::InvariantCulture) } else { 'UNAVAILABLE' })
+        '  ID | PROCESS | PID'
+        foreach ($group in @('NAME_EQUALS_CHATGPT_EXE','NAME_EQUALS_CODEX_EXE','OTHER_NAME_CONTAINS_CODEX','PATH_ONLY_MATCH','UNAVAILABLE_OR_OTHER')) {
+            $groupRows = @($rows | Where-Object display_group -CEQ $group)
+            if ($groupRows.Count -eq 0) { continue }
+            Add-OperatorStyle -Text ("  {0} ({1})" -f (Get-RootCandidateFriendlyGroupLabel $group),$groupRows.Count) -Style Heading -ColorCapability $ColorCapability
+            foreach ($row in $groupRows) {
+                '    ' + (@($row.candidate_id,$row.name,$row.pid | ForEach-Object { ConvertTo-OperatorCell $_ }) -join ' | ')
+            }
+        }
+        if (-not $available) { '  UNAVAILABLE' }
+        elseif ($rows.Count -eq 0) { '  NONE' }
+        Format-OperatorLine Note -Value 'Discovery only. CANDIDATE_ONLY != VERIFIED_ROOT; DISCOVERY_RESULT != OPERATOR_VERIFICATION.' -ColorCapability $ColorCapability
+        Format-OperatorLine Note -Value 'Groups describe matching basis, not trust or recommendation. GROUP != TRUST_LEVEL; GROUP != RECOMMENDATION.' -ColorCapability $ColorCapability
+        Format-OperatorLine Note -Value 'Group order is presentation-only. Candidate IDs apply only to this captured set and preserve capture order.' -ColorCapability $ColorCapability
+        if ($captureLabel -ne 'COMPLETE') {
+            Format-OperatorLine Note -Value 'Capture is not complete. Counts cover supplied observations only; missing evidence is not zero.' -ColorCapability $ColorCapability
+        }
+    )
+    return $lines -join [Environment]::NewLine
+}
+
+function Format-RootCandidateLegacyOutput {
+    <# Preserved machine-oriented default Candidates success-stream contract.
+       Human routing never mutates these rows or their field names. #>
+    param([AllowNull()] [AllowEmptyCollection()] [object[]] $Candidates = $null)
+    'DATA_SOURCE: LIVE_WINDOWS_CIM'
+    'CANDIDATES_ARE_NOT_CONFIRMED_ROOTS: TRUE'
+    foreach ($process in @($Candidates)) {
+        [pscustomobject]@{
+            CandidatePid           = $process.pid
+            CreationTimeUtc        = $process.creation_time
+            Name                   = ConvertTo-SafeAuditText $process.name
+            ExecutablePath         = ConvertTo-SafeAuditText $process.executable_path
+            Classification         = 'CANDIDATE_ONLY'
+            OperatorActionRequired = $true
+        }
+    }
+}
+
 function Format-RootCandidateGroups {
     <# Only locally prepared display IDs, fixed group codes and the SAME template
        statuses rendered in candidate blocks. Null means unavailable, not empty. #>

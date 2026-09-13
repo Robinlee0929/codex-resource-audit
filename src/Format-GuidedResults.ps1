@@ -139,7 +139,10 @@ function Get-GuidedResultsView {
         $view.lifecycle_unknown=[string]@($usable | Where-Object lifecycle -CEQ 'UNKNOWN').Count
         $view.lifecycle_reasons=@($usable | Where-Object lifecycle -CEQ 'UNKNOWN' |
             Group-Object { Format-LifecycleExplanation -Result $_ -Concise } | Sort-Object Name |
-            ForEach-Object { [pscustomobject]@{explanation=$_.Name; count=$_.Count} })
+            ForEach-Object {
+                $reasonCode = if ($_.Name -match '\AReason: ([A-Z0-9_,]+)(?:\r?\n|\z)') { $Matches[1] } else { 'UNMAPPED_REASON' }
+                [pscustomobject]@{explanation=$_.Name; reason_code=$reasonCode; count=$_.Count}
+            })
     }
     $endEvents=@($Events | Where-Object { (IsCode $_ 'event_id' @('task-end')) -and (IsCode $_ 'event_type' @('TASK_END')) })
     if ($endEvents.Count -eq 1 -and $null -ne (Get-RootCandidateUtc (Field $endEvents[0] 'occurred_utc'))) { $view.task_end='DECLARED' }
@@ -202,7 +205,6 @@ function Format-GuidedNextStep {
     elseif ($still -gt 0 -and $gone -eq 0) {
         $lines += GuidanceNote 'One or more task-window Codex processes are still observed at S4. Continue observation or reproduce the same task before treating this as an issue.' 'Attention'
         $lines += GuidanceNote 'STILL_OBSERVED != RESIDUE.'
-        $lines += GuidanceNote 'If the same still-observed branch pattern is reproducible across separate runs, preserve the evidence and consider reporting a reproducible issue.'
     }
     else {
         $lines += GuidanceNote 'Some task-window processes remain observed while others are no longer observed. Preserve the evidence and consider repeating the same task to check reproducibility.' 'Attention'
@@ -210,6 +212,46 @@ function Format-GuidedNextStep {
     }
     $lines += GuidanceNote 'NEXT_STEP_GUIDANCE != EVIDENCE_CLASSIFICATION.'
     return $lines -join [Environment]::NewLine
+}
+
+function Get-GuidedOwnershipReasonLabel {
+    <# Friendly presentation labels for the already allowlisted ownership reason
+       codes. Unknown or redacted values receive no inferred meaning. #>
+    param([AllowNull()] [object] $Code)
+    if ($Code -isnot [string]) { return 'Other/redacted reason' }
+    switch -CaseSensitive ($Code) {
+        'NO_CONFIRMED_CODEX_ROOT_CHAIN' { 'No confirmed Codex root chain' }
+        'NO_PARENT_PID' { 'No parent PID' }
+        'CHILD_CAPTURE_PARTIAL' { 'Child capture partial' }
+        'CHILD_CREATION_TIME_INSUFFICIENT' { 'Child creation time insufficient' }
+        'PARENT_NOT_OBSERVED' { 'Parent not observed' }
+        'PARENT_PID_REUSED_OR_AMBIGUOUS' { 'Parent PID reused or ambiguous' }
+        'PARENT_CAPTURE_PARTIAL' { 'Parent capture partial' }
+        'PARENT_CREATION_TIME_INSUFFICIENT' { 'Parent creation time insufficient' }
+        'PARENT_CREATED_AFTER_CHILD' { 'Parent created after child' }
+        'CREATION_TIME_UNPARSEABLE' { 'Creation time unavailable' }
+        default { 'Other/redacted reason' }
+    }
+}
+
+function Get-GuidedLifecycleReasonLabel {
+    <# Compact labels over the existing safe concise-reason code. This does not
+       evaluate lifecycle or replace the retained detailed explanation. #>
+    param([AllowNull()] [object] $Code)
+    if ($Code -isnot [string]) { return 'Other/redacted lifecycle reason' }
+    switch -CaseSensitive ($Code) {
+        'OWNERSHIP_NOT_CONFIRMED' { 'Ownership not confirmed' }
+        'LIFECYCLE_SCOPE_UNKNOWN' { 'No supported lifecycle scope established' }
+        'EXIT_POLICY_UNKNOWN' { 'Applicable exit policy not established' }
+        'EXIT_POLICY_AMBIGUOUS' { 'Applicable exit policy ambiguous' }
+        'POLICY_SOURCE_UNKNOWN' { 'Policy source unavailable' }
+        'EXIT_POLICY_INVALID' { 'Exit policy invalid' }
+        'POST_GRACE_SNAPSHOT_INCOMPLETE' { 'Post-grace snapshot incomplete' }
+        'POST_GRACE_SNAPSHOT_IDENTITY_UNKNOWN' { 'Post-grace snapshot identity unavailable' }
+        'WIDER_SCOPE_THAN_TASK' { 'Recorded scope is wider than task' }
+        'PARENT_ONLY_NOT_OBSERVED' { 'Parent only not observed' }
+        default { 'Other/redacted lifecycle reason' }
+    }
 }
 
 function Format-GuidedResults {
@@ -245,7 +287,7 @@ function Format-GuidedResults {
             Note 'Playwright attribution is independent; do not add it to the Codex ownership count. UNKNOWN does not mean unowned.'
             Section 'PROCESS CHANGES'
             foreach ($metric in $View.changes) { Value $metric.label $metric.value }
-            Note 'Counts describe existing history entries, including unresolved identities. NO_LONGER_OBSERVED != EXIT_CONFIRMED.'
+            Note 'Counts describe existing history entries, including unresolved identities.'
             Format-GuidedTaskDelta -View $View.task_delta -ColorCapability $ColorCapability
             Format-GuidedProcessBranches -View $View.process_branches -ColorCapability $ColorCapability
             Format-GuidedNextStep -TaskDelta $View.task_delta -ProcessBranches $View.process_branches -ColorCapability $ColorCapability
@@ -261,17 +303,23 @@ function Format-GuidedResults {
             Value 'Unknown lifecycle' $View.lifecycle_unknown
             Note 'Only returned classifications are listed. Omitted classes have no established zero; ACTIVE does not imply task execution.'
             Section 'WHY UNKNOWN'
-            Value 'Ownership UNKNOWN' $View.ownership_unknown
+            Value 'Ownership unknown' $View.ownership_unknown
             if ($View.ownership_unknown -eq '0') { Note 'None in the evaluated ownership result.' }
-            foreach ($reason in $View.ownership_reasons) { Value $reason.label ([string]$reason.count) }
-            Value 'Lifecycle UNKNOWN' $View.lifecycle_unknown
+            $ownershipReasonRows = @($View.ownership_reasons | Sort-Object @{Expression={ [int]$_.count };Descending=$true},label)
+            $selectedOwnershipReasons = @($ownershipReasonRows | Where-Object label -CNE '<REDACTED_REASON>' | Select-Object -First 3)
+            foreach ($reason in $selectedOwnershipReasons) { Value (Get-GuidedOwnershipReasonLabel $reason.label) ([string]$reason.count) }
+            $otherOwnershipCount = 0
+            foreach ($reason in $ownershipReasonRows) {
+                if ($reason -notin $selectedOwnershipReasons) { $otherOwnershipCount += [int]$reason.count }
+            }
+            if ($otherOwnershipCount -gt 0) { Value 'Other/redacted reasons' ([string]$otherOwnershipCount) }
+            Value 'Lifecycle unknown' $View.lifecycle_unknown
             if ($View.lifecycle_unknown -eq '0') { Note 'None in the evaluated lifecycle result.' }
-            foreach ($reason in $View.lifecycle_reasons) {
-                Value 'Results sharing this explanation' ([string]$reason.count)
-                # Existing safe reason/explanation formatter output, not a second map.
-                foreach ($line in ($reason.explanation -split '\r?\n')) {
-                    Add-OperatorStyle -Text ('    ' + $line) -Style Secondary -ColorCapability $ColorCapability
-                }
+            foreach ($reason in @($View.lifecycle_reasons | Sort-Object @{Expression={ [int]$_.count };Descending=$true},reason_code | Select-Object -First 3)) {
+                Value (Get-GuidedLifecycleReasonLabel $reason.reason_code) ([string]$reason.count)
+            }
+            if ($View.ownership_unknown -ne '0' -or $View.lifecycle_unknown -ne '0') {
+                Note 'Selected reasons are summarized here. Detailed evidence is available with DETAILS.'
             }
             Section 'OBSERVATION TIMELINE'
             $labels=@{S0='BASELINE';S1='TASK ACTIVE';S2='POST TASK';S3='FIRST FOLLOW-UP';S4='FINAL FOLLOW-UP'}
@@ -282,7 +330,12 @@ function Format-GuidedResults {
             Note 'TASK_END is operator-declared; it does not mean a process exited. Capture COMPLETE does not imply ownership or lifecycle PASS.'
             Section 'TRUST BOUNDARIES'
             Note 'UNKNOWN != CODEX; PROCESS_SURVIVAL != RESIDUE; PROCESS_SURVIVAL != ORPHAN.'
-            Note 'NO_LONGER_OBSERVED != EXIT_CONFIRMED; ownership and lifecycle are separate conclusions.'
+            Note 'NO_LONGER_OBSERVED != EXIT_CONFIRMED; STILL_OBSERVED != RESIDUE.'
+            Note 'FIRST_SEEN != CREATION_TIME; TASK_WINDOW_TIMING != TASK_CAUSATION; TASK_WINDOW_PROCESS != BROWSER_PROCESS.'
+            Note 'PRE_EXISTING_AT_S0 != TASK_CREATED; PID_ALONE != PROCESS_IDENTITY.'
+            Note 'PROCESS_BRANCH != LOGICAL_SESSION; PROCESS_PARENTAGE != TOOL_CAUSATION.'
+            Note 'COMMON_ANCESTOR != COMMON_SESSION; SHARED_PARENT != SAME_LOGICAL_SESSION.'
+            Note 'NEXT_STEP_GUIDANCE != EVIDENCE_CLASSIFICATION; ownership and lifecycle are separate conclusions.'
             if ($View.attached_browser) { Note 'ATTACHED_BROWSER != CODEX_OWNED; attachment does not establish ownership.' }
         }
         Section 'DETAILED EVIDENCE'

@@ -11,6 +11,21 @@ function Get-SessionCaptureStatus {
     return 'UNKNOWN'
 }
 
+function Format-SessionCaptureProgressNotification {
+    <# Preserve Format-CaptureProgress text and information-stream semantics.
+       Guided may render this engineering metadata as secondary text; standalone
+       Session and plain/redirected output remain byte-for-byte text compatible. #>
+    param(
+        [AllowNull()] [object] $Snapshot,
+        [Parameter(Mandatory)] [ValidateSet('S0','S1','S2','S3','S4')] [string] $SnapshotId,
+        [switch] $GuidedPresentation,
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto'
+    )
+    $line = Format-CaptureProgress -Snapshot $Snapshot -SnapshotId $SnapshotId
+    if (-not $GuidedPresentation) { return $line }
+    return Add-OperatorStyle -Text $line -Style Secondary -ColorCapability $ColorCapability
+}
+
 function Send-SessionProgress {
     <# Optional synchronous presentation notification from the canonical engine.
        Pass fresh scalar projections, never mutable snapshots or evidence objects.
