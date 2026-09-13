@@ -19,12 +19,15 @@ function Send-SessionProgress {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [scriptblock] $Observer,
-        [Parameter(Mandatory)] [ValidateSet('Capture','TaskEnd','Wait','Ready')] [string] $Event,
+        [Parameter(Mandatory)] [ValidateSet('Capture','TaskEnd','Wait','Results','Ready')] [string] $Event,
         [ValidateSet('S0','S1','S2','S3','S4')] [string] $Stage,
         [AllowNull()] [object] $Snapshot,
         [AllowEmptyCollection()] [object[]] $Snapshots = @(),
         [string] $EventTime,
-        [int] $Seconds
+        [int] $Seconds,
+        [AllowNull()] [object] $SessionEvidence,
+        [AllowNull()] [AllowEmptyCollection()] [object[]] $Lifecycle = $null,
+        [AllowNull()] [AllowEmptyCollection()] [object[]] $Events = $null
     )
     $progress = [pscustomobject]@{ event = $Event }
     switch ($Event) {
@@ -39,6 +42,9 @@ function Send-SessionProgress {
         }
         'Ready' {
             $progress | Add-Member capture_statuses @(foreach ($item in $Snapshots) { Get-SessionCaptureStatus $item })
+        }
+        'Results' {
+            $progress | Add-Member view (Get-GuidedResultsView -SessionEvidence $SessionEvidence -Lifecycle $Lifecycle -Events $Events)
         }
     }
     $null = & $Observer $progress

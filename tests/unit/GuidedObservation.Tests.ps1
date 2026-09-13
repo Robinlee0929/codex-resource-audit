@@ -1,5 +1,6 @@
 BeforeAll {
     $script:observeRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    . (Join-Path $script:observeRoot 'src\Format-GuidedResults.ps1')
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation') {
         . (Join-Path $script:observeRoot "src\$name.ps1")
     }
@@ -111,7 +112,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
             & $script:observeReporter @PSBoundParameters
         }
         Mock Send-SessionProgress {
-            param($Observer,$Event,$Stage,$Snapshot,$Snapshots,$EventTime,$Seconds)
+            param($Observer,$Event,$Stage,$Snapshot,$Snapshots,$EventTime,$Seconds,$SessionEvidence,$Lifecycle,$Events)
             $script:observeTrace.Add('notify:'+$Event+':'+$Stage)
             $script:observeEvents.Add([pscustomobject]@{event=$Event;stage=$Stage;time=$EventTime;seconds=$Seconds})
             & $script:observeSender @PSBoundParameters
@@ -150,7 +151,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
             'capture:S0','notify:Capture:S0','prompt:start','capture:S1','notify:Capture:S1',
             'prompt:end','notify:TaskEnd:','capture:S2','notify:Capture:S2','notify:Wait:S3','sleep:7',
             'capture:S3','notify:Capture:S3','notify:Wait:S4','sleep:7','capture:S4','notify:Capture:S4',
-            'resolve','lifecycle','report','success','notify:Ready:')
+            'resolve','lifecycle','report','notify:Results:','success','notify:Ready:')
         $rows=@($script:observeInfo | Where-Object { $_ -cmatch '^  S[0-4] ' })
         $rows.Count | Should -Be 5
         for ($i=0; $i -lt 5; $i++) {
@@ -174,7 +175,10 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         $text | Should -Match 'END TASK_END +DECLARED'
         $text | Should -Match 'operator-declared observation event'
         $text | Should -Match 'Post-task observation continues through S2, S3 and S4'
-        $text | Should -Not -Match 'EXIT_CONFIRMED|OWNERSHIP_CONFIRMED|RESIDUE_DETECTED|ORPHAN_DETECTED|checking for residue'
+        # Keep the original T5 assertion on its messages; the new T6 record
+        # intentionally includes the explicit NO_LONGER_OBSERVED != EXIT_CONFIRMED boundary.
+        ($script:observeInfo | Where-Object { $_ -notmatch '^STEP 8 - SESSION RESULTS' }) -join "`n" |
+            Should -Not -Match 'EXIT_CONFIRMED|OWNERSHIP_CONFIRMED|RESIDUE_DETECTED|ORPHAN_DETECTED|checking for residue'
     }
     It 'U05 Activity and end instructions arrive before their unchanged prompts and waits remain intervals' {
         Invoke-ObserveTest
@@ -286,6 +290,33 @@ Invoke-GuidedSession -GuidedOutcome $state -FollowUpSeconds 7
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
         Should -Invoke Read-Host -Times 0 -Exactly
         Should -Invoke Invoke-CanonicalSession -Times 0 -Exactly
+    }
+    It 'V26 Completed Session data produces summary before canonical success without rerunning evidence' {
+        Invoke-ObserveTest
+        $summary=@($script:observeInfo | Where-Object { $_ -match '^STEP 8 - SESSION RESULTS' })
+        $summary.Count | Should -Be 1
+        $summary[0] | Should -Match 'Confirmed Codex-owned: 2'
+        $summary[0] | Should -Match 'Unknown ownership: 1'
+        $script:observeTrace.IndexOf('report') | Should -BeLessThan $script:observeTrace.IndexOf('notify:Results:')
+        $script:observeTrace.IndexOf('notify:Results:') | Should -BeLessThan $script:observeTrace.IndexOf('success')
+        $script:observeOutput.Count | Should -Be 1
+        Should -Invoke Get-ProcessSnapshot -Times 7 -Exactly
+        Should -Invoke Resolve-SessionEvidence -Times 1 -Exactly
+        Should -Invoke Compare-Lifecycle -Times 1 -Exactly
+        Should -Invoke Format-SessionAuditReport -Times 1 -Exactly
+    }
+    It 'V27 Failure at <failure> cannot emit fabricated final Results' -ForEach @(@{failure='S2'},@{failure='resolve'},@{failure='report'}) {
+        $script:observeFailure=$failure
+        { Invoke-ObserveTest } | Should -Throw '*SYNTHETIC*'
+        ($script:observeInfo -join "`n") | Should -Not -Match 'STEP 8 - SESSION RESULTS|=== OWNERSHIP ===|=== LIFECYCLE ==='
+        @($script:observeEvents | Where-Object event -eq Results).Count | Should -Be 0
+    }
+    It 'V28 Redirecting Guided success retains exactly the canonical report while Results remain information' {
+        $destination=Join-Path $TestDrive 'guided-canonical.txt'
+        & $script:observeEntry -Mode Guided -FollowUpSeconds 7 6>$null > $destination
+        $expected=& $script:observeReporter -SessionEvidence $script:observeEvidence -Lifecycle $script:observeLife -DataSource LIVE_WINDOWS_CIM
+        (Get-Content -Raw $destination).TrimEnd("`r","`n") | Should -BeExactly $expected.TrimEnd("`r","`n")
+        Get-Content -Raw $destination | Should -Not -Match 'STEP 8 - SESSION RESULTS|=== DETAILED EVIDENCE ==='
     }
 }
 

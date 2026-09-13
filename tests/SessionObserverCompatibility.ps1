@@ -1,5 +1,5 @@
 function Remove-TestSessionPresentationHooks {
-    <# Keep the ORIGINAL full Session hash after removing only these nine exact
+    <# Keep the ORIGINAL full Session hash after removing only these ten exact
        optional notifications. Integration tests pin their ordering and payloads. #>
     param([string] $Body)
     $text = $Body -replace "`r`n", "`n"
@@ -12,6 +12,7 @@ function Remove-TestSessionPresentationHooks {
         '-Event Capture -Stage S3 -Snapshot $snapshots[-1]'
         '-Event Wait -Stage S4 -Seconds $FollowUpSeconds'
         '-Event Capture -Stage S4 -Snapshot $snapshots[-1]'
+        '-Event Results -SessionEvidence $sessionEvidence -Lifecycle $lifecycle -Events $events'
         '-Event Ready -Snapshots @($snapshots)'
     )
     foreach ($argument in $arguments) {
@@ -20,4 +21,26 @@ function Remove-TestSessionPresentationHooks {
         $text = $text.Replace($line, '')
     }
     return $text
+}
+
+function Remove-TestConciseExplanation {
+    param([string]$Source)
+    $text=$Source -replace "`r`n","`n"
+    $parameter='param([AllowNull()] [object] $Result, [switch] $Concise)'
+    $addition=@'
+    if ($Concise) {
+        $summary = @("Reason: $safeReason")
+        if ($supported) {
+            foreach ($code in $meanings.Keys) {
+                if ($tokens -ccontains $code) { $summary += $meanings[$code][0] }
+            }
+        }
+        else { $summary += 'UNSUPPORTED_COMBINATION (no replacement meaning inferred)' }
+        return $summary -join [Environment]::NewLine
+    }
+'@ -replace "`r`n","`n"
+    $addition += "`n"
+    if ([regex]::Matches($text,[regex]::Escape($parameter)).Count -ne 1 -or
+        [regex]::Matches($text,[regex]::Escape($addition)).Count -ne 1) { throw 'Exact concise presentation addition missing or changed.' }
+    return $text.Replace($parameter,'param([AllowNull()] [object] $Result)').Replace($addition,'')
 }

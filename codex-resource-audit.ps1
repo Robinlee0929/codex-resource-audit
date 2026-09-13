@@ -26,6 +26,7 @@ $projectRoot = $PSScriptRoot
 . (Join-Path $projectRoot 'src\Resolve-SessionEvidence.ps1')
 . (Join-Path $projectRoot 'src\Read-LifecycleContract.ps1')
 . (Join-Path $projectRoot 'src\Send-SessionProgress.ps1')
+. (Join-Path $projectRoot 'src\Format-GuidedResults.ps1')
 
 $requiredProductionFunctions = @(
     'Get-ProcessSnapshot',
@@ -228,6 +229,7 @@ switch ($Mode) {
         $events = @([pscustomobject]@{ event_id='task-end'; event_type='TASK_END'; occurred_utc=$eventTime })
         $lifecycle = @(Compare-Lifecycle -AttributedSnapshots $attributed -Policies $sessionEvidence.lifecycle_policies -Events $events)
         $detail = Format-SessionAuditReport -SessionEvidence $sessionEvidence -Lifecycle $lifecycle -DataSource LIVE_WINDOWS_CIM
+        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Results -SessionEvidence $sessionEvidence -Lifecycle $lifecycle -Events $events }
         if ($IncludeEvidenceSummary) {
             (Format-EvidenceSummary -SessionEvidence $sessionEvidence -Lifecycle $lifecycle -DataSource LIVE_WINDOWS_CIM) + [Environment]::NewLine + $detail
         }

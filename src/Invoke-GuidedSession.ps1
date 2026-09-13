@@ -111,7 +111,10 @@ function Invoke-GuidedSession {
     Write-Information (Format-GuidedObserveHeader -Target $target) -InformationAction Continue
     $observer = {
         param($Progress)
-        Write-Information (Format-GuidedObservation -Progress $Progress) -InformationAction Continue
+        if ($Progress.event -ceq 'Results') {
+            Write-Information (Format-GuidedResults -View $Progress.view) -InformationAction Continue
+        }
+        else { Write-Information (Format-GuidedObservation -Progress $Progress) -InformationAction Continue }
     }
     # Pass captured target scalars unchanged, never fields from a replacement
     # observation. Session independently applies its existing per-snapshot rules.

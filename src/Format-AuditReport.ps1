@@ -55,7 +55,7 @@ function Format-LifecycleExplanation {
     <# Secondary fixed prose only. This helper neither decides lifecycle nor
        establishes association; the summary passes only its existing usable results. #>
     [CmdletBinding()]
-    param([AllowNull()] [object] $Result)
+    param([AllowNull()] [object] $Result, [switch] $Concise)
 
     # Read scalar labels directly: pipeline property helpers can unwrap a
     # one-element array and make malformed input look like a scalar string.
@@ -120,6 +120,16 @@ function Format-LifecycleExplanation {
     # Contradictory supplied fields must not make fixed prose assert stronger facts.
     if ($supported -and (($reason -ceq 'OWNERSHIP_NOT_CONFIRMED' -and $safeOwnership -ne 'UNKNOWN') -or
         ($reason -cne 'OWNERSHIP_NOT_CONFIRMED' -and $safeOwnership -ne 'CONFIRMED_CODEX_OWNED'))) { $supported = $false }
+    if ($Concise) {
+        $summary = @("Reason: $safeReason")
+        if ($supported) {
+            foreach ($code in $meanings.Keys) {
+                if ($tokens -ccontains $code) { $summary += $meanings[$code][0] }
+            }
+        }
+        else { $summary += 'UNSUPPORTED_COMBINATION (no replacement meaning inferred)' }
+        return $summary -join [Environment]::NewLine
+    }
     $evidenceCodes = @('EVIDENCE_EXPECTED_OR_DETACHED_PERSISTENCE','EVIDENCE_POLICY_DEFINED',
         'EVIDENCE_EXIT_TRIGGER_NOT_OBSERVED','EVIDENCE_OWNERSHIP_CONFIRMED','EVIDENCE_SCOPE_KNOWN',
         'EVIDENCE_TRIGGER_OCCURRED','EVIDENCE_GRACE_EXPIRED','EVIDENCE_TWO_POST_GRACE_OBSERVATIONS',

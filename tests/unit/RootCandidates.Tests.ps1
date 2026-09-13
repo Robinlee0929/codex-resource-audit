@@ -294,6 +294,7 @@ Describe 'Root Candidates workflow (offline only)' {
             [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($body))) | Should -BeExactly $golden[$mode]
         }
         $source=Get-Content -Raw -LiteralPath (Join-Path $script:candidateRoot 'src\Format-AuditReport.ps1')
+        $source=Remove-TestConciseExplanation $source
         [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($source -replace "`r`n","`n")))) | Should -BeExactly '8BA2315682A8A578832DA8EC895968E92C31CAE68E782DF010F038DF49BB1374'
     }
 
