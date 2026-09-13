@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Help','Fixture','Candidates','Session')] [string] $Mode = 'Help',
+    [ValidateSet('Help','Fixture','Candidates','Session','Guided')] [string] $Mode = 'Help',
     [string] $FixturePath,
     [int] $RootPid,
     [string] $RootCreationTimeUtc,
@@ -107,6 +107,12 @@ if ($PSBoundParameters.ContainsKey('IncludeCandidateGroups') -and ($Mode -ne 'Ca
 }
 
 switch ($Mode) {
+    'Guided' {
+        . (Join-Path $projectRoot 'src\Format-OperatorView.ps1')
+        . (Join-Path $projectRoot 'src\Read-OperatorInput.ps1')
+        Invoke-GuidedFoundation
+        return
+    }
     'Help' {
         Show-Help
         return

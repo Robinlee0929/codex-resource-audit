@@ -11,13 +11,16 @@ Describe 'Stage 0 CLI module wiring' {
             $entrypointText | Should -Match ([regex]::Escape(". (Join-Path `$projectRoot 'src\$sourceName')"))
         }
 
-        # R4 preserves the full parameter block from 0679abc, including modes,
-        # defaults, types, switches and validation attributes; normalize CRLF only.
+        # Preserve the exact legacy parameter contract, allowing only the single
+        # additive Guided enum member. All defaults/types/other validation stay pinned.
         $tokens = $null; $errors = $null
         $ast = [Management.Automation.Language.Parser]::ParseInput($entrypointText, [ref]$tokens, [ref]$errors)
         $errors.Count | Should -Be 0
         $parameters = $ast.ParamBlock.Extent.Text -replace "`r`n", "`n"
-        [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($parameters))) |
+        $modeAddition = "[ValidateSet('Help','Fixture','Candidates','Session','Guided')]"
+        ([regex]::Matches($parameters, [regex]::Escape($modeAddition))).Count | Should -Be 1
+        $legacyParameters = $parameters.Replace($modeAddition, "[ValidateSet('Help','Fixture','Candidates','Session')]")
+        [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($legacyParameters))) |
             Should -BeExactly '64C92B82BDCD532D47631174262E021A75B05F724B2032A9C777ECD3CD27C2B9'
 
         $originalLocation = Get-Location
