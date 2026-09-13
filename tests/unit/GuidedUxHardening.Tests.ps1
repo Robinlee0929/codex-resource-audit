@@ -1,6 +1,6 @@
 BeforeAll {
     $script:uxRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation','Format-GuidedResults','Wait-GuidedObservation') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedResults','Wait-GuidedObservation') {
         . (Join-Path $script:uxRoot "src\$name.ps1")
     }
     $tokens=$null; $errors=$null
@@ -168,7 +168,7 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
         Invoke-UxGuided
         @($script:uxRecords | Where-Object { $_ -isnot [Management.Automation.InformationRecord] }).Count | Should -Be 0
         $text=Get-UxText
-        foreach ($section in 'ROOT','OWNERSHIP','PROCESS CHANGES','LIFECYCLE','WHY UNKNOWN','OBSERVATION TIMELINE','TRUST BOUNDARIES','DETAILED EVIDENCE') {
+        foreach ($section in 'ROOT','OWNERSHIP','PROCESS CHANGES','TASK DELTA / ISSUE EVIDENCE','PRE-EXISTING CODEX PROCESSES OF INTEREST','LIFECYCLE','WHY UNKNOWN','OBSERVATION TIMELINE','TRUST BOUNDARIES','DETAILED EVIDENCE') {
             $text | Should -Match ([regex]::Escape("=== $section ==="))
         }
         $text | Should -Match 'Type DETAILS'

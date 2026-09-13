@@ -27,6 +27,7 @@ $projectRoot = $PSScriptRoot
 . (Join-Path $projectRoot 'src\Read-LifecycleContract.ps1')
 . (Join-Path $projectRoot 'src\Send-SessionProgress.ps1')
 . (Join-Path $projectRoot 'src\Wait-GuidedObservation.ps1')
+. (Join-Path $projectRoot 'src\Format-GuidedTaskDelta.ps1')
 . (Join-Path $projectRoot 'src\Format-GuidedResults.ps1')
 
 $requiredProductionFunctions = @(
@@ -40,6 +41,8 @@ $requiredProductionFunctions = @(
     'Format-CaptureProgress',
     'Format-EvidenceSummary',
     'Format-RootCandidates',
+    'Get-GuidedTaskDeltaView',
+    'Format-GuidedTaskDelta',
     'Read-LifecycleContract',
     'New-BoundLifecyclePolicy',
     'Add-LifecycleContractEvidence'
