@@ -52,6 +52,7 @@ function Invoke-GuidedDiscovery {
     $outcome = [pscustomobject]@{
         status = 'EVIDENCE_BLOCKED'
         review_candidate_ids = @()
+        selected_session_targets = @()
         selected_candidate_id = $null
         operator_assertion_recorded = $false
         identity = $null
@@ -112,5 +113,15 @@ function Invoke-GuidedDiscovery {
         creation_time_utc = $selected.creation_time_utc
         executable_path = $selected.executable_path
     }
+    # Collection-shaped orchestration state; v0.1.1 still selects/asserts ONE.
+    # Keep the existing scalar fields as presentation compatibility projections.
+    # Copy identity scalars so those projections cannot mutate execution state.
+    $outcome.selected_session_targets = @([pscustomobject]@{
+        candidate_id = $selected.candidate_id
+        operator_assertion_recorded = $true
+        pid = [int]$selected.pid
+        creation_time_utc = $selected.creation_time_utc
+        executable_path = $selected.executable_path
+    })
     return $outcome
 }

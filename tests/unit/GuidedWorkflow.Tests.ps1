@@ -1,6 +1,6 @@
 BeforeAll {
     $script:guidedRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession') {
         . (Join-Path $script:guidedRoot "src\$name.ps1")
     }
     $script:realSelector = (Get-Command Select-RootCandidates).ScriptBlock
@@ -54,6 +54,9 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         $script:info = [Collections.Generic.List[string]]::new()
         $script:success = [Collections.Generic.List[object]]::new()
         Set-GuidedTestInput @('C3,C1','C1','VERIFY')
+        # Keep all T2/T3 assertions at their existing phase boundary. T4 is
+        # separately exercised with the real matcher and canonical Session body.
+        Mock Invoke-GuidedSession { param($GuidedOutcome,$FollowUpSeconds) Format-GuidedOutcome $GuidedOutcome }
         Mock Test-OperatorInteractiveHost { $true }
         Mock Get-ProcessSnapshot {
             param($AuditRunId,$SnapshotId)

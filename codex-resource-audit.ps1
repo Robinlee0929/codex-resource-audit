@@ -113,9 +113,14 @@ switch ($Mode) {
         . (Join-Path $projectRoot 'src\Read-OperatorInput.ps1')
         . (Join-Path $projectRoot 'src\Format-GuidedCandidates.ps1')
         . (Join-Path $projectRoot 'src\Invoke-GuidedDiscovery.ps1')
-        # Human progress is stream 6; the CLI returns only the safe final summary.
+        . (Join-Path $projectRoot 'src\Invoke-GuidedSession.ps1')
+        # Guided progress stays on stream 6; successful handoff returns the
+        # unchanged canonical Session report on the success stream.
         $guidedResult = Invoke-GuidedDiscovery
-        Format-GuidedOutcome -Outcome $guidedResult
+        if ($guidedResult.status -ceq 'OPERATOR_ASSERTION_RECORDED') {
+            Invoke-GuidedSession -GuidedOutcome $guidedResult -FollowUpSeconds $FollowUpSeconds
+        }
+        else { Format-GuidedOutcome -Outcome $guidedResult }
         return
     }
     'Help' {
