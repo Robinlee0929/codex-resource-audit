@@ -65,6 +65,7 @@ function Resolve-OperatorChoice {
         if ($text -ceq 'VERIFY') { $result.status = 'OPERATOR_ASSERTED'; $result.operator_asserted = $true }
         return $result
     }
+    $text = $text.Trim([char[]]@(' ', "`t")).ToUpperInvariant()
     $ordinal = 0
     if ($null -ne $Candidates -and $text -cmatch '\AC[1-9][0-9]*\z' -and
         [int]::TryParse($text.Substring(1), [ref]$ordinal) -and $ordinal -le $Candidates.Count) {
@@ -72,6 +73,38 @@ function Resolve-OperatorChoice {
         $result.candidate_index = $ordinal - 1
     }
     return $result
+}
+
+function Get-GuidedInputErrorMessage {
+    # Fixed text only. Never use an exception message or rejected input as UI.
+    param([string] $Code)
+    switch -CaseSensitive ($Code) {
+        'GUIDED_REVIEW_INVALID' { 'REVIEW SET INVALID. Enter comma-separated IDs from the current capture, e.g. C1,C2. No review set, Session target or operator assertion was retained.' }
+        'GUIDED_TARGET_INVALID' { 'SESSION TARGET INVALID. Enter exactly one candidate ID from the current Review Set, e.g. C1. No Session target or operator assertion was retained.' }
+        'GUIDED_ASSERTION_INVALID' { 'OPERATOR ASSERTION INVALID. Only exact VERIFY records an assertion. No Session target or operator assertion was retained.' }
+        'GUIDED_DETAILS_INVALID' { 'DETAILS INPUT INVALID. Type DETAILS to display the report, or press Enter to finish. No detailed evidence was displayed; completed observations are unchanged.' }
+    }
+}
+
+function Stop-GuidedInput {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [ValidateSet('GUIDED_REVIEW_INVALID','GUIDED_TARGET_INVALID','GUIDED_ASSERTION_INVALID','GUIDED_DETAILS_INVALID')] [string] $Code)
+    $exception = [ArgumentException]::new(($Code + ': ' + (Get-GuidedInputErrorMessage $Code)))
+    $record = [Management.Automation.ErrorRecord]::new($exception, $Code, [Management.Automation.ErrorCategory]::InvalidArgument, $null)
+    $PSCmdlet.ThrowTerminatingError($record)
+}
+
+function Format-GuidedInputError {
+    param([Parameter(Mandatory)] [Management.Automation.ErrorRecord] $Record)
+    # Recognition requires the explicit error ID and exception type, not text.
+    $code = $Record.FullyQualifiedErrorId.Split(',')[0]
+    $message = Get-GuidedInputErrorMessage $code
+    if ($Record.Exception -isnot [ArgumentException] -or $null -eq $message) { return $null }
+    @(
+        Format-OperatorLine Section -Label 'GUIDED INPUT STOPPED'
+        Format-OperatorLine Note -Value $message
+        Format-OperatorLine Note -Value 'Guided stopped safely. Start a new Guided run to try again.'
+    ) -join [Environment]::NewLine
 }
 
 function Invoke-GuidedFoundation {

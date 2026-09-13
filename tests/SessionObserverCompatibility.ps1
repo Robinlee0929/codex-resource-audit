@@ -1,6 +1,6 @@
 function Remove-TestSessionPresentationHooks {
-    <# Keep the ORIGINAL full Session hash after removing only these ten exact
-       optional notifications. Integration tests pin their ordering and payloads. #>
+    <# Keep the ORIGINAL full Session hash after removing exact optional
+       presentation branches. Integration tests pin ordering and payloads. #>
     param([string] $Body)
     $text = $Body -replace "`r`n", "`n"
     $arguments = @(
@@ -19,6 +19,20 @@ function Remove-TestSessionPresentationHooks {
         $line = '        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver ' + $argument + ' }' + "`n"
         if ([regex]::Matches($text, [regex]::Escape($line)).Count -ne 1) { throw 'Exact optional Session notification missing or duplicated.' }
         $text = $text.Replace($line, '')
+    }
+    $promptBranch = @'
+        if ($null -ne $SessionProgressObserver) {
+            [void](Read-Host 'When the observed Codex activity is finished, press Enter to declare TASK_END and capture S2')
+        }
+        else { [void](Read-Host 'End the task, then press Enter to declare TASK_END and capture S2') }
+'@ -replace "`r`n", "`n"
+    if ([regex]::Matches($text, [regex]::Escape($promptBranch)).Count -ne 1) { throw 'Exact Guided prompt branch changed.' }
+    $text = $text.Replace($promptBranch, "        [void](Read-Host 'End the task, then press Enter to declare TASK_END and capture S2')")
+    foreach ($stage in 'S3','S4') {
+        $waitBranch = '        if ($null -ne $SessionProgressObserver) { Wait-GuidedObservation -Stage ' + $stage + ' -Seconds $FollowUpSeconds }' + "`n" +
+            '        else { Start-Sleep -Seconds $FollowUpSeconds }'
+        if ([regex]::Matches($text, [regex]::Escape($waitBranch)).Count -ne 1) { throw 'Exact Guided wait branch changed.' }
+        $text = $text.Replace($waitBranch, '        Start-Sleep -Seconds $FollowUpSeconds')
     }
     return $text
 }

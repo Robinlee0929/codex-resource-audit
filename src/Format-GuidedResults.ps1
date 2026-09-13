@@ -214,7 +214,7 @@ function Format-GuidedResults {
             if ($View.attached_browser) { Note 'ATTACHED_BROWSER != CODEX_OWNED; attachment does not establish ownership.' }
         }
         Section 'DETAILED EVIDENCE'
-        Note 'The unchanged canonical report follows on the success stream.'
+        Note 'Detailed canonical evidence is available. Type DETAILS at the next prompt to display it, or press Enter to finish.'
     )
     return $lines -join [Environment]::NewLine
 }

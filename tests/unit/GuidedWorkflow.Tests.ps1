@@ -145,10 +145,10 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         Should -Invoke Read-Host -Times 3 -Exactly
     }
     It 'H04 Any invalid review token rejects the whole attempt before compare target or VERIFY' {
-        foreach ($text in '', ' ', 'C', 'C1,BAD,C3', 'C1,C4', 'C0', 'C01', 'c1', 'C1-C3', 'C*', '9003', 'ChatGPT.exe', 'C1,', ',C1', 'C1,,C3', 'C1,Q', 'C1,QUIT', "C1`n", 'C99999999999999999999') {
+        foreach ($text in '', ' ', 'C', 'C1,BAD,C3', 'C1,C4', 'C0', 'C01', 'c1bad', 'C1-C3', 'C*', '9003', 'ChatGPT.exe', 'C1,', ',C1', 'C1,,C3', 'C1,Q', 'C1,QUIT', "C1`n", 'C99999999999999999999') {
             Set-GuidedTestInput @($text,'C1','VERIFY')
             $script:info.Clear(); $script:trace.Clear(); $script:success.Clear()
-            { Invoke-CapturedGuided } | Should -Throw '*GUIDED_REVIEW_INVALID*'
+            { Invoke-CapturedGuided -Internal } | Should -Throw '*GUIDED_REVIEW_INVALID*'
             @($script:trace | Where-Object { $_ -eq 'prompt' }).Count | Should -Be 1
             $script:info.Count | Should -Be 2
             $script:success.Count | Should -Be 0
@@ -167,16 +167,16 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
     }
     It 'H06 Single review candidate still requires explicit target selection' {
         Set-GuidedTestInput @('C1','','VERIFY')
-        { Invoke-CapturedGuided } | Should -Throw '*GUIDED_TARGET_INVALID*'
+        { Invoke-CapturedGuided -Internal } | Should -Throw '*GUIDED_TARGET_INVALID*'
         Should -Invoke Read-Host -Times 2 -Exactly
         $script:success.Count | Should -Be 0
         $script:inputQueue.Count | Should -Be 1
     }
     It 'H07 Target must be exactly one captured ID inside the review set' {
-        foreach ($target in '', 'C1,C3', 'C2', 'C4', 'C', '9003', 'C01', ' C1', 'C1 ', 'VERIFY') {
+        foreach ($target in '', 'C1,C3', 'C2', 'C4', 'C', '9003', 'C01', ' C1BAD', 'C1 BAD ', 'VERIFY') {
             Set-GuidedTestInput @('C3,C1',$target,'VERIFY')
             $script:trace.Clear(); $script:success.Clear()
-            { Invoke-CapturedGuided } | Should -Throw '*GUIDED_TARGET_INVALID*'
+            { Invoke-CapturedGuided -Internal } | Should -Throw '*GUIDED_TARGET_INVALID*'
             @($script:trace | Where-Object { $_ -eq 'prompt' }).Count | Should -Be 2
             $script:success.Count | Should -Be 0
             $script:inputQueue.Count | Should -Be 1
@@ -242,7 +242,7 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         foreach ($token in '', ' ', 'Y', 'YES', 'verify', 'Verify', 'VERIFY ', "VERIFY`n", 'C1', '9003', 'codex.exe', 'ChatGPT.exe', 'COPY_READY') {
             Set-GuidedTestInput @('C1','C1',$token)
             $script:success.Clear()
-            { Invoke-CapturedGuided } | Should -Throw '*GUIDED_ASSERTION_INVALID*'
+            { Invoke-CapturedGuided -Internal } | Should -Throw '*GUIDED_ASSERTION_INVALID*'
             $script:success.Count | Should -Be 0
         }
     }
@@ -419,7 +419,7 @@ Describe 'Guided pure projection comparison styling and stream boundaries' {
         $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:guidedRoot 'src\Format-GuidedCandidates.ps1'),[ref]$tokens,[ref]$errors)
         $errors.Count | Should -Be 0
         foreach ($command in $ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)) {
-            $command.GetCommandName() | Should -BeIn @('Set-StrictMode','Get-RootCandidateField','Get-RootCandidatePresentation','Format-OperatorLine','ConvertTo-OperatorCell','ForEach-Object','Format-GuidedIdentityBlock')
+            $command.GetCommandName() | Should -BeIn @('Set-StrictMode','Get-RootCandidateField','Get-RootCandidatePresentation','Format-OperatorLine','ConvertTo-OperatorCell','ForEach-Object','Format-GuidedIdentityBlock','Get-RootCandidateUtc','Get-RootCandidateSafePath')
             $command.InvocationOperator | Should -Not -BeIn @('Ampersand','Dot')
         }
     }

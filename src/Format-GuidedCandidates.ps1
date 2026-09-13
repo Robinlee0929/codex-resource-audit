@@ -65,10 +65,19 @@ function Format-GuidedComparison {
         foreach ($candidate in $Candidates) {
             ''
             Format-GuidedIdentityBlock -Candidate $candidate -ColorCapability $ColorCapability
+            $missing = @(
+                $id = 0
+                if (-not [int]::TryParse([string]$candidate.pid, [ref]$id) -or $id -le 0) { 'PID' }
+                if ($null -eq (Get-RootCandidateUtc $candidate.creation_time_utc)) { 'Creation Time' }
+                if ($null -eq (Get-RootCandidateSafePath $candidate.executable_path)) { 'Executable Path' }
+            )
+            Format-OperatorLine KeyValue -Label 'Session readiness' -Value $(if ($missing.Count -eq 0) { 'READY' } else { 'IDENTITY INCOMPLETE' })
+            if ($missing.Count -gt 0) { Format-OperatorLine KeyValue -Label 'Missing' -Value ($missing -join ', ') }
         }
         ''
         Format-OperatorLine Note -Value 'Captured candidate identities only. Comparison is not exact Session identity revalidation.' -ColorCapability $ColorCapability
         Format-OperatorLine Note -Value 'REVIEW_SET != VERIFIED_ROOT; comparison and grouping do not establish ownership.' -ColorCapability $ColorCapability
+        Format-OperatorLine Note -Value 'SESSION_READY != VERIFIED_ROOT. READY means captured identity fields are complete only; it is not a recommendation or a successful Session revalidation.' -ColorCapability $ColorCapability
         Format-OperatorLine Note -Value 'Multi-select is for review only. Exactly one explicit Session target is required, even for a one-item review set.' -ColorCapability $ColorCapability
     )
     return $lines -join [Environment]::NewLine

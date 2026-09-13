@@ -1,7 +1,7 @@
 BeforeAll {
     $script:observeRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     . (Join-Path $script:observeRoot 'src\Format-GuidedResults.ps1')
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation') {
         . (Join-Path $script:observeRoot "src\$name.ps1")
     }
     $script:observeResolver = (Get-Command Resolve-SessionEvidence).ScriptBlock
@@ -54,6 +54,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         $script:observeStatus=@{}
         $script:observeEndLower=$null; $script:observeS2Upper=$null
         Mock Test-OperatorInteractiveHost { $true }
+        Mock Test-GuidedProgressHost { $false }
         Mock Get-ProcessSnapshot {
             param($AuditRunId,$SnapshotId)
             $script:observeTrace.Add('capture:'+$SnapshotId)
@@ -71,13 +72,14 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         }
         Mock Read-Host {
             param($Prompt)
+            if ($Prompt -like 'Type DETAILS*') { return 'DETAILS' }
             if ($Prompt -eq 'Start the task, then press Enter to capture S1') {
                 $script:observeTrace.Add('prompt:start')
                 if ($script:observeFailure -eq 'start') { throw 'SYNTHETIC_INPUT_FAILURE' }
                 if ($script:observeFailure -eq 'cancel') { throw [Management.Automation.PipelineStoppedException]::new() }
                 return ''
             }
-            if ($Prompt -eq 'End the task, then press Enter to declare TASK_END and capture S2') {
+            if ($Prompt -in @('End the task, then press Enter to declare TASK_END and capture S2','When the observed Codex activity is finished, press Enter to declare TASK_END and capture S2')) {
                 $script:observeTrace.Add('prompt:end')
                 if ($script:observeFailure -eq 'end') { throw 'SYNTHETIC_INPUT_FAILURE' }
                 $script:observeEndLower=[datetimeoffset]::UtcNow
@@ -151,7 +153,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
             'capture:S0','notify:Capture:S0','prompt:start','capture:S1','notify:Capture:S1',
             'prompt:end','notify:TaskEnd:','capture:S2','notify:Capture:S2','notify:Wait:S3','sleep:7',
             'capture:S3','notify:Capture:S3','notify:Wait:S4','sleep:7','capture:S4','notify:Capture:S4',
-            'resolve','lifecycle','report','notify:Results:','success','notify:Ready:')
+            'resolve','lifecycle','report','notify:Results:','notify:Ready:','success')
         $rows=@($script:observeInfo | Where-Object { $_ -cmatch '^  S[0-4] ' })
         $rows.Count | Should -Be 5
         for ($i=0; $i -lt 5; $i++) {
@@ -189,9 +191,9 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         $waits=@($script:observeInfo | Where-Object { $_ -match 'Waiting 7 seconds' })
         $waits.Count | Should -Be 2
         foreach ($wait in $waits) { $wait | Should -Match 'not lifecycle grace' }
-        Should -Invoke Read-Host -Times 5 -Exactly
+        Should -Invoke Read-Host -Times 6 -Exactly
     }
-    It 'U06 Canonical result stays one unchanged success string and readiness follows real report delivery' {
+    It 'U06 Canonical result stays one unchanged success string and explicit DETAILS follows readiness' {
         Invoke-ObserveTest
         $script:observeOutput.Count | Should -Be 1
         $script:observeOutput[0] | Should -BeExactly (& $script:observeReporter -SessionEvidence $script:observeEvidence -Lifecycle $script:observeLife -DataSource LIVE_WINDOWS_CIM)
@@ -199,7 +201,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         @($script:observeInfo | Where-Object { $_ -match '^CAPTURE_PROGRESS:' }).Count | Should -Be 5
         $script:observeInfo[-1] | Should -Match 'SESSION CAPTURE: COMPLETE'
         $script:observeInfo[-1] | Should -Match 'UNKNOWN remains UNKNOWN; NO_LONGER_OBSERVED does not establish exit'
-        $script:observeTrace.IndexOf('success') | Should -BeLessThan $script:observeTrace.IndexOf('notify:Ready:')
+        $script:observeTrace.IndexOf('notify:Ready:') | Should -BeLessThan $script:observeTrace.IndexOf('success')
     }
     It 'U07 Legacy Session preserves five information records and emits no observer calls' {
         Invoke-ObserveTest -Legacy

@@ -100,7 +100,7 @@ function Format-GuidedObservation {
                 Add-OperatorStyle -Text '  SESSION CAPTURE: NOT_COMPLETE' -Style Attention -ColorCapability $ColorCapability
                 Format-OperatorLine Note -Value 'One or more captures were partial, failed, unknown or unavailable. Retain those statuses when reviewing evidence.' -ColorCapability $ColorCapability
             }
-            Format-OperatorLine Note -Value 'S0-S4 observation flow finished. The canonical evidence results above are available for review.' -ColorCapability $ColorCapability
+            Format-OperatorLine Note -Value 'S0-S4 observation flow finished. Detailed canonical evidence is available on demand at the next prompt.' -ColorCapability $ColorCapability
             Format-OperatorLine Note -Value 'Capture completion does not establish ownership or lifecycle conclusions. UNKNOWN remains UNKNOWN; NO_LONGER_OBSERVED does not establish exit.' -ColorCapability $ColorCapability
         }
         default { Format-OperatorLine Note -Value $unavailable -ColorCapability $ColorCapability }

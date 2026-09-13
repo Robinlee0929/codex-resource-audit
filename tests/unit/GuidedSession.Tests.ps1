@@ -2,7 +2,7 @@ BeforeAll {
     $script:handoffRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     . (Join-Path $script:handoffRoot 'tests\SessionObserverCompatibility.ps1')
     . (Join-Path $script:handoffRoot 'src\Format-GuidedResults.ps1')
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation') {
         . (Join-Path $script:handoffRoot "src\$name.ps1")
     }
     $script:realRootMatcher = (Get-Command Resolve-Attribution).ScriptBlock
@@ -70,6 +70,7 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
         $script:inputs=[Collections.Generic.Queue[object]]::new()
         foreach ($token in 'C1','C1','VERIFY','','') { $script:inputs.Enqueue($token) }
         Mock Test-OperatorInteractiveHost { $true }
+        Mock Test-GuidedProgressHost { $false }
         Mock Get-ProcessSnapshot {
             param($AuditRunId,$SnapshotId)
             $script:trace.Add("capture:$SnapshotId")
@@ -138,7 +139,8 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
         Mock Read-Host {
             param($Prompt)
             $script:trace.Add('prompt:'+ $Prompt)
-            if ($Prompt -eq 'Start the task, then press Enter to capture S1' -or $Prompt -eq 'End the task, then press Enter to declare TASK_END and capture S2') { return '' }
+            if ($Prompt -like 'Type DETAILS*') { return 'DETAILS' }
+            if ($Prompt -eq 'Start the task, then press Enter to capture S1' -or $Prompt -eq 'When the observed Codex activity is finished, press Enter to declare TASK_END and capture S2') { return '' }
             if ($script:inputs.Count -eq 0) { throw 'Unexpected extra input.' }
             return $script:inputs.Dequeue()
         }
@@ -239,7 +241,7 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
         @($script:trace | Where-Object { $_ -match '^capture:|^handoff$' }) | Should -Be @('capture:GUIDED_REVALIDATION','handoff','capture:S0','capture:S1','capture:S2','capture:S3','capture:S4')
         Should -Invoke Invoke-CanonicalSession -Times 1 -Exactly
         Should -Invoke Select-RootCandidates -Times 0 -Exactly
-        Should -Invoke Read-Host -Times 2 -Exactly
+        Should -Invoke Read-Host -Times 3 -Exactly
         Should -Invoke Start-Sleep -Times 2 -Exactly -ParameterFilter { $Seconds -eq 7 }
         ($script:state | ConvertTo-Json -Depth 20 -Compress) | Should -BeExactly $before
     }
@@ -283,7 +285,7 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
         Invoke-TestHandoff -Cli
         @($script:trace | Where-Object { $_ -match '^capture:' }) | Should -Be @('capture:CANDIDATES','capture:GUIDED_REVALIDATION','capture:S0','capture:S1','capture:S2','capture:S3','capture:S4')
         Should -Invoke Select-RootCandidates -Times 1 -Exactly
-        Should -Invoke Read-Host -Times 5 -Exactly
+        Should -Invoke Read-Host -Times 6 -Exactly
         Should -Invoke Invoke-CanonicalSession -Times 1 -Exactly
         $script:reports.Count | Should -Be 1
         $script:reports[0] | Should -BeExactly (Format-SessionAuditReport $script:sessionEvidence $script:life LIVE_WINDOWS_CIM)
@@ -292,7 +294,7 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
         foreach ($token in 'YES','Q') {
             $script:inputs.Clear()
             foreach ($value in 'C1','C1',$token) { $script:inputs.Enqueue($value) }
-            if ($token -eq 'YES') { { Invoke-TestHandoff -Cli } | Should -Throw '*GUIDED_ASSERTION_INVALID*' }
+            if ($token -eq 'YES') { Invoke-TestHandoff -Cli; ($script:information.MessageData -join "`n") | Should -Match 'OPERATOR ASSERTION INVALID' }
             else { Invoke-TestHandoff -Cli }
         }
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly -ParameterFilter { $SnapshotId -ne 'CANDIDATES' }

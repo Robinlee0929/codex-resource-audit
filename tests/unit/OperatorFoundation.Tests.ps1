@@ -190,7 +190,7 @@ Describe 'T1 internal operator interaction, never root verification' {
         Should -Invoke Read-Host -Times 0 -Exactly
     }
     It 'O14 Blank invalid out-of-set oversized and noncanonical IDs select nothing' {
-        foreach ($text in '', ' ', 'C0', 'C3', 'C01', 'c1', ' C1', 'C1 ', "C1`n", 'C999999999999999999999999', 'VERIFY', '99') {
+        foreach ($text in '', ' ', 'C0', 'C3', 'C01', 'c1bad', ' C1BAD', 'C1 BAD ', "C1`n", 'C999999999999999999999999', 'VERIFY', '99') {
             $choice = Resolve-OperatorChoice -InputResult ([pscustomobject]@{ status='INPUT'; text=$text }) -Purpose Candidate -Candidates $script:capturedCandidates
             $choice.status | Should -BeExactly 'INVALID'
             $choice.candidate_index | Should -BeNullOrEmpty

@@ -1,8 +1,8 @@
 Set-StrictMode -Version Latest
 
 function Resolve-OperatorReviewSet {
-    <# Additive review grammar. T1 single-ID and exact VERIFY semantics stay
-       unchanged. Normalize ASCII space/tab and duplicate IDs only, preserving
+    <# Review grammar. Exact VERIFY semantics stay unchanged.
+       Normalize ID case, ASCII space/tab and duplicate IDs, preserving
        first occurrence. Any invalid token rejects the entire request. #>
     param([Parameter(Mandatory)] [object] $InputResult,
         [AllowNull()] [AllowEmptyCollection()] [object[]] $Candidates)
@@ -70,7 +70,7 @@ function Invoke-GuidedDiscovery {
     catch { throw 'GUIDED_INPUT_FAILED: selection input failed; no selection or assertion recorded.' }
     $review = Resolve-OperatorReviewSet -InputResult $inputValue -Candidates $view.rows
     if ($review.status -ceq 'CANCELLED') { $outcome.status = 'CANCELLED'; return $outcome }
-    if ($review.status -cne 'REVIEW_SELECTED') { throw 'GUIDED_REVIEW_INVALID: every comma-separated ID must belong to the current capture; no review set or assertion retained.' }
+    if ($review.status -cne 'REVIEW_SELECTED') { Stop-GuidedInput -Code GUIDED_REVIEW_INVALID }
     $reviewRows = @($review.candidate_indices | ForEach-Object { $view.rows[$_] })
     Write-Information (Format-GuidedComparison -Candidates $reviewRows) -InformationAction Continue
     Write-Information (Format-OperatorLine Step -Step 4 -Label 'CHOOSE SESSION TARGET') -InformationAction Continue
@@ -82,7 +82,7 @@ function Invoke-GuidedDiscovery {
     $choice = Resolve-OperatorChoice -InputResult $inputValue -Purpose Candidate -Candidates $view.rows
     if ($choice.status -ceq 'CANCELLED') { $outcome.status = 'CANCELLED'; return $outcome }
     if ($choice.status -cne 'SELECTED' -or $choice.candidate_index -notin $review.candidate_indices) {
-        throw 'GUIDED_TARGET_INVALID: choose exactly one ID from the review set; no target or assertion retained.'
+        Stop-GuidedInput -Code GUIDED_TARGET_INVALID
     }
     $selected = $view.rows[$choice.candidate_index]
     Write-Information (Format-GuidedSelectedIdentity -Candidate $selected) -InformationAction Continue
@@ -100,7 +100,7 @@ function Invoke-GuidedDiscovery {
     catch { throw 'GUIDED_INPUT_FAILED: assertion input failed; no operator assertion recorded.' }
     $assertion = Resolve-OperatorChoice -InputResult $inputValue -Purpose Assertion
     if ($assertion.status -ceq 'CANCELLED') { $outcome.status = 'CANCELLED'; return $outcome }
-    if (-not $assertion.operator_asserted) { throw 'GUIDED_ASSERTION_INVALID: only exact VERIFY records an assertion; nothing recorded.' }
+    if (-not $assertion.operator_asserted) { Stop-GuidedInput -Code GUIDED_ASSERTION_INVALID }
     $outcome.status = 'OPERATOR_ASSERTION_RECORDED'
     $outcome.review_candidate_ids = @($reviewRows | ForEach-Object { $_.candidate_id })
     $outcome.selected_candidate_id = $selected.candidate_id

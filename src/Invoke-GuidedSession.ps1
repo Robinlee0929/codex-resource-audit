@@ -43,8 +43,10 @@ function Format-GuidedRevalidation {
     <# Fixed orchestration status only. No identity fields or evidence decisions. #>
     param([Parameter(Mandatory)] [ValidateSet('PENDING','MATCHED','FAILED')] [string] $Status)
     @(
-        Format-OperatorLine Step -Step 6 -Label 'EXACT IDENTITY REVALIDATION'
-        Format-OperatorLine KeyValue -Label 'OPERATOR_ASSERTION' -Value 'RECORDED'
+        if ($Status -eq 'PENDING') {
+            Format-OperatorLine Step -Step 6 -Label 'EXACT IDENTITY REVALIDATION'
+            Format-OperatorLine KeyValue -Label 'OPERATOR_ASSERTION' -Value 'RECORDED'
+        }
         Format-OperatorLine KeyValue -Label 'SESSION_IDENTITY_REVALIDATION' -Value $Status
         Format-OperatorLine KeyValue -Label 'SESSION_CAPTURE' -Value 'NOT_STARTED'
         Format-OperatorLine KeyValue -Label 'S0_CAPTURE' -Value 'NOT_STARTED'
@@ -121,7 +123,9 @@ function Invoke-GuidedSession {
     # Keep handoff outside the preflight catch: Session failures are not mislabeled
     # as a pre-S0 revalidation failure after Session has already started.
     try {
-        Invoke-CanonicalSession -RootPid $target.pid -RootCreationTimeUtc $target.creation_time_utc -RootExecutablePath $target.executable_path -OperatorVerifiedKnownCodexInstance:$target.operator_assertion_recorded -FollowUpSeconds $FollowUpSeconds -SessionProgressObserver $observer
+        # Capture only the canonical success string. Information and errors retain
+        # their streams. Keep this transient result; never parse or recompute it.
+        $detail = Invoke-CanonicalSession -RootPid $target.pid -RootCreationTimeUtc $target.creation_time_utc -RootExecutablePath $target.executable_path -OperatorVerifiedKnownCodexInstance:$target.operator_assertion_recorded -FollowUpSeconds $FollowUpSeconds -SessionProgressObserver $observer
     }
     catch [Management.Automation.PipelineStoppedException] { throw }
     catch {
@@ -129,4 +133,9 @@ function Invoke-GuidedSession {
         Write-Information (Format-OperatorLine Note -Value 'Session stopped. Later capture completion and final readiness are not established.') -InformationAction Continue
         throw
     }
+    if ($detail -isnot [string]) { throw 'GUIDED_REPORT_CONTRACT_INVALID: expected one canonical report string.' }
+    $choice = Read-OperatorInput -Prompt 'Type DETAILS to display detailed canonical evidence, or press Enter to finish (Q/QUIT also finishes)'
+    if ($choice.status -ceq 'CANCELLED' -or ($choice.status -ceq 'INPUT' -and $choice.text -ceq '')) { return }
+    if ($choice.status -ceq 'INPUT' -and $choice.text -imatch '\ADETAILS\z') { return $detail }
+    Stop-GuidedInput -Code GUIDED_DETAILS_INVALID
 }

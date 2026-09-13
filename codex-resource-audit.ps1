@@ -26,6 +26,7 @@ $projectRoot = $PSScriptRoot
 . (Join-Path $projectRoot 'src\Resolve-SessionEvidence.ps1')
 . (Join-Path $projectRoot 'src\Read-LifecycleContract.ps1')
 . (Join-Path $projectRoot 'src\Send-SessionProgress.ps1')
+. (Join-Path $projectRoot 'src\Wait-GuidedObservation.ps1')
 . (Join-Path $projectRoot 'src\Format-GuidedResults.ps1')
 
 $requiredProductionFunctions = @(
@@ -122,13 +123,22 @@ switch ($Mode) {
         . (Join-Path $projectRoot 'src\Invoke-GuidedDiscovery.ps1')
         . (Join-Path $projectRoot 'src\Invoke-GuidedSession.ps1')
         . (Join-Path $projectRoot 'src\Format-GuidedObservation.ps1')
-        # Guided progress stays on stream 6; successful handoff returns the
-        # unchanged canonical Session report on the success stream.
-        $guidedResult = Invoke-GuidedDiscovery
-        if ($guidedResult.status -ceq 'OPERATOR_ASSERTION_RECORDED') {
-            Invoke-GuidedSession -GuidedOutcome $guidedResult -FollowUpSeconds $FollowUpSeconds
+        # Summary and recognized input errors stay on stream 6. Only explicit
+        # DETAILS emits the retained canonical report on the success stream.
+        try {
+            $guidedResult = Invoke-GuidedDiscovery
+            if ($guidedResult.status -ceq 'OPERATOR_ASSERTION_RECORDED') {
+                Invoke-GuidedSession -GuidedOutcome $guidedResult -FollowUpSeconds $FollowUpSeconds
+            }
+            else { Format-GuidedOutcome -Outcome $guidedResult }
         }
-        else { Format-GuidedOutcome -Outcome $guidedResult }
+        catch [Management.Automation.PipelineStoppedException] { throw }
+        catch {
+            $friendly = Format-GuidedInputError -Record $_
+            if ($null -eq $friendly) { throw }
+            $guidedResult = $null
+            Write-Information $friendly -InformationAction Continue
+        }
         return
     }
     'Help' {
@@ -208,19 +218,24 @@ switch ($Mode) {
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S1'))
         Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S1') -InformationAction Continue
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S1 -Snapshot $snapshots[-1] }
-        [void](Read-Host 'End the task, then press Enter to declare TASK_END and capture S2')
+        if ($null -ne $SessionProgressObserver) {
+            [void](Read-Host 'When the observed Codex activity is finished, press Enter to declare TASK_END and capture S2')
+        }
+        else { [void](Read-Host 'End the task, then press Enter to declare TASK_END and capture S2') }
         $eventTime = [datetimeoffset]::UtcNow.ToString('o')
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event TaskEnd -EventTime $eventTime }
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S2'))
         Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S2') -InformationAction Continue
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S2 -Snapshot $snapshots[-1] }
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Wait -Stage S3 -Seconds $FollowUpSeconds }
-        Start-Sleep -Seconds $FollowUpSeconds
+        if ($null -ne $SessionProgressObserver) { Wait-GuidedObservation -Stage S3 -Seconds $FollowUpSeconds }
+        else { Start-Sleep -Seconds $FollowUpSeconds }
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S3'))
         Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S3') -InformationAction Continue
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S3 -Snapshot $snapshots[-1] }
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Wait -Stage S4 -Seconds $FollowUpSeconds }
-        Start-Sleep -Seconds $FollowUpSeconds
+        if ($null -ne $SessionProgressObserver) { Wait-GuidedObservation -Stage S4 -Seconds $FollowUpSeconds }
+        else { Start-Sleep -Seconds $FollowUpSeconds }
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S4'))
         Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S4') -InformationAction Continue
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S4 -Snapshot $snapshots[-1] }
