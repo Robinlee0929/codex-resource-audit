@@ -28,12 +28,14 @@ function Get-GuidedResultsView {
         if ($value -isnot [bool]) { return 'UNKNOWN' }
         if ($value) { return 'YES' }; return 'NO'
     }
+    $taskDelta=Get-GuidedTaskDeltaView -SessionEvidence $SessionEvidence -Events $Events
     $view=[pscustomobject]@{
         available=$false; capture='UNAVAILABLE'; root_status='UNAVAILABLE'; assertion='UNAVAILABLE'
         root_rows=@(); current='UNAVAILABLE'; ownership=@(); changes=@(); lifecycle_basis='UNAVAILABLE'
         coverage='UNAVAILABLE'; lifecycle_counts=@(); ownership_reasons=@(); lifecycle_reasons=@()
         ownership_unknown='UNAVAILABLE'; lifecycle_unknown='UNAVAILABLE'; timeline=@(); task_end='UNAVAILABLE'; attached_browser=$false
-        task_delta=Get-GuidedTaskDeltaView -SessionEvidence $SessionEvidence -Events $Events
+        task_delta=$taskDelta
+        process_branches=Get-GuidedProcessBranchView -SessionEvidence $SessionEvidence -TaskDelta $taskDelta
     }
     $snapshots=List $SessionEvidence 'attributed_snapshots'
     if ($null -eq $snapshots -or $snapshots.Count -eq 0 -or $snapshots.Count -gt 5) { return $view }
@@ -179,6 +181,7 @@ function Format-GuidedResults {
             foreach ($metric in $View.changes) { Value $metric.label $metric.value }
             Note 'Counts describe existing history entries, including unresolved identities. NO_LONGER_OBSERVED != EXIT_CONFIRMED.'
             Format-GuidedTaskDelta -View $View.task_delta -ColorCapability $ColorCapability
+            Format-GuidedProcessBranches -View $View.process_branches -ColorCapability $ColorCapability
             Section 'LIFECYCLE'
             Value 'Observation basis' $View.lifecycle_basis
             Value 'Result coverage' $View.coverage

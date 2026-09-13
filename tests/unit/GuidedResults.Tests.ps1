@@ -1,6 +1,6 @@
 BeforeAll {
     $script:resultsRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Send-SessionProgress','Format-GuidedTaskDelta','Format-GuidedResults') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Send-SessionProgress','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults') {
         . (Join-Path $script:resultsRoot "src\$name.ps1")
     }
     $fixture=Get-Content -Raw (Join-Path $script:resultsRoot 'tests\fixtures\session-root-history.json') | ConvertFrom-Json -Depth 40 -DateKind String
@@ -33,7 +33,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
     It 'V01 Summary sections occur in the required order before the detailed-evidence boundary' {
         $text=Format-GuidedResults (Build-ResultsView)
         $previous=-1
-        foreach ($section in 'SESSION RESULTS','=== ROOT ===','=== OWNERSHIP ===','=== PROCESS CHANGES ===','=== TASK DELTA / ISSUE EVIDENCE ===','=== PRE-EXISTING CODEX PROCESSES OF INTEREST ===','=== LIFECYCLE ===','=== WHY UNKNOWN ===','=== OBSERVATION TIMELINE ===','=== TRUST BOUNDARIES ===','=== DETAILED EVIDENCE ===') {
+        foreach ($section in 'SESSION RESULTS','=== ROOT ===','=== OWNERSHIP ===','=== PROCESS CHANGES ===','=== TASK DELTA / ISSUE EVIDENCE ===','=== PRE-EXISTING CODEX PROCESSES OF INTEREST ===','=== PROCESS BRANCH ORIGIN ===','=== LIFECYCLE ===','=== WHY UNKNOWN ===','=== OBSERVATION TIMELINE ===','=== TRUST BOUNDARIES ===','=== DETAILED EVIDENCE ===') {
             $position=$text.IndexOf($section); $position | Should -BeGreaterThan $previous; $previous=$position
         }
         $text | Should -Match 'Session capture: COMPLETE'

@@ -40,6 +40,7 @@ function Sort-GuidedTaskDeltaRows {
     })
     @($list | ForEach-Object {
         [pscustomobject]@{
+            process_key = $_.identity_sort_key
             name = $_.name; pid = $_.pid; creation_time_utc = $_.creation_time_utc
             first_seen = $_.first_seen; last_seen = $_.last_seen; state = $_.state
         }

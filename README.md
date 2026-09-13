@@ -20,6 +20,7 @@ This tool explains which observed instances have sufficient Codex ownership evid
 - Match an operator-verified root by PID, exact creation time, and OS executable path, then attribute descendants through complete, current, time-valid parent chains.
 - Capture a foreground S0–S4 Session and retain historical observations alongside current ownership.
 - Summarize resolved evidence and explain lifecycle `UNKNOWN` results.
+- Group confirmed task-window processes into process branches using exact identities and recorded confirmed parent edges.
 - Evaluate controlled lifecycle anomalies only when explicit scope, policy, trigger, grace, repeated observations, and counterevidence requirements are satisfied.
 - Run the analysis and reporting pipeline offline using synthetic fixtures.
 
@@ -149,6 +150,7 @@ The operator assertion is required, but Session still verifies the exact PID, cr
 | Operator verification | Explicit human assertion that the intended instance is known to be Codex. |
 | Verified Root | Required operator evidence plus exact Session identity matching and eligibility checks. |
 | Ownership | Current verified-root/lineage evidence; historical confirmation never promotes current UNKNOWN. |
+| Process branch origin | Topology within the confirmed Task Delta population. Sibling roots remain separate even when they share a pre-existing ancestor. |
 | Lifecycle | Separate scope/policy evaluation; survival alone is insufficient. |
 
 `-IncludeEvidenceSummary` is optional in Session and Fixture. It prepends already-resolved evidence and secondary UNKNOWN explanations to the detailed report. Current ownership, historical ownership, and independent Playwright attribution remain separate; do not add overlapping counts. Missing lifecycle coverage is not zero findings, and zero suspected findings does not establish health.
@@ -160,6 +162,8 @@ A reproducible synthetic Session-history example, including the summary and UNKN
 ```
 
 `NO_LONGER_OBSERVED` means absence from an observation, not confirmed exit or an exit cause. `SUSPECTED_ORPHAN` is selected by explicit policy and is not independent proof of parent exit.
+
+Guided Results also includes a compact `PROCESS BRANCH ORIGIN` section after Task Delta. It reuses the exact T6.9 task-window population and existing confirmed relationship history; it does not infer ancestry from names, paths, command lines, timing, or PIDs alone. Branch IDs are deterministic presentation labels for one result, not process or logical session identities. The current model has no explicit structured logical session or invocation identifier, so logical session provenance remains `NOT_ESTABLISHED`. See [the T6.9.5 engineering note](docs/V0_1_1_T6_9_5_PROCESS_BRANCH_ORIGIN.md).
 
 ## UNKNOWN is intentional
 
@@ -209,6 +213,7 @@ The existing pipeline separates collection, attribution, lifecycle analysis, and
 - `Collect-ProcessSnapshot.ps1` reads Windows process observations without classifying ownership.
 - `Resolve-Attribution.ps1` normalizes exact instance identities and current edges, then checks operator root evidence and complete descendant lineage.
 - `Resolve-SessionEvidence.ps1` retains per-snapshot attribution and history; `Read-LifecycleContract.ps1` validates and binds optional controlled policy evidence.
+- `Format-GuidedTaskDelta.ps1` defines the confirmed task-window population; `Format-GuidedProcessBranches.ps1` projects its confirmed process topology for Guided Results.
 - `Compare-Lifecycle.ps1` evaluates explicit lifecycle prerequisites and counterevidence.
 - `Format-AuditReport.ps1` and `Format-RootCandidates.ps1` present sanitized evidence and workflow guidance.
 

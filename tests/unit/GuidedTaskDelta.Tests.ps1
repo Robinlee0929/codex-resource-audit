@@ -1,6 +1,6 @@
 BeforeAll {
     $script:taskDeltaRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Send-SessionProgress','Format-GuidedTaskDelta','Format-GuidedResults') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Send-SessionProgress','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults') {
         . (Join-Path $script:taskDeltaRoot "src\$name.ps1")
     }
 
