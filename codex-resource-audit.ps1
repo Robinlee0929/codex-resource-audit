@@ -20,6 +20,7 @@ $projectRoot = $PSScriptRoot
 . (Join-Path $projectRoot 'src\Compare-Lifecycle.ps1')
 . (Join-Path $projectRoot 'src\Format-AuditReport.ps1')
 . (Join-Path $projectRoot 'src\Format-RootCandidates.ps1')
+. (Join-Path $projectRoot 'src\Select-RootCandidates.ps1')
 . (Join-Path $projectRoot 'src\Resolve-SessionEvidence.ps1')
 . (Join-Path $projectRoot 'src\Read-LifecycleContract.ps1')
 
@@ -110,7 +111,11 @@ switch ($Mode) {
     'Guided' {
         . (Join-Path $projectRoot 'src\Format-OperatorView.ps1')
         . (Join-Path $projectRoot 'src\Read-OperatorInput.ps1')
-        Invoke-GuidedFoundation
+        . (Join-Path $projectRoot 'src\Format-GuidedCandidates.ps1')
+        . (Join-Path $projectRoot 'src\Invoke-GuidedDiscovery.ps1')
+        # Human progress is stream 6; the CLI returns only the safe final summary.
+        $guidedResult = Invoke-GuidedDiscovery
+        Format-GuidedOutcome -Outcome $guidedResult
         return
     }
     'Help' {
@@ -149,14 +154,14 @@ switch ($Mode) {
             $candidateRows = $null
             if ($null -ne $snapshot -and $null -ne $snapshot.PSObject.Properties['processes'] -and
                 $snapshot.PSObject.Properties['processes'].Value -is [Collections.IList]) {
-                $candidateRows = @($snapshot.processes | Where-Object { $_.name -match '(?i)codex' -or $_.executable_path -match '(?i)codex' })
+                $candidateRows = @(Select-RootCandidates -Processes $snapshot.processes)
             }
             Format-RootCandidates -Snapshot $snapshot -Candidates $candidateRows -IncludeCandidateGroups:$IncludeCandidateGroups
             return
         }
         'DATA_SOURCE: LIVE_WINDOWS_CIM'
         'CANDIDATES_ARE_NOT_CONFIRMED_ROOTS: TRUE'
-        foreach ($process in $snapshot.processes | Where-Object { $_.name -match '(?i)codex' -or $_.executable_path -match '(?i)codex' }) {
+        foreach ($process in Select-RootCandidates -Processes $snapshot.processes) {
             [pscustomobject]@{
                 CandidatePid          = $process.pid
                 CreationTimeUtc       = $process.creation_time

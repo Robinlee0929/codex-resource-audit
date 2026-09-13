@@ -103,6 +103,52 @@ function Format-RootCandidateGroups {
     '  WARNING: GROUP_SUMMARY != VERIFICATION; UNIQUE_DISPLAY_GROUP != VERIFIED_ROOT.'
 }
 
+function Get-RootCandidatePresentation {
+    <# Shared whitelist projection extracted from the canonical formatter.
+       No raw commands, private identity substitutions, discovery or trust logic. #>
+    param(
+        [AllowNull()] [object] $Record,
+        [ValidateRange(0,2147483646)] [int] $CandidateIndex,
+        [string] $CaptureLabel
+    )
+    $id = Get-RootCandidateField $record 'pid'
+    $parent = Get-RootCandidateField $record 'ppid'
+    $name = Get-RootCandidateField $record 'name'
+    $path = Get-RootCandidateField $record 'executable_path'
+    $safePath = Get-RootCandidateSafePath $path
+    $time = Get-RootCandidateUtc (Get-RootCandidateField $record 'creation_time')
+    $fields = Get-RootCandidateField $record 'field_availability'
+    $exact = (Test-RootCandidateCode $record 'creation_time_precision' 'EXACT') -and
+        (Test-RootCandidateCode $fields 'creation_time' 'AVAILABLE')
+    $pidOK = ($id -is [int] -or $id -is [long]) -and $id -gt 0 -and $id -le [int]::MaxValue
+    $parentOK = ($parent -is [int] -or $parent -is [long]) -and $parent -ge 0 -and $parent -le [int]::MaxValue
+    # Codes explain only the original predicate, including helper/path matches.
+    $reasons = @(
+        if ($name -is [string] -and $name -match '(?i)codex') { 'NAME_CONTAINS_CODEX' }
+        if ($path -is [string] -and $path -match '(?i)codex') { 'EXECUTABLE_PATH_CONTAINS_CODEX' }
+    )
+    $safeName = if ($name -is [string] -and $name -cmatch '\A[A-Za-z0-9_.-]{1,100}\z' -and $name -notmatch '(?i)secret|token|password|credential') { $name } else { '<REDACTED_OR_UNAVAILABLE>' }
+    $identityOK = $pidOK -and $null -ne $time -and $exact -and $null -ne $safePath -and
+        (Test-RootCandidateCode $fields 'executable_path' 'AVAILABLE') -and
+        (Test-RootCandidateCode $record 'capture_status' 'COMPLETE') -and $captureLabel -eq 'COMPLETE'
+    $candidateId = "C$($CandidateIndex + 1)"
+    $templateStatus = if ($identityOK) { 'COPY_READY' } else { 'OPERATOR_INPUT_REQUIRED' }
+    $pidDisplay = if ($pidOK) { $id.ToString([cultureinfo]::InvariantCulture) } else { 'UNAVAILABLE' }
+    $parentDisplay = if ($parentOK) { $parent.ToString([cultureinfo]::InvariantCulture) } else { 'UNAVAILABLE' }
+    [pscustomobject]@{
+        candidate_id = $candidateId
+        name = $safeName
+        pid = $pidDisplay
+        observed_parent_pid = $parentDisplay
+        creation_time_utc = if ($null -ne $time -and $exact) { $time } else { $null }
+        executable_path = $safePath
+        reasons = @($reasons)
+        identity_complete = [bool]$identityOK
+        template_status = $templateStatus
+        display_group = Get-RootCandidateDisplayGroup -SafeName $safeName -Reasons $reasons
+    }
+}
+
 function Format-RootCandidates {
     <# Candidates are supplied by the CLI's unchanged discovery predicate. Pure
        presentation only: no collection, root verification, selection or persistence. #>
@@ -150,31 +196,18 @@ function Format-RootCandidates {
     $groupRows = if ($IncludeCandidateGroups) { ,[Collections.Generic.List[object]]::new() } else { $null }
     $quickRows = if ($IncludeCandidateGroups) { ,[Collections.Generic.List[string]]::new() } else { $null }
     for ($i = 0; $available -and $i -lt $Candidates.Count; $i++) {
-        $record = $Candidates[$i]
-        $id = Get-RootCandidateField $record 'pid'
-        $parent = Get-RootCandidateField $record 'ppid'
-        $name = Get-RootCandidateField $record 'name'
-        $path = Get-RootCandidateField $record 'executable_path'
-        $safePath = Get-RootCandidateSafePath $path
-        $time = Get-RootCandidateUtc (Get-RootCandidateField $record 'creation_time')
-        $fields = Get-RootCandidateField $record 'field_availability'
-        $exact = (Test-RootCandidateCode $record 'creation_time_precision' 'EXACT') -and
-            (Test-RootCandidateCode $fields 'creation_time' 'AVAILABLE')
-        $pidOK = ($id -is [int] -or $id -is [long]) -and $id -gt 0 -and $id -le [int]::MaxValue
-        $parentOK = ($parent -is [int] -or $parent -is [long]) -and $parent -ge 0 -and $parent -le [int]::MaxValue
-        # Codes explain only the original predicate, including helper/path matches.
-        $reasons = @(
-            if ($name -is [string] -and $name -match '(?i)codex') { 'NAME_CONTAINS_CODEX' }
-            if ($path -is [string] -and $path -match '(?i)codex') { 'EXECUTABLE_PATH_CONTAINS_CODEX' }
-        )
-        $safeName = if ($name -is [string] -and $name -cmatch '\A[A-Za-z0-9_.-]{1,100}\z' -and $name -notmatch '(?i)secret|token|password|credential') { $name } else { '<REDACTED_OR_UNAVAILABLE>' }
-        $identityOK = $pidOK -and $null -ne $time -and $exact -and $null -ne $safePath -and
-            (Test-RootCandidateCode $fields 'executable_path' 'AVAILABLE') -and
-            (Test-RootCandidateCode $record 'capture_status' 'COMPLETE') -and $captureLabel -eq 'COMPLETE'
-        $candidateId = "C$($i + 1)"
-        $templateStatus = if ($identityOK) { 'COPY_READY' } else { 'OPERATOR_INPUT_REQUIRED' }
-        $pidDisplay = if ($pidOK) { $id.ToString([cultureinfo]::InvariantCulture) } else { 'UNAVAILABLE' }
-        $parentDisplay = if ($parentOK) { $parent.ToString([cultureinfo]::InvariantCulture) } else { 'UNAVAILABLE' }
+        $display = Get-RootCandidatePresentation -Record $Candidates[$i] -CandidateIndex $i -CaptureLabel $captureLabel
+        $candidateId = $display.candidate_id
+        $safeName = $display.name
+        $pidDisplay = $display.pid
+        $parentDisplay = $display.observed_parent_pid
+        $time = $display.creation_time_utc
+        $exact = $null -ne $time
+        $safePath = $display.executable_path
+        $reasons = $display.reasons
+        $identityOK = $display.identity_complete
+        $templateStatus = $display.template_status
+        $id = if ($identityOK) { [int]$pidDisplay } else { 0 }
         $lines.Add('  CANDIDATE:')
         $lines.Add("    CANDIDATE_ID: $candidateId")
         $lines.Add('    CLASSIFICATION: CANDIDATE_ONLY')
@@ -194,7 +227,7 @@ function Format-RootCandidates {
         else { $lines.Add('    SESSION_TEMPLATE: NONE') }
         $lines.Add('    WARNING: Identity availability is not root eligibility or trust. Candidate discovery does not establish a verified root.')
         if ($IncludeCandidateGroups) {
-            $displayGroup = Get-RootCandidateDisplayGroup -SafeName $safeName -Reasons $reasons
+            $displayGroup = $display.display_group
             $groupRows.Add([pscustomobject]@{
                 candidate_id = $candidateId
                 display_group = $displayGroup

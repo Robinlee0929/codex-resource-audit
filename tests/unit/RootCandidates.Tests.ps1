@@ -1,6 +1,6 @@
 BeforeAll {
     $script:candidateRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates') {
         . (Join-Path $script:candidateRoot "src\$name.ps1")
     }
     $script:realAttribution = (Get-Command Resolve-Attribution).ScriptBlock
@@ -300,7 +300,7 @@ Describe 'Root Candidates workflow (offline only)' {
         $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:candidateRoot 'src\Format-RootCandidates.ps1'),[ref]$tokens,[ref]$errors)
         $errors.Count | Should -Be 0
         $commands=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true))
-        $allowed=@('Set-StrictMode','Get-RootCandidateField','ConvertTo-RootCandidateArgument','Test-RootCandidateCode','Get-RootCandidateUtc','Get-RootCandidateSafePath','ConvertTo-SafeAuditText','Get-RootCandidateDisplayGroup','Format-RootCandidateGroups')
+        $allowed=@('Set-StrictMode','Get-RootCandidateField','ConvertTo-RootCandidateArgument','Test-RootCandidateCode','Get-RootCandidateUtc','Get-RootCandidateSafePath','ConvertTo-SafeAuditText','Get-RootCandidateDisplayGroup','Format-RootCandidateGroups','Get-RootCandidatePresentation')
         foreach($command in $commands) {
             $command.GetCommandName() | Should -BeIn $allowed
             $command.InvocationOperator | Should -Not -BeIn @('Ampersand','Dot')
@@ -506,8 +506,13 @@ Describe 'Root Candidates workflow (offline only)' {
     It 'K25 Discovery predicate is exactly canonical in both Candidates paths' {
         $switch=$script:cliAst.Find({param($node) $node -is [Management.Automation.Language.SwitchStatementAst]},$false)
         $candidateBody=($switch.Clauses | Where-Object { $_.Item1.Value -eq 'Candidates' }).Item2
-        $whereCommands=@($candidateBody.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Where-Object'},$true))
-        $whereCommands.Count | Should -Be 2
+        # Both legacy paths call the one extracted predicate. Pin its exact
+        # expression, not a duplicated copy or a looser behavior assertion.
+        $selectors=@($candidateBody.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Select-RootCandidates'},$true))
+        $selectors.Count | Should -Be 2
+        foreach ($selector in $selectors) { $selector.Extent.Text | Should -BeExactly 'Select-RootCandidates -Processes $snapshot.processes' }
+        $whereCommands=@((Get-Command Select-RootCandidates).ScriptBlock.Ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Where-Object'},$true))
+        $whereCommands.Count | Should -Be 1
         foreach($command in $whereCommands) {
             $command.CommandElements[1].Extent.Text | Should -BeExactly '{ $_.name -match ''(?i)codex'' -or $_.executable_path -match ''(?i)codex'' }'
         }

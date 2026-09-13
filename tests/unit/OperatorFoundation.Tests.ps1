@@ -30,7 +30,15 @@ Describe 'T1 additive CLI and legacy stream compatibility' {
     ) {
         $clause = @($script:modeSwitch.Clauses | Where-Object { $_.Item1.Value -eq $mode })
         $clause.Count | Should -Be 1
-        Get-OperatorTestHash $clause[0].Item2.Extent.Text | Should -BeExactly $hash
+        $body = $clause[0].Item2.Extent.Text
+        if ($mode -eq 'Candidates') {
+            # Allow only the exact shared-predicate extraction; the complete
+            # original dispatch hash (including streams/errors) stays pinned.
+            $shared = 'Select-RootCandidates -Processes $snapshot.processes'
+            ([regex]::Matches($body, [regex]::Escape($shared))).Count | Should -Be 2
+            $body = $body.Replace($shared, '$snapshot.processes | Where-Object { $_.name -match ''(?i)codex'' -or $_.executable_path -match ''(?i)codex'' }')
+        }
+        Get-OperatorTestHash $body | Should -BeExactly $hash
     }
     It 'O03 Help definition remains pinned and emits only one success string under assignment pipeline and merging' {
         $helpDefinition = $script:operatorAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Show-Help' }, $false)
