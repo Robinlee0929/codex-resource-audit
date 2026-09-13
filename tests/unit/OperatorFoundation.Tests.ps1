@@ -1,5 +1,6 @@
 BeforeAll {
     $script:operatorRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    . (Join-Path $script:operatorRoot 'tests\SessionObserverCompatibility.ps1')
     foreach ($name in 'Resolve-Attribution','Collect-ProcessSnapshot','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-OperatorView','Read-OperatorInput') {
         . (Join-Path $script:operatorRoot "src\$name.ps1")
     }
@@ -31,6 +32,7 @@ Describe 'T1 additive CLI and legacy stream compatibility' {
         $clause = @($script:modeSwitch.Clauses | Where-Object { $_.Item1.Value -eq $mode })
         $clause.Count | Should -Be 1
         $body = $clause[0].Item2.Extent.Text
+        if ($mode -eq 'Session') { $body = Remove-TestSessionPresentationHooks $body }
         if ($mode -eq 'Candidates') {
             # Allow only the exact shared-predicate extraction; the complete
             # original dispatch hash (including streams/errors) stays pinned.

@@ -65,7 +65,8 @@ function Invoke-CanonicalSession {
         [Parameter(Mandatory)] [string] $RootCreationTimeUtc,
         [Parameter(Mandatory)] [string] $RootExecutablePath,
         [switch] $OperatorVerifiedKnownCodexInstance,
-        [ValidateRange(1,3600)] [int] $FollowUpSeconds = 30
+        [ValidateRange(1,3600)] [int] $FollowUpSeconds = 30,
+        [AllowNull()] [scriptblock] $SessionProgressObserver = $null
     )
     & (Join-Path $PSScriptRoot '..\codex-resource-audit.ps1') -Mode Session @PSBoundParameters
 }
@@ -107,9 +108,22 @@ function Invoke-GuidedSession {
         throw 'GUIDED_IDENTITY_REVALIDATION_FAILED: exact current identity could not be established. SESSION_CAPTURE: NOT_STARTED; S0_CAPTURE: NOT_STARTED.'
     }
     Write-Information (Format-GuidedRevalidation -Status MATCHED) -InformationAction Continue
+    Write-Information (Format-GuidedObserveHeader -Target $target) -InformationAction Continue
+    $observer = {
+        param($Progress)
+        Write-Information (Format-GuidedObservation -Progress $Progress) -InformationAction Continue
+    }
     # Pass captured target scalars unchanged, never fields from a replacement
     # observation. Session independently applies its existing per-snapshot rules.
     # Keep handoff outside the preflight catch: Session failures are not mislabeled
     # as a pre-S0 revalidation failure after Session has already started.
-    Invoke-CanonicalSession -RootPid $target.pid -RootCreationTimeUtc $target.creation_time_utc -RootExecutablePath $target.executable_path -OperatorVerifiedKnownCodexInstance:$target.operator_assertion_recorded -FollowUpSeconds $FollowUpSeconds
+    try {
+        Invoke-CanonicalSession -RootPid $target.pid -RootCreationTimeUtc $target.creation_time_utc -RootExecutablePath $target.executable_path -OperatorVerifiedKnownCodexInstance:$target.operator_assertion_recorded -FollowUpSeconds $FollowUpSeconds -SessionProgressObserver $observer
+    }
+    catch [Management.Automation.PipelineStoppedException] { throw }
+    catch {
+        Write-Information (Format-OperatorLine Status -Label 'SESSION FLOW' -Value FAILED) -InformationAction Continue
+        Write-Information (Format-OperatorLine Note -Value 'Session stopped. Later capture completion and final readiness are not established.') -InformationAction Continue
+        throw
+    }
 }

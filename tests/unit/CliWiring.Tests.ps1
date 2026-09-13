@@ -11,8 +11,9 @@ Describe 'Stage 0 CLI module wiring' {
             $entrypointText | Should -Match ([regex]::Escape(". (Join-Path `$projectRoot 'src\$sourceName')"))
         }
 
-        # Preserve the exact legacy parameter contract, allowing only the single
-        # additive Guided enum member. All defaults/types/other validation stay pinned.
+        # Preserve the exact legacy parameter contract, allowing only Guided and
+        # the exact optional presentation transport. All legacy defaults/types/
+        # validation stay pinned; observer mode gating is exercised separately.
         $tokens = $null; $errors = $null
         $ast = [Management.Automation.Language.Parser]::ParseInput($entrypointText, [ref]$tokens, [ref]$errors)
         $errors.Count | Should -Be 0
@@ -20,6 +21,13 @@ Describe 'Stage 0 CLI module wiring' {
         $modeAddition = "[ValidateSet('Help','Fixture','Candidates','Session','Guided')]"
         ([regex]::Matches($parameters, [regex]::Escape($modeAddition))).Count | Should -Be 1
         $legacyParameters = $parameters.Replace($modeAddition, "[ValidateSet('Help','Fixture','Candidates','Session')]")
+        $observerAddition = @'
+    [switch] $IncludeCandidateGroups,
+    # Internal presentation transport used by Guided; no input or evidence policy.
+    [Parameter(DontShow)] [AllowNull()] [scriptblock] $SessionProgressObserver = $null
+'@ -replace "`r`n", "`n"
+        ([regex]::Matches($legacyParameters, [regex]::Escape($observerAddition))).Count | Should -Be 1
+        $legacyParameters = $legacyParameters.Replace($observerAddition, '    [switch] $IncludeCandidateGroups')
         [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($legacyParameters))) |
             Should -BeExactly '64C92B82BDCD532D47631174262E021A75B05F724B2032A9C777ECD3CD27C2B9'
 

@@ -1,5 +1,6 @@
 BeforeAll {
     $script:candidateRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    . (Join-Path $script:candidateRoot 'tests\SessionObserverCompatibility.ps1')
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates') {
         . (Join-Path $script:candidateRoot "src\$name.ps1")
     }
@@ -289,6 +290,7 @@ Describe 'Root Candidates workflow (offline only)' {
         $golden=@{Session='6A1E23FACBF96705D9844F070D49057F6101CD5F9F3B6D29AD10B4F45B35A138';Fixture='B70766AD8FC75F1F00C1277FC0FFF604184B1A0E89AA94A09B7C79A91CCC1CC0'}
         foreach($mode in $golden.Keys) {
             $body=($switch.Clauses | Where-Object {$_.Item1.Value -eq $mode}).Item2.Extent.Text -replace "`r`n","`n"
+            if ($mode -eq 'Session') { $body=Remove-TestSessionPresentationHooks $body }
             [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($body))) | Should -BeExactly $golden[$mode]
         }
         $source=Get-Content -Raw -LiteralPath (Join-Path $script:candidateRoot 'src\Format-AuditReport.ps1')

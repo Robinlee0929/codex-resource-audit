@@ -10,7 +10,9 @@ param(
     [string] $LifecycleContractPath,
     [switch] $IncludeEvidenceSummary,
     [switch] $IncludeSessionTemplate,
-    [switch] $IncludeCandidateGroups
+    [switch] $IncludeCandidateGroups,
+    # Internal presentation transport used by Guided; no input or evidence policy.
+    [Parameter(DontShow)] [AllowNull()] [scriptblock] $SessionProgressObserver = $null
 )
 
 Set-StrictMode -Version Latest
@@ -23,6 +25,7 @@ $projectRoot = $PSScriptRoot
 . (Join-Path $projectRoot 'src\Select-RootCandidates.ps1')
 . (Join-Path $projectRoot 'src\Resolve-SessionEvidence.ps1')
 . (Join-Path $projectRoot 'src\Read-LifecycleContract.ps1')
+. (Join-Path $projectRoot 'src\Send-SessionProgress.ps1')
 
 $requiredProductionFunctions = @(
     'Get-ProcessSnapshot',
@@ -97,6 +100,9 @@ UNKNOWN is never treated as CODEX ownership. Survival alone does not establish r
 if ($PSBoundParameters.ContainsKey('LifecycleContractPath') -and $Mode -ne 'Session') {
     throw 'LIFECYCLE_CONTRACT_INVALID: LifecycleContractPath is supported only in Session mode.'
 }
+if ($null -ne $SessionProgressObserver -and $Mode -ne 'Session') {
+    throw 'SESSION_PROGRESS_MODE_INVALID: internal progress observer is supported only in Session mode.'
+}
 if ($IncludeEvidenceSummary -and $Mode -notin @('Session','Fixture')) {
     throw 'EVIDENCE_SUMMARY_MODE_INVALID: supported only in Session and Fixture modes.'
 }
@@ -114,6 +120,7 @@ switch ($Mode) {
         . (Join-Path $projectRoot 'src\Format-GuidedCandidates.ps1')
         . (Join-Path $projectRoot 'src\Invoke-GuidedDiscovery.ps1')
         . (Join-Path $projectRoot 'src\Invoke-GuidedSession.ps1')
+        . (Join-Path $projectRoot 'src\Format-GuidedObservation.ps1')
         # Guided progress stays on stream 6; successful handoff returns the
         # unchanged canonical Session report on the success stream.
         $guidedResult = Invoke-GuidedDiscovery
@@ -191,6 +198,7 @@ switch ($Mode) {
         $snapshots = [System.Collections.Generic.List[object]]::new()
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S0'))
         Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S0') -InformationAction Continue
+        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S0 -Snapshot $snapshots[-1] }
         if ($null -ne $contract) {
             # Stop before the task prompt if exact S0 binding or ownership fails.
             $null = Resolve-SessionEvidence -Snapshots @($snapshots[0]) -RootAnchors @($anchor) -LifecycleContract $contract
@@ -198,16 +206,23 @@ switch ($Mode) {
         [void](Read-Host 'Start the task, then press Enter to capture S1')
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S1'))
         Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S1') -InformationAction Continue
+        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S1 -Snapshot $snapshots[-1] }
         [void](Read-Host 'End the task, then press Enter to declare TASK_END and capture S2')
         $eventTime = [datetimeoffset]::UtcNow.ToString('o')
+        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event TaskEnd -EventTime $eventTime }
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S2'))
         Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S2') -InformationAction Continue
+        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S2 -Snapshot $snapshots[-1] }
+        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Wait -Stage S3 -Seconds $FollowUpSeconds }
         Start-Sleep -Seconds $FollowUpSeconds
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S3'))
         Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S3') -InformationAction Continue
+        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S3 -Snapshot $snapshots[-1] }
+        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Wait -Stage S4 -Seconds $FollowUpSeconds }
         Start-Sleep -Seconds $FollowUpSeconds
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S4'))
         Write-Information (Format-CaptureProgress -Snapshot $snapshots[-1] -SnapshotId 'S4') -InformationAction Continue
+        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S4 -Snapshot $snapshots[-1] }
         $sessionEvidence = Resolve-SessionEvidence -Snapshots @($snapshots) -RootAnchors @($anchor) -LifecycleContract $contract
         $attributed = $sessionEvidence.attributed_snapshots
         $events = @([pscustomobject]@{ event_id='task-end'; event_type='TASK_END'; occurred_utc=$eventTime })
@@ -217,6 +232,7 @@ switch ($Mode) {
             (Format-EvidenceSummary -SessionEvidence $sessionEvidence -Lifecycle $lifecycle -DataSource LIVE_WINDOWS_CIM) + [Environment]::NewLine + $detail
         }
         else { $detail }
+        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Ready -Snapshots @($snapshots) }
         return
     }
 }
