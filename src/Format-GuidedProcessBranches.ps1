@@ -1,10 +1,11 @@
 Set-StrictMode -Version Latest
 
 function New-GuidedProcessBranchUnavailable {
-    param([string] $Reason = 'TASK_DELTA_UNAVAILABLE')
+    param([string] $Reason = 'TASK_DELTA_UNAVAILABLE', [AllowNull()] [string] $DiagnosticCode = $null)
     [pscustomobject]@{
         available = $false
         unavailable_reason = $Reason
+        diagnostic_code = $DiagnosticCode
         branch_count = 'UNAVAILABLE'
         branches = @()
         shared_pre_existing_ancestors = @()
@@ -23,7 +24,8 @@ function Get-GuidedProcessBranchView {
     )
     $deltaAvailable = Get-RootCandidateField $TaskDelta 'available'
     if ($deltaAvailable -isnot [bool] -or -not $deltaAvailable) {
-        return New-GuidedProcessBranchUnavailable 'TASK_DELTA_UNAVAILABLE'
+        $diagnostic = Get-GuidedTaskDeltaSafeDiagnostic (Get-RootCandidateField $TaskDelta 'diagnostic_code')
+        return New-GuidedProcessBranchUnavailable 'TASK_DELTA_UNAVAILABLE' $diagnostic
     }
     $createdCountText = Get-RootCandidateField $TaskDelta 'created_count'
     $unknownCountText = Get-RootCandidateField $TaskDelta 'creation_window_unknown_count'
@@ -269,6 +271,7 @@ function Get-GuidedProcessBranchView {
     [pscustomobject]@{
         available = $true
         unavailable_reason = $null
+        diagnostic_code = $null
         branch_count = [string]$branches.Count
         branches = @($branches)
         shared_pre_existing_ancestors = $shared
@@ -294,10 +297,12 @@ function Format-GuidedProcessBranches {
             )) { $reason = 'TASK_DELTA_UNAVAILABLE' }
             BranchValue 'Confirmed task-window Codex branches' 'UNAVAILABLE'
             BranchValue 'Reason' $reason
+            $diagnostic = Get-GuidedTaskDeltaSafeDiagnostic (Get-RootCandidateField $View 'diagnostic_code')
+            if ($reason -ceq 'TASK_DELTA_UNAVAILABLE' -and $null -ne $diagnostic) { BranchValue 'Task Delta diagnostic' $diagnostic }
         }
         else {
             BranchValue 'Confirmed task-window Codex branches' $View.branch_count
-            if ($View.branches.Count -eq 0) { '  NONE' }
+            if ($View.branches.Count -eq 0) { BranchNote 'No confirmed task-window process branch was established for this observation window.' }
             foreach ($branch in $View.branches) {
                 Add-OperatorStyle -Text ("  BRANCH {0}" -f $branch.branch_id) -Style Heading -ColorCapability $ColorCapability
                 Add-OperatorStyle -Text ("    ROOT: {0} | PID {1} | CREATED {2} | FIRST {3} | LAST {4} | {5}" -f
