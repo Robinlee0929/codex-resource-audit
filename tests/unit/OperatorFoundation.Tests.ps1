@@ -42,9 +42,9 @@ Describe 'T1 additive CLI and legacy stream compatibility' {
         }
         Get-OperatorTestHash $body | Should -BeExactly $hash
     }
-    It 'O03 Help definition remains pinned and emits only one success string under assignment pipeline and merging' {
+    It 'O03 T7 Help definition remains pinned and emits only one success string under assignment pipeline and merging' {
         $helpDefinition = $script:operatorAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Show-Help' }, $false)
-        Get-OperatorTestHash $helpDefinition.Extent.Text | Should -BeExactly '132EA806DBE449F3B58AE358C36BC21B52A9788D759605324F4DF902DAFC79C2'
+        Get-OperatorTestHash $helpDefinition.Extent.Text | Should -BeExactly '9A46D19B01AA93F79440FD6915D88047EDFFBA78E4EDC27786F4BDA95F09803D'
         $assigned = @(& $script:operatorEntry -Mode Help)
         $piped = @(& $script:operatorEntry -Mode Help | ForEach-Object { $_ })
         $merged = @(& $script:operatorEntry -Mode Help *>&1)
@@ -148,7 +148,7 @@ Describe 'T1 pure Operator View primitives and color boundary' {
         $errors.Count | Should -Be 0
         $commands = @($ast.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true))
         foreach ($command in $commands) {
-            $command.GetCommandName() | Should -BeIn @('Set-StrictMode','ConvertTo-SafeAuditText','ConvertTo-OperatorCell','Add-OperatorStyle','Format-OperatorLine')
+            $command.GetCommandName() | Should -BeIn @('Set-StrictMode','ConvertTo-SafeAuditText','ConvertTo-OperatorCell','Resolve-OperatorColorCapability','Add-OperatorStyle','Format-OperatorLine')
         }
     }
     It 'O12 Default captured and merged Operator Views are one ANSI-free string with honest scope' {

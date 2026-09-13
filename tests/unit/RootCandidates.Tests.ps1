@@ -57,7 +57,7 @@ BeforeAll {
         [regex]::Match($Text, '(?ms)^  CANDIDATE:.*\z').Value
     }
     function Get-TestGroupEntries([string]$Text) {
-        foreach ($match in [regex]::Matches($Text, '(?m)^    ([A-Z_]+):\r?\n      COUNT: (\d+)\r?\n      CANDIDATE_IDS: ([^\r\n]+)')) {
+        foreach ($match in [regex]::Matches($Text, '(?m)^    ([A-Z_]+):\r?\n      LABEL: [^\r\n]+\r?\n      COUNT: (\d+)\r?\n      CANDIDATE_IDS: ([^\r\n]+)')) {
             [pscustomobject]@{label=$match.Groups[1].Value;observed_count=[int]$match.Groups[2].Value;ids=$match.Groups[3].Value}
         }
     }
@@ -303,7 +303,7 @@ Describe 'Root Candidates workflow (offline only)' {
         $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:candidateRoot 'src\Format-RootCandidates.ps1'),[ref]$tokens,[ref]$errors)
         $errors.Count | Should -Be 0
         $commands=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true))
-        $allowed=@('Set-StrictMode','Get-RootCandidateField','ConvertTo-RootCandidateArgument','Test-RootCandidateCode','Get-RootCandidateUtc','Get-RootCandidateSafePath','ConvertTo-SafeAuditText','Get-RootCandidateDisplayGroup','Format-RootCandidateGroups','Get-RootCandidatePresentation')
+        $allowed=@('Set-StrictMode','Get-RootCandidateField','ConvertTo-RootCandidateArgument','Test-RootCandidateCode','Get-RootCandidateUtc','Get-RootCandidateSafePath','ConvertTo-SafeAuditText','Get-RootCandidateDisplayGroup','Get-RootCandidateFriendlyGroupLabel','Format-RootCandidateGroups','Get-RootCandidatePresentation')
         foreach($command in $commands) {
             $command.GetCommandName() | Should -BeIn $allowed
             $command.InvocationOperator | Should -Not -BeIn @('Ampersand','Dot')
@@ -567,10 +567,10 @@ Describe 'Root Candidates workflow (offline only)' {
         # SHA256 of LF-normalized complete grouped reports from clean 60bfaa0,
         # captured before production edits using this exact synthetic input.
         $golden=@{
-            0='80FF5438195F4C4541F7FDFF57F9D10A71A2F6B25914ED6A71F968DD2F905D59'
-            1='4560D1F3B373F2168E40C0A116C787F9DF7FAEF4F681C2964A33CAB3C9DAD388'
-            2='DFE36E127C364757996D5E39A490A116097E070751178353ABAA7C5A9086BC12'
-            46='1BBD9598530996740E0DF6F5061B58070B864E6B184D47DD69F8AFB7221EC550'
+            0='521AED26BAEF28B674EEBC8469943670BC501E48B8053439D85EE4EF595DCB4C'
+            1='C5F090D0D3A686180B3622CA7F72A133D0D0B8790DFF81B69381AA6E2B0F3654'
+            2='B4F42ABCC0F69C0531D747D838D1FFF72669C51AAC57C1DBEA23A31405A17B7A'
+            46='D2A513C4A34EFFA8175466462DF90274A59F2CF13E4F089492F0E0CFF2319785'
         }
         $withoutIndex=(Get-TestWithoutQuickIndex $text) -replace "`r`n","`n"
         [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($withoutIndex))) | Should -BeExactly $golden[$count]

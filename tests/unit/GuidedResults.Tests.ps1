@@ -33,7 +33,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
     It 'V01 Summary sections occur in the required order before the detailed-evidence boundary' {
         $text=Format-GuidedResults (Build-ResultsView)
         $previous=-1
-        foreach ($section in 'SESSION RESULTS','=== ROOT ===','=== OWNERSHIP ===','=== PROCESS CHANGES ===','=== TASK DELTA / ISSUE EVIDENCE ===','=== PRE-EXISTING CODEX PROCESSES OF INTEREST ===','=== PROCESS BRANCH ORIGIN ===','=== LIFECYCLE ===','=== WHY UNKNOWN ===','=== OBSERVATION TIMELINE ===','=== TRUST BOUNDARIES ===','=== DETAILED EVIDENCE ===') {
+        foreach ($section in 'SESSION RESULTS','=== ROOT ===','=== OWNERSHIP ===','=== PROCESS CHANGES ===','=== TASK DELTA / ISSUE EVIDENCE ===','=== PRE-EXISTING CODEX PROCESSES OF INTEREST ===','=== PROCESS BRANCH ORIGIN ===','=== OPERATOR NEXT STEP ===','=== LIFECYCLE ===','=== WHY UNKNOWN ===','=== OBSERVATION TIMELINE ===','=== TRUST BOUNDARIES ===','=== DETAILED EVIDENCE ===') {
             $position=$text.IndexOf($section); $position | Should -BeGreaterThan $previous; $previous=$position
         }
         $text | Should -Match 'Session capture: COMPLETE'

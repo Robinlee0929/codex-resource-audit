@@ -62,6 +62,20 @@ function Get-RootCandidateDisplayGroup {
     return 'UNAVAILABLE_OR_OTHER'
 }
 
+function Get-RootCandidateFriendlyGroupLabel {
+    <# Presentation-only wording for the canonical discovery-match groups. The
+       returned label never replaces or mutates display_group. #>
+    param([AllowNull()] [object] $Group)
+    if ($Group -isnot [string]) { return 'Other / unavailable match' }
+    switch -CaseSensitive ($Group) {
+        'NAME_EQUALS_CHATGPT_EXE' { return 'ChatGPT name match' }
+        'NAME_EQUALS_CODEX_EXE' { return 'Codex name match' }
+        'OTHER_NAME_CONTAINS_CODEX' { return 'Other Codex-name match' }
+        'PATH_ONLY_MATCH' { return 'Path-only match' }
+        default { return 'Other / unavailable match' }
+    }
+}
+
 function Format-RootCandidateGroups {
     <# Only locally prepared display IDs, fixed group codes and the SAME template
        statuses rendered in candidate blocks. Null means unavailable, not empty. #>
@@ -87,6 +101,7 @@ function Format-RootCandidateGroups {
     '  DISPLAY_GROUP_SUMMARY:'
     foreach ($group in $groups.Keys) {
         "    ${group}:"
+        "      LABEL: $(Get-RootCandidateFriendlyGroupLabel $group)"
         "      COUNT: $(if ($null -eq $Rows) { 'UNAVAILABLE' } else { $groups[$group].Count.ToString([cultureinfo]::InvariantCulture) })"
         "      CANDIDATE_IDS: $(if ($null -eq $Rows) { 'UNAVAILABLE' } elseif ($groups[$group].Count -eq 0) { 'NONE' } else { $groups[$group] -join ',' })"
     }
@@ -97,6 +112,7 @@ function Format-RootCandidateGroups {
     '  DISPLAY_GROUPING: PRESENTATION_ONLY'
     '  GROUPING_COVERAGE: OBSERVED_CANDIDATE_SET_ONLY'
     '  DISPLAY_ORDER_NOT_TRUST_RANKING: TRUE'
+    '  NOTE: Friendly labels describe how a candidate matched discovery criteria; they are not trust levels or recommendations.'
     '  WARNING: Display groups do not establish ownership or root eligibility; name/path matches and parent relationships do not verify roots.'
     '  WARNING: Template availability does not express trust or preference.'
     '  WARNING: COPY_READY != ROOT_SUITABILITY; COPY_READY != TRUST; OPERATOR_INPUT_REQUIRED != DISTRUST.'

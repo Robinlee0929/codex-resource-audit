@@ -281,8 +281,13 @@ function Get-GuidedProcessBranchView {
 }
 
 function Format-GuidedProcessBranches {
-    param([AllowNull()] [object] $View, [ValidateSet('Plain','Ansi')] [string] $ColorCapability='Plain')
-    function BranchValue($label,$value) { Format-OperatorLine KeyValue -Label $label -Value $value -ColorCapability $ColorCapability }
+    param([AllowNull()] [object] $View, [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability='Auto')
+    function BranchValue($label,$value) {
+        $style = if ($value -ceq 'UNAVAILABLE' -or $value -ceq 'NOT_ESTABLISHED') { 'Attention' }
+            elseif ($value -cin @('FAILED','INVALID','COLLECTION_FAILED')) { 'Failure' }
+            else { 'Default' }
+        Add-OperatorStyle -Text (Format-OperatorLine KeyValue -Label $label -Value $value -ColorCapability Plain) -Style $style -ColorCapability $ColorCapability
+    }
     function BranchNote($value) { Format-OperatorLine Note -Value $value -ColorCapability $ColorCapability }
     $available = Get-RootCandidateField $View 'available'
     $lines = @(
@@ -306,14 +311,14 @@ function Format-GuidedProcessBranches {
             foreach ($branch in $View.branches) {
                 Add-OperatorStyle -Text ("  BRANCH {0}" -f $branch.branch_id) -Style Heading -ColorCapability $ColorCapability
                 Add-OperatorStyle -Text ("    ROOT: {0} | PID {1} | CREATED {2} | FIRST {3} | LAST {4} | {5}" -f
-                    $branch.root.name,$branch.root.pid,$branch.root.creation_time_utc,$branch.root.first_seen,$branch.root.last_seen,$branch.root.state) -Style Secondary -ColorCapability $ColorCapability
+                    $branch.root.name,$branch.root.pid,$branch.root.creation_time_utc,$branch.root.first_seen,$branch.root.last_seen,$branch.root.state) -Style Default -ColorCapability $ColorCapability
                 if ($branch.origin_status -ceq 'CONFIRMED_PARENT') {
                     Add-OperatorStyle -Text ("    CONFIRMED PARENT: {0} | PID {1} | {2}" -f
-                        $branch.confirmed_parent.name,$branch.confirmed_parent.pid,$branch.confirmed_parent.baseline_status) -Style Secondary -ColorCapability $ColorCapability
+                        $branch.confirmed_parent.name,$branch.confirmed_parent.pid,$branch.confirmed_parent.baseline_status) -Style Default -ColorCapability $ColorCapability
                     if ($null -ne $branch.nearest_pre_existing_ancestor -and
                         $branch.nearest_pre_existing_ancestor.process_key -cne $branch.confirmed_parent.process_key) {
                         Add-OperatorStyle -Text ("    NEAREST PRE-EXISTING ANCESTOR: {0} | PID {1}" -f
-                            $branch.nearest_pre_existing_ancestor.name,$branch.nearest_pre_existing_ancestor.pid) -Style Secondary -ColorCapability $ColorCapability
+                            $branch.nearest_pre_existing_ancestor.name,$branch.nearest_pre_existing_ancestor.pid) -Style Default -ColorCapability $ColorCapability
                     }
                 }
                 else { BranchValue '    Origin' 'UNAVAILABLE' }
@@ -324,7 +329,7 @@ function Format-GuidedProcessBranches {
                 else {
                     '    DESCENDANTS:'
                     foreach ($row in $branch.descendants) {
-                        Add-OperatorStyle -Text ("      {0} | PID {1} | {2}" -f $row.name,$row.pid,$row.state) -Style Secondary -ColorCapability $ColorCapability
+                        Add-OperatorStyle -Text ("      {0} | PID {1} | {2}" -f $row.name,$row.pid,$row.state) -Style Default -ColorCapability $ColorCapability
                     }
                 }
             }
@@ -332,7 +337,7 @@ function Format-GuidedProcessBranches {
                 '  SHARED PRE-EXISTING ANCESTORS:'
                 foreach ($ancestor in $View.shared_pre_existing_ancestors) {
                     Add-OperatorStyle -Text ("    {0} | PID {1} | BRANCHES {2}" -f
-                        $ancestor.name,$ancestor.pid,($ancestor.branch_ids -join ',')) -Style Secondary -ColorCapability $ColorCapability
+                        $ancestor.name,$ancestor.pid,($ancestor.branch_ids -join ',')) -Style Default -ColorCapability $ColorCapability
                 }
             }
         }

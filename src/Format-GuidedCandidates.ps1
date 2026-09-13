@@ -20,22 +20,28 @@ function Get-GuidedCandidateView {
 function Format-GuidedCandidateIndex {
     <# Receives only Get-GuidedCandidateView's safe projection, never raw records. #>
     param([Parameter(Mandatory)] [object] $View,
-        [ValidateSet('Plain','Ansi')] [string] $ColorCapability = 'Plain')
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto')
     $lines = @(
         Format-OperatorLine Section -Label 'CODEX RESOURCE AUDIT' -ColorCapability $ColorCapability
         Format-OperatorLine Step -Label 'DISCOVER' -Step 1 -ColorCapability $ColorCapability
         Format-OperatorLine KeyValue -Label 'Capture' -Value $View.capture_status
         Format-OperatorLine KeyValue -Label 'Candidates' -Value $(if ($View.available) { $View.rows.Count.ToString([cultureinfo]::InvariantCulture) } else { 'UNAVAILABLE' })
         Format-OperatorLine Section -Label 'ROOT CANDIDATES' -ColorCapability $ColorCapability
-        '  ID | PROCESS | PID | GROUP'
-        foreach ($row in $View.rows) {
-            '  ' + (@($row.candidate_id,$row.name,$row.pid,$row.display_group | ForEach-Object { ConvertTo-OperatorCell $_ }) -join ' | ')
+        '  ID | PROCESS | PID'
+        foreach ($group in @('NAME_EQUALS_CHATGPT_EXE','NAME_EQUALS_CODEX_EXE','OTHER_NAME_CONTAINS_CODEX','PATH_ONLY_MATCH','UNAVAILABLE_OR_OTHER')) {
+            $groupRows = @($View.rows | Where-Object display_group -CEQ $group)
+            if ($groupRows.Count -eq 0) { continue }
+            Add-OperatorStyle -Text ("  {0} ({1})" -f (Get-RootCandidateFriendlyGroupLabel $group),$groupRows.Count) -Style Heading -ColorCapability $ColorCapability
+            foreach ($row in $groupRows) {
+                '    ' + (@($row.candidate_id,$row.name,$row.pid | ForEach-Object { ConvertTo-OperatorCell $_ }) -join ' | ')
+            }
         }
         if (-not $View.available) { '  UNAVAILABLE' }
         elseif ($View.rows.Count -eq 0) { '  NONE' }
         Format-OperatorLine Note -Value 'Discovery only. No candidate is trusted automatically.' -ColorCapability $ColorCapability
         Format-OperatorLine Note -Value 'CANDIDATE_ONLY != VERIFIED_ROOT; DISCOVERY_RESULT != OPERATOR_VERIFICATION' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'Capture order only; IDs apply only to this captured set and are not process identity. No ranking or recommendation.' -ColorCapability $ColorCapability
+        Format-OperatorLine Note -Value 'Groups describe how a candidate matched discovery criteria; they are not trust levels or recommendations.' -ColorCapability $ColorCapability
+        Format-OperatorLine Note -Value 'Group order is presentation-only. IDs retain capture ordinals, apply only to this captured set, and are not process identity.' -ColorCapability $ColorCapability
         if ($View.capture_status -ne 'COMPLETE') {
             Format-OperatorLine Note -Value 'Capture is not complete. Counts cover supplied observations only; assertion is blocked.' -ColorCapability $ColorCapability
         }
@@ -45,7 +51,7 @@ function Format-GuidedCandidateIndex {
 
 function Format-GuidedIdentityBlock {
     param([Parameter(Mandatory)] [object] $Candidate,
-        [ValidateSet('Plain','Ansi')] [string] $ColorCapability = 'Plain')
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto')
     $lines = @(
         Format-OperatorLine KeyValue -Label 'Candidate ID' -Value $Candidate.candidate_id
         Format-OperatorLine KeyValue -Label 'Process Name' -Value $Candidate.name
@@ -58,7 +64,7 @@ function Format-GuidedIdentityBlock {
 
 function Format-GuidedComparison {
     param([Parameter(Mandatory)] [object[]] $Candidates,
-        [ValidateSet('Plain','Ansi')] [string] $ColorCapability = 'Plain')
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto')
     $lines = @(
         Format-OperatorLine Step -Label 'COMPARE CAPTURED IDENTITIES' -Step 3 -ColorCapability $ColorCapability
         Format-OperatorLine KeyValue -Label 'Reviewing' -Value ($Candidates.Count.ToString([cultureinfo]::InvariantCulture))
@@ -71,7 +77,7 @@ function Format-GuidedComparison {
                 if ($null -eq (Get-RootCandidateUtc $candidate.creation_time_utc)) { 'Creation Time' }
                 if ($null -eq (Get-RootCandidateSafePath $candidate.executable_path)) { 'Executable Path' }
             )
-            Format-OperatorLine KeyValue -Label 'Session readiness' -Value $(if ($missing.Count -eq 0) { 'READY' } else { 'IDENTITY INCOMPLETE' })
+            Format-OperatorLine Status -Label 'Session readiness' -Value $(if ($missing.Count -eq 0) { 'READY' } else { 'IDENTITY INCOMPLETE' }) -ColorCapability $ColorCapability
             if ($missing.Count -gt 0) { Format-OperatorLine KeyValue -Label 'Missing' -Value ($missing -join ', ') }
         }
         ''
@@ -85,7 +91,7 @@ function Format-GuidedComparison {
 
 function Format-GuidedSelectedIdentity {
     param([Parameter(Mandatory)] [object] $Candidate,
-        [ValidateSet('Plain','Ansi')] [string] $ColorCapability = 'Plain')
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto')
     $lines = @(
         Format-OperatorLine Section -Label 'SESSION TARGET - CAPTURED IDENTITY' -ColorCapability $ColorCapability
         Format-GuidedIdentityBlock -Candidate $Candidate -ColorCapability $ColorCapability
@@ -98,7 +104,7 @@ function Format-GuidedSelectedIdentity {
 
 function Format-GuidedOutcome {
     param([Parameter(Mandatory)] [object] $Outcome,
-        [ValidateSet('Plain','Ansi')] [string] $ColorCapability = 'Plain')
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto')
     $recorded = $Outcome.status -ceq 'OPERATOR_ASSERTION_RECORDED' -and $Outcome.operator_assertion_recorded -is [bool] -and $Outcome.operator_assertion_recorded
     $state = if ($recorded) { 'OPERATOR_ASSERTION_RECORDED' }
         elseif ($Outcome.status -cin @('CANCELLED','NO_CANDIDATES','EVIDENCE_BLOCKED')) { $Outcome.status }
@@ -114,7 +120,7 @@ function Format-GuidedOutcome {
         else { Format-OperatorLine KeyValue -Label 'REVIEW_SET' -Value 'NONE' }
         Format-OperatorLine KeyValue -Label 'SESSION_TARGET' -Value $(if ($recorded) { 'SELECTED' } else { 'NONE' })
         Format-OperatorLine KeyValue -Label 'OPERATOR_ASSERTION' -Value $(if ($recorded) { 'RECORDED' } else { 'NONE' })
-        Format-OperatorLine KeyValue -Label 'SESSION_IDENTITY_REVALIDATION' -Value 'PENDING'
+        Format-OperatorLine Status -Label 'SESSION_IDENTITY_REVALIDATION' -Value 'PENDING' -ColorCapability $ColorCapability
         Format-OperatorLine KeyValue -Label 'SESSION_CAPTURE' -Value 'NOT_STARTED'
         Format-OperatorLine KeyValue -Label 'S0_CAPTURE' -Value 'NOT_STARTED'
         Format-OperatorLine KeyValue -Label 'NEXT' -Value $(if ($recorded) { 'Exact root identity revalidation and existing Session handoff (future T4).' } else { 'Use -Mode Help for advanced modes, or start a new Guided capture when ready.' })

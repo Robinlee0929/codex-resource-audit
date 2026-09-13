@@ -10,6 +10,24 @@ function ConvertTo-OperatorCell {
     return [regex]::Replace($safe, '[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]', '<CONTROL>')
 }
 
+function Resolve-OperatorColorCapability {
+    <# Auto styling is presentation-only and conservative. Explicit Ansi is a
+       testable renderer capability; Auto never emits escapes to redirected or
+       non-console output, and NO_COLOR always wins. #>
+    param([ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto')
+    if (-not [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable('NO_COLOR')) -or
+        $ColorCapability -eq 'Plain') { return 'Plain' }
+    if ($ColorCapability -eq 'Ansi') { return 'Ansi' }
+    try {
+        if ([Console]::IsOutputRedirected -or [Console]::IsErrorRedirected) { return 'Plain' }
+        $supportsVirtualTerminal = $Host.UI.PSObject.Properties['SupportsVirtualTerminal']
+        if ($null -eq $supportsVirtualTerminal -or $supportsVirtualTerminal.Value -isnot [bool] -or
+            -not $supportsVirtualTerminal.Value) { return 'Plain' }
+    }
+    catch { return 'Plain' }
+    return 'Ansi'
+}
+
 function Add-OperatorStyle {
     <# Explicit capability only. No host/global preference mutation or output
        stream writes. All escapes are owned here; input is always inert text. #>
@@ -17,11 +35,11 @@ function Add-OperatorStyle {
         [AllowNull()] [object] $Text,
         [ValidateSet('Default','Heading','Positive','Attention','Failure','Secondary')]
         [string] $Style = 'Default',
-        [ValidateSet('Plain','Ansi')] [string] $ColorCapability = 'Plain'
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto'
     )
     $safe = ConvertTo-OperatorCell $Text
-    if ($ColorCapability -ne 'Ansi' -or
-        -not [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable('NO_COLOR')) -or
+    $resolvedCapability = Resolve-OperatorColorCapability $ColorCapability
+    if ($resolvedCapability -ne 'Ansi' -or
         $Style -eq 'Default') { return $safe }
     $code = switch ($Style) {
         'Heading' { '36' }
@@ -42,7 +60,7 @@ function Format-OperatorLine {
         [AllowNull()] [object] $Label,
         [AllowNull()] [object] $Value,
         [ValidateRange(1,99)] [int] $Step = 1,
-        [ValidateSet('Plain','Ansi')] [string] $ColorCapability = 'Plain'
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto'
     )
     $safeLabel = ConvertTo-OperatorCell $Label
     $safeValue = ConvertTo-OperatorCell $Value
@@ -53,10 +71,10 @@ function Format-OperatorLine {
         'KeyValue' { "  ${safeLabel}: $safeValue" }
         'Note' { $style = 'Secondary'; "  Note: $safeValue" }
         'Status' {
-            $positive = @('VERIFIED','MATCHED','CONFIRMED','COMPLETE','PASS')
-            $attention = @('UNKNOWN','EVIDENCE_BLOCKED','NOT_SUPPORTED','FOUNDATION_ONLY','OPERATOR_INPUT_REQUIRED')
+            $positive = @('VERIFIED','MATCHED','CONFIRMED','COMPLETE','PASS','READY')
+            $attention = @('UNKNOWN','PENDING','IDENTITY INCOMPLETE','EVIDENCE_BLOCKED','NOT_SUPPORTED','UNAVAILABLE','FOUNDATION_ONLY','OPERATOR_INPUT_REQUIRED')
             $failures = @('FAILED','INVALID','COLLECTION_FAILED')
-            $neutral = @('CANDIDATE_ONLY','STILL_OBSERVED','NO_LONGER_OBSERVED','CANCELLED','NOT_IMPLEMENTED','NONE','UNAVAILABLE')
+            $neutral = @('CANDIDATE_ONLY','STILL_OBSERVED','NO_LONGER_OBSERVED','CANCELLED','NOT_IMPLEMENTED','NONE')
             if ($Value -isnot [string] -or $Value -cnotin ($positive + $attention + $failures + $neutral)) {
                 $safeValue = '<REDACTED_STATUS>'
             }
@@ -70,7 +88,7 @@ function Format-OperatorLine {
 }
 
 function Format-OperatorFoundationView {
-    param([ValidateSet('Plain','Ansi')] [string] $ColorCapability = 'Plain')
+    param([ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto')
     $lines = @(
         Format-OperatorLine -Kind Section -Label 'CODEX RESOURCE AUDIT' -ColorCapability $ColorCapability
         Format-OperatorLine -Kind Status -Label 'Guided' -Value 'FOUNDATION_ONLY' -ColorCapability $ColorCapability

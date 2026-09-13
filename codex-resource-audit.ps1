@@ -58,16 +58,29 @@ foreach ($functionName in $requiredProductionFunctions) {
 
 function Show-Help {
     @'
-Codex Resource Audit
+=== CODEX RESOURCE AUDIT ===
 
 This tool performs evidence-based Codex process attribution and lifecycle auditing.
 It never controls, terminates, cleans up, or repairs processes.
 
-Modes:
-  Help        Show this text. This is the default and reads no OS process data.
-  Fixture     Run attribution, lifecycle analysis, and redacted reporting on JSON data.
-  Candidates List possible root candidates for operator review. Never confirms a root.
-  Session     Collect S0/S1/S2/S3/S4 in one foreground audit run.
+Recommended interactive workflow:
+  .\codex-resource-audit.ps1 -Mode Guided
+  GUIDED     Interactive discover, compare, verify, observe, and review workflow.
+
+Advanced / diagnostic workflows:
+  .\codex-resource-audit.ps1 -Mode Candidates
+  CANDIDATES Discover possible root candidates for review.
+             Discovery does not establish trust or recommend a root.
+
+  .\codex-resource-audit.ps1 -Mode Fixture -FixturePath <local-json-file>
+  FIXTURE    Analyze deterministic/offline JSON evidence and emit the canonical report.
+
+  .\codex-resource-audit.ps1 -Mode Session -RootPid <PID> -RootCreationTimeUtc <ISO-8601-UTC> -RootExecutablePath <exact-OS-path> -OperatorVerifiedKnownCodexInstance
+  SESSION    Advanced direct S0/S1/S2/S3/S4 observation using the existing Session contract.
+             The operator must independently verify the exact current process instance.
+
+  .\codex-resource-audit.ps1 -Mode Help
+  HELP       Show this text. Help is the default and reads no OS process data.
 
 Offline example:
   .\codex-resource-audit.ps1 -Mode Fixture -FixturePath .\tests\fixtures\negative-controls.json

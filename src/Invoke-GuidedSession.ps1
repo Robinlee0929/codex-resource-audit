@@ -47,7 +47,7 @@ function Format-GuidedRevalidation {
             Format-OperatorLine Step -Step 6 -Label 'EXACT IDENTITY REVALIDATION'
             Format-OperatorLine KeyValue -Label 'OPERATOR_ASSERTION' -Value 'RECORDED'
         }
-        Format-OperatorLine KeyValue -Label 'SESSION_IDENTITY_REVALIDATION' -Value $Status
+        Format-OperatorLine Status -Label 'SESSION_IDENTITY_REVALIDATION' -Value $Status
         Format-OperatorLine KeyValue -Label 'SESSION_CAPTURE' -Value 'NOT_STARTED'
         Format-OperatorLine KeyValue -Label 'S0_CAPTURE' -Value 'NOT_STARTED'
         Format-OperatorLine Note -Value $(if ($Status -eq 'MATCHED') {

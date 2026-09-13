@@ -36,7 +36,11 @@ Describe 'Stage 0 CLI module wiring' {
             Set-Location -LiteralPath ([IO.Path]::GetTempPath())
             $script:helpOutput = $null
             { $script:helpOutput = & $script:entrypoint -Mode Help } | Should -Not -Throw
-            $script:helpOutput | Should -Match '(?m)^Codex Resource Audit\r?$'
+            $script:helpOutput | Should -Match '(?m)^=== CODEX RESOURCE AUDIT ===\r?$'
+            $script:helpOutput | Should -Match '\.\\codex-resource-audit\.ps1 -Mode Guided'
+            $script:helpOutput | Should -Match '\.\\codex-resource-audit\.ps1 -Mode Candidates'
+            $script:helpOutput | Should -Match '\.\\codex-resource-audit\.ps1 -Mode Fixture -FixturePath <local-json-file>'
+            $script:helpOutput | Should -Match '\.\\codex-resource-audit\.ps1 -Mode Session -RootPid <PID>'
             $script:helpOutput | Should -Not -Match '(?i)Stage 0 Prototype|\b(?:not|never)\s+(?:been\s+)?validated|future operator-owned'
             $helpText = $script:helpOutput -replace '\s+', ' '
             $helpText | Should -Match 'Candidates and Session workflows have been validated on Windows using the accepted Stage 0 / Stage 1 evidence\.'

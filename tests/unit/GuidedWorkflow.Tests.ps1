@@ -115,16 +115,20 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         $script:success[0] | Should -Match 'REVIEW_COUNT: 2'
         ($script:snapshot | ConvertTo-Json -Depth 30 -Compress) | Should -BeExactly $before
     }
-    It 'H02 Neutral index preserves captured order and every candidate with no preferred candidate' {
+    It 'H02 Neutral index groups by friendly match basis while preserving captured IDs with no preferred candidate' {
         Invoke-CapturedGuided
         $index = $script:info[0]
         $index | Should -Match 'Candidates: 3'
-        $rows = @($index -split '\r?\n' | Where-Object { $_ -match '^  C[1-9]' })
+        $rows = @($index -split '\r?\n' | Where-Object { $_ -match '^    C[1-9]' })
         $rows | Should -Be @(
-            '  C1 | ChatGPT.exe | 9003 | NAME_EQUALS_CHATGPT_EXE'
-            '  C2 | codex-helper.exe | 9002 | OTHER_NAME_CONTAINS_CODEX'
-            '  C3 | codex.exe | 9001 | NAME_EQUALS_CODEX_EXE'
+            '    C1 | ChatGPT.exe | 9003'
+            '    C3 | codex.exe | 9001'
+            '    C2 | codex-helper.exe | 9002'
         )
+        $index | Should -Match 'ChatGPT name match \(1\)'
+        $index | Should -Match 'Codex name match \(1\)'
+        $index | Should -Match 'Other Codex-name match \(1\)'
+        $index | Should -Match 'Group order is presentation-only'
         $index | Should -Not -Match 'node.exe|LIKELY_ROOT|BEST_CANDIDATE|SCORE|CONFIRMED_CODEX_OWNED|\x1B'
     }
     It 'H03 Review grammar <label> preserves first occurrence order without duplicate state' -ForEach @(
@@ -419,7 +423,7 @@ Describe 'Guided pure projection comparison styling and stream boundaries' {
         $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:guidedRoot 'src\Format-GuidedCandidates.ps1'),[ref]$tokens,[ref]$errors)
         $errors.Count | Should -Be 0
         foreach ($command in $ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)) {
-            $command.GetCommandName() | Should -BeIn @('Set-StrictMode','Get-RootCandidateField','Get-RootCandidatePresentation','Format-OperatorLine','ConvertTo-OperatorCell','ForEach-Object','Format-GuidedIdentityBlock','Get-RootCandidateUtc','Get-RootCandidateSafePath')
+            $command.GetCommandName() | Should -BeIn @('Set-StrictMode','Get-RootCandidateField','Get-RootCandidatePresentation','Get-RootCandidateFriendlyGroupLabel','Format-OperatorLine','Add-OperatorStyle','ConvertTo-OperatorCell','ForEach-Object','Where-Object','Format-GuidedIdentityBlock','Get-RootCandidateUtc','Get-RootCandidateSafePath')
             $command.InvocationOperator | Should -Not -BeIn @('Ampersand','Dot')
         }
     }

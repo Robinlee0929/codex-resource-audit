@@ -146,9 +146,75 @@ function Get-GuidedResultsView {
     return $view
 }
 
+function Format-GuidedNextStep {
+    <# Fixed operator guidance over the existing Task Delta and branch projections.
+       It creates no ownership, lifecycle, trust or evidence classification. #>
+    param(
+        [AllowNull()] [object] $TaskDelta,
+        [AllowNull()] [object] $ProcessBranches,
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability='Auto'
+    )
+    function GuidanceNote($text,[string]$style='Secondary') {
+        Add-OperatorStyle -Text (Format-OperatorLine Note -Value $text -ColorCapability Plain) -Style $style -ColorCapability $ColorCapability
+    }
+    function ReadCount($value,[ref]$number) {
+        $number.Value = 0
+        return $value -is [string] -and [int]::TryParse($value,[Globalization.NumberStyles]::None,[cultureinfo]::InvariantCulture,$number) -and $number.Value -ge 0
+    }
+    $lines=@(
+        ''
+        Format-OperatorLine Section -Label 'OPERATOR NEXT STEP' -ColorCapability $ColorCapability
+    )
+    $available=Get-RootCandidateField $TaskDelta 'available'
+    if ($available -isnot [bool] -or -not $available) {
+        $lines += GuidanceNote 'Task-window evidence could not be safely established. Review the diagnostic reason or DETAILS before drawing a task-specific process conclusion.' 'Attention'
+        $diagnostic=Get-GuidedTaskDeltaSafeDiagnostic (Get-RootCandidateField $TaskDelta 'diagnostic_code')
+        if ($null -ne $diagnostic) {
+            $lines += Add-OperatorStyle -Text (Format-OperatorLine KeyValue -Label 'Diagnostic' -Value $diagnostic -ColorCapability Plain) -Style Attention -ColorCapability $ColorCapability
+        }
+        $lines += GuidanceNote 'Missing or unavailable evidence is not a valid empty result.'
+        $lines += GuidanceNote 'NEXT_STEP_GUIDANCE != EVIDENCE_CLASSIFICATION.'
+        return $lines -join [Environment]::NewLine
+    }
+    $created=0; $still=0; $gone=0
+    if (-not (ReadCount (Get-RootCandidateField $TaskDelta 'created_count') ([ref]$created)) -or
+        -not (ReadCount (Get-RootCandidateField $TaskDelta 'still_observed_count') ([ref]$still)) -or
+        -not (ReadCount (Get-RootCandidateField $TaskDelta 'no_longer_observed_count') ([ref]$gone)) -or
+        $still + $gone -ne $created) {
+        $lines += GuidanceNote 'A complete task-window population could not be safely established. Review the Task Delta details before drawing a task-specific process conclusion.' 'Attention'
+        $lines += GuidanceNote 'NEXT_STEP_GUIDANCE != EVIDENCE_CLASSIFICATION.'
+        return $lines -join [Environment]::NewLine
+    }
+    if ($created -eq 0) {
+        $branchCount=0
+        $branchesAvailable=Get-RootCandidateField $ProcessBranches 'available'
+        $branchCountValid=ReadCount (Get-RootCandidateField $ProcessBranches 'branch_count') ([ref]$branchCount)
+        if ($branchesAvailable -is [bool] -and $branchesAvailable -and $branchCountValid -and $branchCount -eq 0) {
+            $lines += GuidanceNote 'No task-window confirmed Codex process branch was established in this observation window.'
+        }
+        else { $lines += GuidanceNote 'No confirmed Codex-owned process was established in the validated task-window set for this observation window.' }
+        $lines += GuidanceNote 'If you expected a new branch, reproduce the activity while keeping the same observation procedure.'
+    }
+    elseif ($still -eq 0 -and $gone -gt 0) {
+        $lines += GuidanceNote 'Task-window Codex process activity was observed and all established task-window processes were no longer observed by S4. No cleanup issue is established by this observation.'
+        $lines += GuidanceNote 'NO_LONGER_OBSERVED != EXIT_CONFIRMED.'
+    }
+    elseif ($still -gt 0 -and $gone -eq 0) {
+        $lines += GuidanceNote 'One or more task-window Codex processes are still observed at S4. Continue observation or reproduce the same task before treating this as an issue.' 'Attention'
+        $lines += GuidanceNote 'STILL_OBSERVED != RESIDUE.'
+        $lines += GuidanceNote 'If the same still-observed branch pattern is reproducible across separate runs, preserve the evidence and consider reporting a reproducible issue.'
+    }
+    else {
+        $lines += GuidanceNote 'Some task-window processes remain observed while others are no longer observed. Preserve the evidence and consider repeating the same task to check reproducibility.' 'Attention'
+        $lines += GuidanceNote 'STILL_OBSERVED != RESIDUE; NO_LONGER_OBSERVED != EXIT_CONFIRMED.'
+    }
+    $lines += GuidanceNote 'NEXT_STEP_GUIDANCE != EVIDENCE_CLASSIFICATION.'
+    return $lines -join [Environment]::NewLine
+}
+
 function Format-GuidedResults {
     <# Renders only the safe projection. Does not consume canonical report text. #>
-    param([AllowNull()] [object] $View, [ValidateSet('Plain','Ansi')] [string] $ColorCapability='Plain')
+    param([AllowNull()] [object] $View, [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability='Auto')
     function Section($label) { ''; Format-OperatorLine Section -Label $label -ColorCapability $ColorCapability }
     function Value($label,$value) {
         $style=if ($value -cin @('FAILED','INVALID','COLLECTION_FAILED')) { 'Failure' }
@@ -182,6 +248,7 @@ function Format-GuidedResults {
             Note 'Counts describe existing history entries, including unresolved identities. NO_LONGER_OBSERVED != EXIT_CONFIRMED.'
             Format-GuidedTaskDelta -View $View.task_delta -ColorCapability $ColorCapability
             Format-GuidedProcessBranches -View $View.process_branches -ColorCapability $ColorCapability
+            Format-GuidedNextStep -TaskDelta $View.task_delta -ProcessBranches $View.process_branches -ColorCapability $ColorCapability
             Section 'LIFECYCLE'
             Value 'Observation basis' $View.lifecycle_basis
             Value 'Result coverage' $View.coverage

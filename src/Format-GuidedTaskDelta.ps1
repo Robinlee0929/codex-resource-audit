@@ -269,8 +269,13 @@ function Get-GuidedTaskDeltaView {
 function Format-GuidedTaskDelta {
     <# Renders only the bounded safe projection. Names are allowlisted; paths,
        command lines, relationship text and arbitrary evidence text are absent. #>
-    param([AllowNull()] [object] $View, [ValidateSet('Plain','Ansi')] [string] $ColorCapability='Plain')
-    function DeltaValue($label,$value) { Format-OperatorLine KeyValue -Label $label -Value $value -ColorCapability $ColorCapability }
+    param([AllowNull()] [object] $View, [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability='Auto')
+    function DeltaValue($label,$value) {
+        $style = if ($value -ceq 'UNAVAILABLE') { 'Attention' }
+            elseif ($value -cin @('FAILED','INVALID','COLLECTION_FAILED')) { 'Failure' }
+            else { 'Default' }
+        Add-OperatorStyle -Text (Format-OperatorLine KeyValue -Label $label -Value $value -ColorCapability Plain) -Style $style -ColorCapability $ColorCapability
+    }
     function DeltaNote($value) { Format-OperatorLine Note -Value $value -ColorCapability $ColorCapability }
     $available = (Get-RootCandidateField $View 'available')
     $lines = @(
@@ -301,12 +306,12 @@ function Format-GuidedTaskDelta {
             '  PROCESS | PID | CREATED UTC | FIRST | LAST | STATE'
             if ($View.task_window_rows.Count -eq 0) { '  NO ESTABLISHED TASK-WINDOW ROWS' }
             foreach ($row in $View.task_window_rows) {
-                Add-OperatorStyle -Text ("  {0} | {1} | {2} | {3} | {4} | {5}" -f $row.name,$row.pid,$row.creation_time_utc,$row.first_seen,$row.last_seen,$row.state) -Style Secondary -ColorCapability $ColorCapability
+                Add-OperatorStyle -Text ("  {0} | {1} | {2} | {3} | {4} | {5}" -f $row.name,$row.pid,$row.creation_time_utc,$row.first_seen,$row.last_seen,$row.state) -Style Default -ColorCapability $ColorCapability
             }
             if ($View.creation_window_unknown_rows.Count -gt 0) {
                 DeltaNote 'The following confirmed history entries were first observed after S0, but exact creation-window timing is unavailable.'
                 foreach ($row in $View.creation_window_unknown_rows) {
-                    Add-OperatorStyle -Text ("  {0} | {1} | CREATION UNKNOWN | {2} | {3} | {4}" -f $row.name,$row.pid,$row.first_seen,$row.last_seen,$row.state) -Style Secondary -ColorCapability $ColorCapability
+                    Add-OperatorStyle -Text ("  {0} | {1} | CREATION UNKNOWN | {2} | {3} | {4}" -f $row.name,$row.pid,$row.first_seen,$row.last_seen,$row.state) -Style Default -ColorCapability $ColorCapability
                 }
             }
             DeltaNote 'FIRST_SEEN != CREATION_TIME. A process created between captures may first appear at S2 while its exact creation time is before TASK_END.'
@@ -321,7 +326,7 @@ function Format-GuidedTaskDelta {
             '  PROCESS | PID | FIRST | LAST | STATE'
             if ($View.pre_existing_rows.Count -eq 0) { '  NONE' }
             foreach ($row in $View.pre_existing_rows) {
-                Add-OperatorStyle -Text ("  {0} | {1} | {2} | {3} | {4}" -f $row.name,$row.pid,$row.first_seen,$row.last_seen,$row.state) -Style Secondary -ColorCapability $ColorCapability
+                Add-OperatorStyle -Text ("  {0} | {1} | {2} | {3} | {4}" -f $row.name,$row.pid,$row.first_seen,$row.last_seen,$row.state) -Style Default -ColorCapability $ColorCapability
             }
         }
         DeltaNote 'Only processes confirmed Codex-owned at S0 and matching a display-only Codex/computer-use name hint appear here.'

@@ -5,7 +5,7 @@ function Format-GuidedObserveHeader {
        never a source of ownership conclusions. No executable path is repeated. #>
     param(
         [AllowNull()] [object] $Target,
-        [ValidateSet('Plain','Ansi')] [string] $ColorCapability = 'Plain'
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto'
     )
     $candidateId = Get-RootCandidateField $Target 'candidate_id'
     if ($candidateId -isnot [string] -or $candidateId -cnotmatch '\AC[1-9][0-9]*\z') { $candidateId = '<UNAVAILABLE>' }
@@ -32,7 +32,7 @@ function Format-GuidedObservation {
        state mutation, process data, collection, resolver or automatic input. #>
     param(
         [AllowNull()] [object] $Progress,
-        [ValidateSet('Plain','Ansi')] [string] $ColorCapability = 'Plain'
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability = 'Auto'
     )
     $event = Get-RootCandidateField $Progress 'event'
     $unavailable = 'Observation update unavailable; no completion is inferred.'
