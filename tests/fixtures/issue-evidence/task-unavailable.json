@@ -1,0 +1,167 @@
+{
+  "schema_version": "1.0",
+  "claim_contract_version": "1.0",
+  "required_features": [],
+  "producer": {
+    "name": "codex-resource-audit",
+    "version": "0.2.0"
+  },
+  "package_profile": "PUBLIC_SAFE_ONLY",
+  "package_kind": "ISSUE_EVIDENCE",
+  "investigation": {
+    "workflow": "GUIDED",
+    "completion": "COMPLETE",
+    "target_verification": {
+      "operator_assertion": "RECORDED",
+      "pre_s0_exact_identity": "MATCHED"
+    },
+    "timeline": {
+      "status": "AVAILABLE",
+      "reason_codes": [],
+      "events": [
+        {
+          "event": "S0_CAPTURE_END",
+          "offset_ms": 0
+        },
+        {
+          "event": "S1_CAPTURE_END",
+          "offset_ms": 4500
+        },
+        {
+          "event": "TASK_END",
+          "offset_ms": 12413,
+          "declaration": "OPERATOR_DECLARED"
+        },
+        {
+          "event": "S2_CAPTURE_END",
+          "offset_ms": 13000
+        },
+        {
+          "event": "S3_CAPTURE_END",
+          "offset_ms": 23000
+        },
+        {
+          "event": "S4_CAPTURE_END",
+          "offset_ms": 33000
+        }
+      ]
+    },
+    "ownership_summary": {
+      "evidence_status": "AVAILABLE",
+      "reason_codes": [],
+      "basis_stage": "S4",
+      "confirmed_codex_owned_count": 1,
+      "unknown_count": 0,
+      "unknown_reason_counts": []
+    },
+    "lifecycle_summary": {
+      "evidence_status": "AVAILABLE",
+      "reason_codes": [],
+      "basis_stage": "S4",
+      "counts": {
+        "ACTIVE": 0,
+        "SUSPECTED_ORPHAN": 0,
+        "SUSPECTED_RESIDUE": 0,
+        "UNKNOWN": 1
+      },
+      "unknown_reason_counts": [
+        {
+          "reason_code": "LIFECYCLE_SCOPE_UNKNOWN",
+          "count": 1
+        }
+      ]
+    }
+  },
+  "evidence_status": {
+    "investigation": "AVAILABLE",
+    "task_delta": "UNAVAILABLE",
+    "process_branches": "UNAVAILABLE",
+    "pre_existing": "UNAVAILABLE",
+    "next_step": "AVAILABLE"
+  },
+  "task_delta": {
+    "evidence_status": "UNAVAILABLE",
+    "population_status": "NOT_APPLICABLE",
+    "reason_codes": [
+      "SESSION_BASIS_UNAVAILABLE"
+    ],
+    "basis": {
+      "start": "S0_CAPTURE_END",
+      "end": "TASK_END"
+    },
+    "confirmed_created_count": null,
+    "established_count": null,
+    "still_observed_at_s4_count": null,
+    "no_longer_observed_by_s4_count": null,
+    "creation_time_unavailable_count": null,
+    "processes": []
+  },
+  "process_branches": {
+    "evidence_status": "UNAVAILABLE",
+    "reason_codes": [
+      "TASK_DELTA_UNAVAILABLE"
+    ],
+    "branch_count": null,
+    "logical_session_provenance": "NOT_ESTABLISHED",
+    "branches": []
+  },
+  "pre_existing": {
+    "evidence_status": "UNAVAILABLE",
+    "reason_codes": [
+      "SESSION_BASIS_UNAVAILABLE"
+    ],
+    "count": null,
+    "processes": []
+  },
+  "next_step": {
+    "kind": "GUIDANCE",
+    "guidance_id": "NS_UNAVAILABLE",
+    "text_key": "task_window_unavailable",
+    "evidence_classification": false
+  },
+  "trust_boundaries": [
+    "TB_EXPORT_NOT_NEW_EVIDENCE",
+    "TB_MARKDOWN_NOT_SECOND_ANALYSIS",
+    "TB_JSON_NOT_NEW_CLASSIFICATION",
+    "TB_UNKNOWN_NOT_CODEX",
+    "TB_NO_LONGER_OBSERVED_NOT_EXIT_CONFIRMED",
+    "TB_STILL_OBSERVED_NOT_RESIDUE",
+    "TB_PROCESS_SURVIVAL_NOT_RESIDUE",
+    "TB_PROCESS_SURVIVAL_NOT_ORPHAN",
+    "TB_PARENT_NOT_OBSERVED_NOT_PARENT_EXIT_CONFIRMED",
+    "TB_FIRST_SEEN_NOT_CREATION_TIME",
+    "TB_TASK_WINDOW_TIMING_NOT_TASK_CAUSATION",
+    "TB_TASK_WINDOW_PROCESS_NOT_BROWSER_PROCESS",
+    "TB_PRE_EXISTING_AT_S0_NOT_TASK_CREATED",
+    "TB_PROCESS_NAME_MATCH_NOT_OWNERSHIP",
+    "TB_PATH_SIMILARITY_NOT_OWNERSHIP",
+    "TB_COMMAND_LINE_SIMILARITY_NOT_OWNERSHIP",
+    "TB_PID_ALONE_NOT_PROCESS_IDENTITY",
+    "TB_PROCESS_BRANCH_NOT_LOGICAL_SESSION",
+    "TB_PROCESS_PARENTAGE_NOT_TOOL_CAUSATION",
+    "TB_COMMON_ANCESTOR_NOT_COMMON_SESSION",
+    "TB_SHARED_PARENT_NOT_SAME_LOGICAL_SESSION",
+    "TB_NEXT_STEP_GUIDANCE_NOT_EVIDENCE_CLASSIFICATION",
+    "TB_GROUP_NOT_TRUST_LEVEL",
+    "TB_GROUP_NOT_RECOMMENDATION",
+    "TB_PACKAGE_PROCESS_ID_NOT_OS_PID",
+    "TB_PACKAGE_PROCESS_ID_NOT_CROSS_RUN_IDENTITY",
+    "TB_PACKAGE_OBSERVATION_ID_NOT_PROCESS_IDENTITY",
+    "TB_BRANCH_ID_NOT_SESSION_IDENTITY",
+    "TB_RUN_SIMILARITY_NOT_IDENTITY_PROOF",
+    "TB_HASH_MATCH_NOT_EVIDENCE_AUTHENTICITY",
+    "TB_CAPTURE_COMPLETE_NOT_EVIDENCE_PASS",
+    "TB_TASK_END_NOT_PROCESS_EXIT",
+    "TB_AVAILABILITY_REASON_NOT_NEW_ANALYSIS"
+  ],
+  "privacy": {
+    "profile": "PUBLIC_SAFE_ONLY",
+    "timestamps": "RELATIVE_ONLY",
+    "executable_presentation": "SAFE_DISPLAY_ONLY",
+    "os_pids": "OMITTED",
+    "paths": "OMITTED",
+    "command_lines": "OMITTED",
+    "sensitive_metadata": "OMITTED",
+    "hashes": "OMITTED"
+  }
+}

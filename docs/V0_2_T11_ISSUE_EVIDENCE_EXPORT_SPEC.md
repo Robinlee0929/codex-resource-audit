@@ -3,12 +3,15 @@
 ## Status and scope
 
 This document is the normative T11 contract for the first Codex Resource Audit
-Issue Evidence Export. It specifies future behavior; it does not claim that an
-export command or serializer exists.
+Issue Evidence Export, clarified by the owner's T12.1 decisions before schema
+1.0 is committed. T12 implements an offline serializer; this specification does
+not claim that a public export command exists.
 
 The immutable public baseline is v0.1.1 at
 `f27b509b406e9c975e614ce11602fb2c74dd5f6b`. The broader product direction is
-recorded in the [v0.2 roadmap](V0_2_ROADMAP.md). T11 changes documentation only.
+recorded in the [v0.2 roadmap](V0_2_ROADMAP.md). T11 originally changed
+documentation only. T12.1 changes the draft public representation, not the
+protected evidence semantics or a released schema.
 
 The first export design has three fixed product decisions:
 
@@ -197,12 +200,32 @@ Compatibility rules:
 Every evidence-bearing section uses:
 
 - `evidence_status`: `AVAILABLE` or `UNAVAILABLE`;
-- `unavailable_reason`: `null` when available, otherwise one registered code;
+- `reason_codes`: an ordered array of machine-registered availability codes;
   and
 - nullable counts and values whose availability depends on the section.
 
 Task Delta additionally uses `population_status`: `COMPLETE`, `PARTIAL`, or
 `NOT_APPLICABLE`. Relative timing uses `AVAILABLE`, `PARTIAL`, or `UNAVAILABLE`.
+
+AVAILABLE sections MUST use `reason_codes: []`, including AVAILABLE zero.
+The one informational exception is Task Delta with PARTIAL population: it uses
+`["CREATION_TIME_UNAVAILABLE"]` without changing its AVAILABLE evidence status.
+UNAVAILABLE sections MUST retain one or more registered codes provided by their
+canonical evidence or its bounded availability representation. PARTIAL timing
+uses `CREATION_TIME_UNAVAILABLE` and/or `TIMING_OFFSET_UNAVAILABLE`, as applicable;
+unavailable timing uses `TIMING_ORIGIN_UNAVAILABLE`. Arrays have unique codes in
+ordinal order. Available reason-free evidence never acquires a failure reason.
+
+The closed availability registry and fixed rendering are in
+[IssueEvidence.Contract.ps1](../src/IssueEvidence.Contract.ps1). Existing native
+`unavailable_reason` fields are inputs only, never public free-text fields.
+Source free text or an unregistered reason that would be needed in public output
+MUST fail through the bounded failure taxonomy. There is no `reason`, `message`,
+or `details` escape hatch. Markdown renders fixed text from registered codes.
+Ownership/lifecycle `unknown_reason_counts` and row `reason_code` retain their
+separate registered classification meaning; they are not availability prose.
+
+`AVAILABILITY_REASON != NEW_ANALYSIS`.
 
 An empty array has no independent evidentiary meaning. A consumer may interpret
 an empty result as zero only when the section is `AVAILABLE`, the relevant
@@ -235,9 +258,12 @@ Allocation order is deterministic:
 1. complete Task Delta rows in their existing canonical source order;
 2. unresolved creation-window observations in their existing canonical source
    order;
-3. relevant pre-existing exact identities in canonical safe-display order; and
-4. any additional branch-only exact ancestor in first canonical branch
-   reference order.
+3. relevant pre-existing exact identities in canonical safe-display order.
+
+An external parent outside that exported population receives no public P, O,
+X, or other identity. Its generic per-branch relation is not a cross-branch
+equality key. Repeated generic relations MUST NOT imply the same external
+process. Already-exported relevant S0 ancestors retain their existing P IDs.
 
 Exact internal identities are de-duplicated only by the established same-run
 source identity, never by name, PID, timing proximity, or branch position.
@@ -271,9 +297,27 @@ trusted to at least millisecond precision. Markdown renders a nonnegative value
 as `T+<seconds>.<milliseconds>s` without locale-specific separators, for
 example `T+12.413s`.
 
-The JSON records `origin: S0_CAPTURE_END`, `unit: MILLISECOND`, and
-`rounding: TRUNCATE_TOWARD_ZERO`. Exact internal timestamps, local time,
+Schema 1.0 fixes the origin at S0_CAPTURE_END, the unit at milliseconds, and
+rounding at truncation toward zero. These rules do not require redundant public
+origin/unit/rounding properties. Exact internal timestamps, local time,
 time-zone data, and filesystem times are never serialized.
+
+The public timeline contains only `status`, `reason_codes`, and ordered
+`events`. Its six registered identifiers
+are S0_CAPTURE_END, S1_CAPTURE_END, TASK_END, S2_CAPTURE_END, S3_CAPTURE_END,
+S4_CAPTURE_END. Each record contains only `event` and `offset_ms`; TASK_END also
+MUST contain `declaration: OPERATOR_DECLARED`. Array position conveys order;
+there is no redundant numeric order or internal capture identifier.
+
+There is no public `captures` array, capture status/root-verification table,
+UUID, raw payload, PID list, source identity, count inventory, or capture
+metadata. Required capture/verification checks remain internal. The timeline
+explains investigation ordering, not evidence quality or process exit:
+
+```text
+CAPTURE_COMPLETE != EVIDENCE_PASS
+TASK_END != PROCESS_EXIT
+```
 
 Pre-existing process creation offsets are omitted even when internally known;
 they are not needed to interpret the task window and may reveal long-lived host
@@ -394,7 +438,7 @@ Lifecycle is separate from observation state and ownership. The public package
 contains a bounded investigation-level lifecycle summary at its established
 basis stage:
 
-- `evidence_status` and `unavailable_reason`;
+- `evidence_status` and `reason_codes`;
 - `basis_stage` (`S0` through `S4`) when established;
 - counts for `ACTIVE`, `SUSPECTED_ORPHAN`, `SUSPECTED_RESIDUE`, and `UNKNOWN`;
   and
@@ -416,7 +460,7 @@ becomes a lifecycle conclusion during export.
 | --- | --- |
 | `evidence_status` | `AVAILABLE` or `UNAVAILABLE` |
 | `population_status` | `COMPLETE`, `PARTIAL`, or `NOT_APPLICABLE` |
-| `unavailable_reason` | Registered source reason or `null` |
+| `reason_codes` | Registered availability codes; empty for complete AVAILABLE, bounded codes for UNAVAILABLE/PARTIAL |
 | `basis` | Fixed start `S0_CAPTURE_END` and end `TASK_END` |
 | `confirmed_created_count` | Integer only for a complete available population; otherwise `null` |
 | `established_count` | Number of confirmed task-window rows already established; integer when section available |
@@ -447,11 +491,37 @@ they MUST NOT infer availability from array length.
 - one exact package process ID as each branch root;
 - member process IDs and exact parent-to-child edges within the task-window
   population;
-- origin status `CONFIRMED_PARENT` or `UNAVAILABLE`;
-- safe package process references for a confirmed external parent and nearest
-  relevant pre-existing ancestor;
+- `parent_relation.status`: `CONFIRMED_PARENT` or `UNAVAILABLE`;
+- `parent_relation.parent_process_id`: an already-exported relevant S0 parent
+  ID or `null`;
+- `parent_relation.nearest_pre_existing_ancestor_process_id`: an already-
+  established exported S0 ancestor ID or `null`;
+- `parent_relation.external_parent`: the fixed generic relation below or `null`;
 - total, still-observed-at-S4, and no-longer-observed-by-S4 counts; and
 - fixed `logical_session_provenance: NOT_ESTABLISHED`.
+
+For a confirmed parent outside the public task/pre-existing population, the
+only public external-parent data is:
+
+```json
+{
+  "relationship": "CONFIRMED_PARENT_OUTSIDE_EXPORTED_POPULATION",
+  "display": "External parent"
+}
+```
+
+This record exists per branch only when the existing Process Branch Origin
+evidence already established that confirmed exact edge. The exporter MUST NOT
+reconstruct it from PID, name, path, time, command line, or similarity. It has
+no public parent identity, executable details, timing, first/last stages, or
+cross-branch alias. The literal display does not identify a process.
+
+An exported S0 parent uses its existing `pre_existing` reference and MUST NOT
+also populate `external_parent`. UNAVAILABLE parent relation uses null parent,
+ancestor, and external-parent values. A confirmed relation has exactly one of
+an exported parent ID or the generic external-parent record. The former draft
+`origin` and `origin_processes` fields are not schema 1.0 fields. This relation
+does not assert causal, tool, or logical-session origin.
 
 Branch output is AVAILABLE only when the existing branch projection is
 AVAILABLE. It MUST NOT reconstruct topology from names, PIDs, timing, or raw
@@ -532,8 +602,12 @@ English wording to recover semantics.
 | `TB_BRANCH_ID_NOT_SESSION_IDENTITY` | `BRANCH_ID != SESSION_IDENTITY` |
 | `TB_RUN_SIMILARITY_NOT_IDENTITY_PROOF` | `RUN_SIMILARITY != IDENTITY_PROOF` |
 | `TB_HASH_MATCH_NOT_EVIDENCE_AUTHENTICITY` | `HASH_MATCH != EVIDENCE_AUTHENTICITY` |
+| `TB_CAPTURE_COMPLETE_NOT_EVIDENCE_PASS` | `CAPTURE_COMPLETE != EVIDENCE_PASS` |
+| `TB_TASK_END_NOT_PROCESS_EXIT` | `TASK_END != PROCESS_EXIT` |
+| `TB_AVAILABILITY_REASON_NOT_NEW_ANALYSIS` | `AVAILABILITY_REASON != NEW_ANALYSIS` |
 
-Schema 1.0 packages MUST contain the applicable fixed core IDs. Conditional IDs
+Schema 1.0 packages MUST contain all 33 fixed core IDs above: the original 30
+plus the three T12.1 owner-decision boundaries. Conditional IDs
 may be added only by registered source features, never by prose matching.
 
 ## Normative JSON shape
@@ -562,20 +636,19 @@ release-validation result.
     },
     "timeline": {
       "status": "AVAILABLE",
-      "origin": "S0_CAPTURE_END",
-      "unit": "MILLISECOND",
-      "rounding": "TRUNCATE_TOWARD_ZERO",
+      "reason_codes": [],
       "events": [
-        { "event": "S0_CAPTURE_END", "order": 1, "offset_ms": 0 },
-        { "event": "S1_CAPTURE_END", "order": 2, "offset_ms": 4500 },
-        { "event": "TASK_END", "order": 3, "offset_ms": 12413 },
-        { "event": "S2_CAPTURE_END", "order": 4, "offset_ms": 13000 },
-        { "event": "S3_CAPTURE_END", "order": 5, "offset_ms": 23000 },
-        { "event": "S4_CAPTURE_END", "order": 6, "offset_ms": 33000 }
+        { "event": "S0_CAPTURE_END", "offset_ms": 0 },
+        { "event": "S1_CAPTURE_END", "offset_ms": 4500 },
+        { "event": "TASK_END", "offset_ms": 12413, "declaration": "OPERATOR_DECLARED" },
+        { "event": "S2_CAPTURE_END", "offset_ms": 13000 },
+        { "event": "S3_CAPTURE_END", "offset_ms": 23000 },
+        { "event": "S4_CAPTURE_END", "offset_ms": 33000 }
       ]
     },
     "ownership_summary": {
       "evidence_status": "AVAILABLE",
+      "reason_codes": [],
       "basis_stage": "S4",
       "confirmed_codex_owned_count": 1,
       "unknown_count": 0,
@@ -583,7 +656,7 @@ release-validation result.
     },
     "lifecycle_summary": {
       "evidence_status": "AVAILABLE",
-      "unavailable_reason": null,
+      "reason_codes": [],
       "basis_stage": "S4",
       "counts": {
         "ACTIVE": 0,
@@ -606,7 +679,7 @@ release-validation result.
   "task_delta": {
     "evidence_status": "AVAILABLE",
     "population_status": "COMPLETE",
-    "unavailable_reason": null,
+    "reason_codes": [],
     "basis": {
       "start": "S0_CAPTURE_END",
       "end": "TASK_END"
@@ -661,7 +734,7 @@ release-validation result.
   },
   "process_branches": {
     "evidence_status": "AVAILABLE",
-    "unavailable_reason": null,
+    "reason_codes": [],
     "branch_count": 1,
     "logical_session_provenance": "NOT_ESTABLISHED",
     "branches": [
@@ -674,10 +747,11 @@ release-validation result.
           { "parent_process_id": "P1", "child_process_id": "P3" },
           { "parent_process_id": "P1", "child_process_id": "P4" }
         ],
-        "origin": {
+        "parent_relation": {
           "status": "CONFIRMED_PARENT",
           "parent_process_id": "P5",
-          "nearest_pre_existing_ancestor_process_id": "P5"
+          "nearest_pre_existing_ancestor_process_id": "P5",
+          "external_parent": null
         },
         "total_processes": 4,
         "still_observed_at_s4_count": 0,
@@ -687,7 +761,7 @@ release-validation result.
   },
   "pre_existing": {
     "evidence_status": "AVAILABLE",
-    "unavailable_reason": null,
+    "reason_codes": [],
     "count": 1,
     "processes": [
       {
@@ -736,7 +810,10 @@ release-validation result.
     "TB_PACKAGE_OBSERVATION_ID_NOT_PROCESS_IDENTITY",
     "TB_BRANCH_ID_NOT_SESSION_IDENTITY",
     "TB_RUN_SIMILARITY_NOT_IDENTITY_PROOF",
-    "TB_HASH_MATCH_NOT_EVIDENCE_AUTHENTICITY"
+    "TB_HASH_MATCH_NOT_EVIDENCE_AUTHENTICITY",
+    "TB_CAPTURE_COMPLETE_NOT_EVIDENCE_PASS",
+    "TB_TASK_END_NOT_PROCESS_EXIT",
+    "TB_AVAILABILITY_REASON_NOT_NEW_ANALYSIS"
   ],
   "privacy": {
     "profile": "PUBLIC_SAFE_ONLY",
@@ -765,7 +842,7 @@ Markdown uses this exact section order:
 ## Summary
 ## Investigation
 ## Task Delta
-## Process Branch Origin
+## Process Branch Relationships
 ## Relevant pre-existing evidence
 ## Next Step
 ## Trust boundaries
@@ -780,8 +857,8 @@ Rendering rules:
 - Task Delta uses a compact table sourced from JSON. Markdown displays at most
   the first 25 canonical process/observation rows and reports the exact omitted
   row count.
-- Process Branch Origin displays at most the first 10 canonical branches, their
-  safe root/member references, origin status, and counts. It reports the exact
+- The Process Branch Relationships section displays at most the first 10 canonical branches, their
+  safe root/member references, parent-relation status, and counts. It reports the exact
   omitted branch count.
 - Relevant pre-existing evidence includes only the JSON rows and has the same
   25-row display limit.
@@ -851,7 +928,7 @@ T15/T16 may compare only compatible packages. Stable comparison inputs are:
 - section availability, population completeness, and registered reason codes;
 - integer Task Delta counts and observation-state counts;
 - safe display kind/value and already-established role tokens;
-- branch counts, ordered safe member-role/name sequences, edge shape, origin
+- branch counts, ordered safe member-role/name sequences, edge shape, parent-relation
   status, and pre-existing-ancestor relationship;
 - stage ordering and relative durations/offsets when available;
 - lifecycle/ownership aggregate classes and reason-code counts; and

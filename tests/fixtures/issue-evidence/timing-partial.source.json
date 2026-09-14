@@ -1,0 +1,5 @@
+{
+  "fixture_builder": "IssueEvidence.Source.ps1",
+  "case": "timing-partial",
+  "description": "Missing S3 capture-end time; other offsets retained and lifecycle basis unavailable."
+}

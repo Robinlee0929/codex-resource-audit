@@ -1,0 +1,5 @@
+{
+  "fixture_builder": "IssueEvidence.Source.ps1",
+  "case": "positive",
+  "description": "Four confirmed task-window processes, one branch, and one confirmed S0 ancestor."
+}

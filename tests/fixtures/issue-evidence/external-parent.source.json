@@ -1,0 +1,5 @@
+{
+  "fixture_builder": "IssueEvidence.Source.ps1",
+  "case": "external-parent",
+  "description": "Exact external parent first observed after S0; separate from nearest confirmed S0 ancestor."
+}

@@ -1,0 +1,5 @@
+{
+  "fixture_builder": "IssueEvidence.Source.ps1",
+  "case": "mixed-unknown",
+  "description": "Unrelated UNKNOWN S4 observation retained in aggregate only."
+}

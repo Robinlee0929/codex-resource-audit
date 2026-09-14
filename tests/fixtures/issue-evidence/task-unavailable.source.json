@@ -1,0 +1,5 @@
+{
+  "fixture_builder": "IssueEvidence.Source.ps1",
+  "case": "task-unavailable",
+  "description": "Partial S2 capture makes Task Delta and dependent Branch Origin unavailable."
+}
