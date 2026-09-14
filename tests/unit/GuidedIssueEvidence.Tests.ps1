@@ -170,7 +170,7 @@ Describe 'T13 Guided CLI source reuse, compatibility, and failure boundaries (of
         $script:t13Info=[Collections.Generic.List[string]]::new(); $script:t13Output=[Collections.Generic.List[object]]::new()
         $script:t13Trace=[Collections.Generic.List[string]]::new()
         $script:t13Inputs=[Collections.Generic.Queue[string]]::new()
-        foreach ($token in 'C1','C1','VERIFY') {$script:t13Inputs.Enqueue($token)}
+        foreach ($token in 'C1','C1','YES') {$script:t13Inputs.Enqueue($token)}
         $script:t13Failure=$null; $script:t13Details=$false; $script:t13ChildTime=$null
         $script:t13Status=@{}
         $script:t13Delivered=$null; $script:t13Serialized=$null; $script:t13Evidence=$null; $script:t13View=$null
@@ -208,7 +208,7 @@ Describe 'T13 Guided CLI source reuse, compatibility, and failure boundaries (of
             if ($script:t13Failure -eq 'candidate-cancel') {return 'Q'}
             if ($script:t13Inputs.Count -eq 0) {throw 'UNEXPECTED_PROMPT'}
             $answer=$script:t13Inputs.Dequeue()
-            if ($answer -eq 'VERIFY' -and $script:t13Failure -eq 'verify') {return 'NO'}
+            if ($answer -eq 'YES' -and $script:t13Failure -eq 'verify') {return 'NO'}
             return $answer
         }
         Mock Start-Sleep {}
@@ -351,7 +351,7 @@ Describe 'T13 Guided CLI source reuse, compatibility, and failure boundaries (of
         try {
             $source=@'
 param($Repository,$CanonicalText,$FixtureText,$Destination)
-foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Read-OperatorInput','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Write-IssueEvidencePackage') {
+foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Write-IssueEvidencePackage') {
     . (Join-Path $Repository "src/$name.ps1")
 }
 $script:fixture=$FixtureText | ConvertFrom-Json -Depth 50 -DateKind String
@@ -373,7 +373,7 @@ function Invoke-CanonicalSession {
 }
 function Invoke-GuidedIssueEvidenceExport {$global:exportCalls++; throw 'Unexpected export'}
 $root=$script:fixture.snapshots[0].processes[0]
-$state=[pscustomobject]@{status='OPERATOR_ASSERTION_RECORDED';operator_assertion_recorded=$true;review_candidate_ids=@('C1');selected_session_targets=@([pscustomobject]@{candidate_id='C1';operator_assertion_recorded=$true;pid=$root.pid;creation_time_utc=$root.creation_time;executable_path=$root.executable_path})}
+$state=[pscustomobject]@{status='OPERATOR_ASSERTION_RECORDED';operator_assertion_recorded=$true;review_candidate_ids=@('C1');selected_session_targets=@([pscustomobject]@{candidate_id='C1';operator_assertion_recorded=$true;name=$root.name;creation_time_precision='EXACT';capture_status='COMPLETE';snapshot_capture_status='COMPLETE';field_availability=[pscustomobject]@{creation_time='AVAILABLE';executable_path='AVAILABLE'};pid=$root.pid;creation_time_utc=$root.creation_time;executable_path=$root.executable_path})}
 Invoke-GuidedSession -GuidedOutcome $state -ExportIssueEvidence -IssueEvidenceOutputDirectory $Destination
 '@
             $null=$shell.AddScript($source).AddArgument($script:t13Root).AddArgument($script:t13Session.ToString()).AddArgument(($script:t13Raw | ConvertTo-Json -Depth 50)).AddArgument($script:t13Destination)

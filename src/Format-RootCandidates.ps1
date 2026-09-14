@@ -197,6 +197,12 @@ function Format-RootCandidateGroups {
     '  WARNING: GROUP_SUMMARY != VERIFICATION; UNIQUE_DISPLAY_GROUP != VERIFIED_ROOT.'
 }
 
+function Get-RootCandidateSafeName {
+    param([AllowNull()] [object] $Name)
+    if ($Name -is [string] -and $Name -cmatch '\A[A-Za-z0-9_.-]{1,100}\z' -and $Name -notmatch '(?i)secret|token|password|credential') { return $Name }
+    return '<REDACTED_OR_UNAVAILABLE>'
+}
+
 function Get-RootCandidatePresentation {
     <# Shared whitelist projection extracted from the canonical formatter.
        No raw commands, private identity substitutions, discovery or trust logic. #>
@@ -221,7 +227,7 @@ function Get-RootCandidatePresentation {
         if ($name -is [string] -and $name -match '(?i)codex') { 'NAME_CONTAINS_CODEX' }
         if ($path -is [string] -and $path -match '(?i)codex') { 'EXECUTABLE_PATH_CONTAINS_CODEX' }
     )
-    $safeName = if ($name -is [string] -and $name -cmatch '\A[A-Za-z0-9_.-]{1,100}\z' -and $name -notmatch '(?i)secret|token|password|credential') { $name } else { '<REDACTED_OR_UNAVAILABLE>' }
+    $safeName = Get-RootCandidateSafeName $name
     $identityOK = $pidOK -and $null -ne $time -and $exact -and $null -ne $safePath -and
         (Test-RootCandidateCode $fields 'executable_path' 'AVAILABLE') -and
         (Test-RootCandidateCode $record 'capture_status' 'COMPLETE') -and $captureLabel -eq 'COMPLETE'

@@ -45,8 +45,8 @@ function Read-OperatorInput {
 function Resolve-OperatorChoice {
     <# Orchestration only: resolves a display ordinal within the supplied captured
        set. Returns no process data, root anchor, identity or ownership assertion.
-       VERIFY is meaningful only after a caller has separately selected/displayed
-       identity. Future production orchestration must enforce that ordering. #>
+       Confirmation is meaningful only after a caller has separately selected
+       and displayed a Session-ready captured identity. #>
     param(
         [Parameter(Mandatory)] [object] $InputResult,
         [Parameter(Mandatory)] [ValidateSet('Candidate','Assertion')] [string] $Purpose,
@@ -62,7 +62,8 @@ function Resolve-OperatorChoice {
     if ($statusProperty.Value -cne 'INPUT' -or $null -eq $textProperty -or $textProperty.Value -isnot [string]) { return $result }
     $text = $textProperty.Value
     if ($Purpose -eq 'Assertion') {
-        if ($text -ceq 'VERIFY') { $result.status = 'OPERATOR_ASSERTED'; $result.operator_asserted = $true }
+        if ($text -imatch '\A(?:Y|YES)\z') { $result.status = 'OPERATOR_ASSERTED'; $result.operator_asserted = $true }
+        elseif ($text -imatch '\A(?:N|NO)\z') { $result.status = 'DECLINED' }
         return $result
     }
     $text = $text.Trim([char[]]@(' ', "`t")).ToUpperInvariant()
@@ -81,7 +82,7 @@ function Get-GuidedInputErrorMessage {
     switch -CaseSensitive ($Code) {
         'GUIDED_REVIEW_INVALID' { 'REVIEW SET INVALID. Enter comma-separated IDs from the current capture, e.g. C1,C2. No review set, Session target or operator assertion was retained.' }
         'GUIDED_TARGET_INVALID' { 'SESSION TARGET INVALID. Enter exactly one candidate ID from the current Review Set, e.g. C1. No Session target or operator assertion was retained.' }
-        'GUIDED_ASSERTION_INVALID' { 'OPERATOR ASSERTION INVALID. Only exact VERIFY records an assertion. No Session target or operator assertion was retained.' }
+        'GUIDED_ASSERTION_INVALID' { 'OPERATOR CONFIRMATION INVALID. Enter Y/YES to confirm, N/NO to decline, or Q/QUIT to cancel. Blank or unexpected input does not confirm. No Session target or confirmation was retained.' }
         'GUIDED_DETAILS_INVALID' { 'DETAILS INPUT INVALID. Type DETAILS to display the report, or press Enter to finish. No detailed evidence was displayed; completed observations are unchanged.' }
     }
 }

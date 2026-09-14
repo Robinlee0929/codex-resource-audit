@@ -304,7 +304,7 @@ Describe 'Root Candidates workflow (offline only)' {
         $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:candidateRoot 'src\Format-RootCandidates.ps1'),[ref]$tokens,[ref]$errors)
         $errors.Count | Should -Be 0
         $commands=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true))
-        $allowed=@('Set-StrictMode','Get-RootCandidateField','ConvertTo-RootCandidateArgument','Test-RootCandidateCode','Get-RootCandidateUtc','Get-RootCandidateSafePath','ConvertTo-SafeAuditText','Get-RootCandidateDisplayGroup','Get-RootCandidateFriendlyGroupLabel','Test-RootCandidateHumanConsole','Format-RootCandidateHumanView','Format-RootCandidateLegacyOutput','Format-OperatorLine','Add-OperatorStyle','ConvertTo-OperatorCell','Where-Object','ForEach-Object','Format-RootCandidateGroups','Get-RootCandidatePresentation')
+        $allowed=@('Set-StrictMode','Get-RootCandidateField','ConvertTo-RootCandidateArgument','Test-RootCandidateCode','Get-RootCandidateUtc','Get-RootCandidateSafePath','Get-RootCandidateSafeName','ConvertTo-SafeAuditText','Get-RootCandidateDisplayGroup','Get-RootCandidateFriendlyGroupLabel','Test-RootCandidateHumanConsole','Format-RootCandidateHumanView','Format-RootCandidateLegacyOutput','Format-OperatorLine','Add-OperatorStyle','ConvertTo-OperatorCell','Where-Object','ForEach-Object','Format-RootCandidateGroups','Get-RootCandidatePresentation')
         foreach($command in $commands) {
             $command.GetCommandName() | Should -BeIn $allowed
             $command.InvocationOperator | Should -Not -BeIn @('Ampersand','Dot')

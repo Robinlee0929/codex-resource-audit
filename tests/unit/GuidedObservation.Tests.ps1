@@ -48,7 +48,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         $script:observeTrace=[Collections.Generic.List[string]]::new()
         $script:observeEvents=[Collections.Generic.List[object]]::new()
         $script:observeInputs=[Collections.Generic.Queue[string]]::new()
-        foreach ($token in 'C1,C2','C1','VERIFY') { $script:observeInputs.Enqueue($token) }
+        foreach ($token in 'C1,C2','C1','YES') { $script:observeInputs.Enqueue($token) }
         $script:observeFailure=$null
         $script:observeMismatch=$false
         $script:observeStatus=@{}
@@ -249,7 +249,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         try {
             $source=@'
 param($Repository,$CanonicalText,$FixtureText)
-foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation') {
+foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation') {
     . (Join-Path $Repository "src\$name.ps1")
 }
 $script:fixture=$FixtureText | ConvertFrom-Json -Depth 40 -DateKind String
@@ -271,7 +271,7 @@ function Invoke-CanonicalSession {
 $root=$script:fixture.snapshots[0].processes[0]
 $state=[pscustomobject]@{
     status='OPERATOR_ASSERTION_RECORDED'; operator_assertion_recorded=$true; review_candidate_ids=@('C1')
-    selected_session_targets=@([pscustomobject]@{candidate_id='C1';operator_assertion_recorded=$true;pid=$root.pid;creation_time_utc=$root.creation_time;executable_path=$root.executable_path})
+    selected_session_targets=@([pscustomobject]@{candidate_id='C1';operator_assertion_recorded=$true;name=$root.name;creation_time_precision='EXACT';capture_status='COMPLETE';snapshot_capture_status='COMPLETE';field_availability=[pscustomobject]@{creation_time='AVAILABLE';executable_path='AVAILABLE'};pid=$root.pid;creation_time_utc=$root.creation_time;executable_path=$root.executable_path})
 }
 Invoke-GuidedSession -GuidedOutcome $state -FollowUpSeconds 7
 '@

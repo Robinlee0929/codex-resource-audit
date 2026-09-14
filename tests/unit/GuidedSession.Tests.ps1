@@ -33,6 +33,8 @@ BeforeAll {
             identity=[pscustomobject]@{pid=$root.pid; creation_time_utc=$root.creation_time; executable_path=$root.executable_path}
             selected_session_targets=@([pscustomobject]@{
                 candidate_id='C1'; operator_assertion_recorded=$true
+                name=$root.name; creation_time_precision='EXACT'; capture_status='COMPLETE'; snapshot_capture_status='COMPLETE'
+                field_availability=[pscustomobject]@{creation_time='AVAILABLE';executable_path='AVAILABLE'}
                 pid=$root.pid; creation_time_utc=$root.creation_time; executable_path=$root.executable_path
             })
         }
@@ -68,7 +70,7 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
         $script:life=$null
         $script:handoffParameters=$null
         $script:inputs=[Collections.Generic.Queue[object]]::new()
-        foreach ($token in 'C1','C1','VERIFY','','') { $script:inputs.Enqueue($token) }
+        foreach ($token in 'C1','C1','YES','','') { $script:inputs.Enqueue($token) }
         Mock Test-OperatorInteractiveHost { $true }
         Mock Test-GuidedProgressHost { $false }
         Mock Get-ProcessSnapshot {
@@ -290,11 +292,11 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
         $script:reports.Count | Should -Be 1
         $script:reports[0] | Should -BeExactly (Format-SessionAuditReport $script:sessionEvidence $script:life LIVE_WINDOWS_CIM)
     }
-    It 'T12 Real Guided wrong VERIFY or cancellation never reaches T4' {
-        foreach ($token in 'YES','Q') {
+    It 'T12 Real Guided rejected confirmation or cancellation never reaches T4' {
+        foreach ($token in 'VERIFY','Q') {
             $script:inputs.Clear()
             foreach ($value in 'C1','C1',$token) { $script:inputs.Enqueue($value) }
-            if ($token -eq 'YES') { Invoke-TestHandoff -Cli; ($script:information.MessageData -join "`n") | Should -Match 'OPERATOR ASSERTION INVALID' }
+            if ($token -eq 'VERIFY') { Invoke-TestHandoff -Cli; ($script:information.MessageData -join "`n") | Should -Match 'OPERATOR CONFIRMATION INVALID' }
             else { Invoke-TestHandoff -Cli }
         }
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly -ParameterFilter { $SnapshotId -ne 'CANDIDATES' }
@@ -340,7 +342,7 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
     }
     It 'T19 Discovery produces one independently copied asserted target while multi-review and cancellation stay separate' {
         $script:inputs.Clear()
-        foreach ($token in 'C1,C2','C1','VERIFY') { $script:inputs.Enqueue($token) }
+        foreach ($token in 'C1,C2','C1','YES') { $script:inputs.Enqueue($token) }
         $result=Invoke-GuidedDiscovery 6>$null
         @($result.review_candidate_ids) | Should -Be @('C1','C2')
         ($result.selected_session_targets -is [array]) | Should -BeTrue

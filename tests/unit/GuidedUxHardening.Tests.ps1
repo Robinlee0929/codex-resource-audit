@@ -39,7 +39,7 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
         $script:uxPrompts=[Collections.Generic.List[string]]::new()
         $script:uxDefect=$null
         $script:uxResolved=$null; $script:uxLife=$null; $script:uxCanonical=$null
-        Set-UxInput @('c1,c2',' c1 ','VERIFY','')
+        Set-UxInput @('c1,c2',' c1 ','YES','')
         Mock Test-OperatorInteractiveHost { $true }
         Mock Test-GuidedProgressHost { $false }
         Mock Start-Sleep { param($Seconds) $script:uxTrace.Add("wait:$Seconds") }
@@ -98,10 +98,10 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
     It 'UX02 Bad review <token> is friendly and all-or-nothing' -ForEach @(
         @{token='1'},@{token='PID 6100'},@{token='c1bad'},@{token='c'},@{token='c01'},@{token='c1,c99'},@{token='c1,bad'},@{token=''},@{token="c1`n"}
     ) {
-        Set-UxInput @($token,'C1','VERIFY')
+        Set-UxInput @($token,'C1','YES')
         Invoke-UxGuided
         Get-UxText | Should -Match 'REVIEW SET INVALID'
-        Get-UxText | Should -Not -Match 'COMPARE CAPTURED|OPERATOR_ASSERTION: RECORDED'
+        Get-UxText | Should -Not -Match 'COMPARE CAPTURED|OPERATOR_CONFIRMATION: RECORDED'
         $script:uxInputs.Count | Should -Be 2
         Should -Invoke Get-ProcessSnapshot -Times 1 -Exactly
         Should -Invoke Invoke-CanonicalSession -Times 0 -Exactly
@@ -110,7 +110,7 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
     It 'UX03 Invalid target <token> retains no assertion or target and never revalidates' -ForEach @(
         @{token='c2'},@{token=''},@{token='c1,c2'},@{token='6100'},@{token="PRIVATE_INPUT C:\Users\PrivatePerson\secret`e[31m"}
     ) {
-        Set-UxInput @('c1',$token,'VERIFY')
+        Set-UxInput @('c1',$token,'YES')
         Invoke-UxGuided
         $text=Get-UxText
         $text | Should -Match 'SESSION TARGET INVALID.*exactly one candidate ID'
@@ -121,10 +121,10 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
         Should -Invoke Get-ProcessSnapshot -Times 1 -Exactly
         Should -Invoke Invoke-CanonicalSession -Times 0 -Exactly
     }
-    It 'UX04 Wrong VERIFY remains case-sensitive and uses the friendly path: <token>' -ForEach @(@{token='verify'},@{token='YES'},@{token=''},@{token=' VERIFY'}) {
+    It 'UX04 Unexpected confirmation uses the friendly fail-closed path: <token>' -ForEach @(@{token='verify'},@{token='VERIFY'},@{token=''},@{token=' VERIFY'}) {
         Set-UxInput @('c1','c1',$token)
         Invoke-UxGuided
-        Get-UxText | Should -Match 'OPERATOR ASSERTION INVALID'
+        Get-UxText | Should -Match 'OPERATOR CONFIRMATION INVALID'
         Get-UxText | Should -Not -Match 'STEP 6|\.ps1|\x1B'
         Should -Invoke Invoke-CanonicalSession -Times 0 -Exactly
     }
@@ -134,7 +134,7 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
         Get-UxText | Should -Not -Match 'Guided stopped safely'
     }
     It 'UX06 Explicit cancellation remains separate from failure: <stage>' -ForEach @(@{stage=0},@{stage=1},@{stage=2}) {
-        $inputs=@('C1','C1','VERIFY'); $inputs[$stage]='Q'
+        $inputs=@('C1','C1','YES'); $inputs[$stage]='Q'
         Set-UxInput $inputs
         Invoke-UxGuided
         Get-UxText | Should -Match 'Outcome: CANCELLED'
@@ -176,7 +176,7 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
         $text | Should -Not -Match 'The unchanged canonical report follows|DATA_SOURCE: LIVE_WINDOWS_CIM'
     }
     It 'UX11 Explicit <token> returns identical report once without recomputation' -ForEach @(@{token='DETAILS'},@{token='details'},@{token='DeTaIlS'}) {
-        Set-UxInput @('c1','c1','VERIFY',$token)
+        Set-UxInput @('c1','c1','YES',$token)
         Invoke-UxGuided
         $success=@($script:uxRecords | Where-Object { $_ -isnot [Management.Automation.InformationRecord] })
         $success.Count | Should -Be 1
@@ -190,14 +190,14 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
         Should -Invoke Format-SessionAuditReport -Times 1 -Exactly
     }
     It 'UX12 Details finish token <token> emits no detailed evidence' -ForEach @(@{token='Q'},@{token='QUIT'},@{token='quit'},@{token=$null}) {
-        Set-UxInput @('c1','c1','VERIFY',$token)
+        Set-UxInput @('c1','c1','YES',$token)
         Invoke-UxGuided
         @($script:uxRecords | Where-Object { $_ -isnot [Management.Automation.InformationRecord] }).Count | Should -Be 0
         Get-UxText | Should -Not -Match 'GUIDED INPUT STOPPED|SESSION FLOW: FAILED'
         Should -Invoke Get-ProcessSnapshot -Times 7 -Exactly
     }
     It 'UX13 Invalid DETAILS token finishes fail closed without report or replay' {
-        Set-UxInput @('c1','c1','VERIFY','PRIVATE_BAD_TOKEN')
+        Set-UxInput @('c1','c1','YES','PRIVATE_BAD_TOKEN')
         Invoke-UxGuided
         Get-UxText | Should -Match 'DETAILS INPUT INVALID'
         Get-UxText | Should -Not -Match 'PRIVATE_BAD_TOKEN|\.ps1|SESSION FLOW: FAILED'
@@ -205,7 +205,7 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
         Should -Invoke Invoke-CanonicalSession -Times 1 -Exactly
     }
     It 'UX14 Explicit DETAILS redirection retains exact canonical text and separates summary' {
-        Set-UxInput @('c1','c1','VERIFY','details')
+        Set-UxInput @('c1','c1','YES','details')
         $path=Join-Path $TestDrive 'details.txt'
         & $script:uxEntry -Mode Guided -FollowUpSeconds 3 6>$null > $path
         Get-Content -Raw $path | Should -BeExactly ($script:uxCanonical + [Environment]::NewLine)
@@ -215,14 +215,14 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
         $script:uxDefect='incomplete'
         Invoke-UxGuided
         Get-UxText | Should -Match 'Candidate ID: C1'
-        Get-UxText | Should -Match 'Session readiness: IDENTITY INCOMPLETE'
-        Get-UxText | Should -Match 'Missing: Executable Path'
+        Get-UxText | Should -Match 'Session readiness: BLOCKED'
+        Get-UxText | Should -Match 'Reason: Captured executable path is unavailable'
         Get-UxText | Should -Match 'Outcome: EVIDENCE_BLOCKED'
         Get-UxText | Should -Not -Match 'STEP 5|STEP 6'
         Should -Invoke Invoke-CanonicalSession -Times 0 -Exactly
     }
     It 'UX23 Interactive countdown preserves complete Session ordering and report semantics' {
-        Set-UxInput @('C1','C1','VERIFY','DETAILS')
+        Set-UxInput @('C1','C1','YES','DETAILS')
         $script:uxFakeTime=0.0
         Mock Test-GuidedProgressHost { $true }
         Mock Get-GuidedWaitMilliseconds { $script:uxFakeTime }
@@ -264,15 +264,18 @@ Describe 'T6.6 Candidate grammar and neutral readiness' {
         @{field='Executable Path';property='executable_path';value=$null},
         @{field='Executable Path';property='executable_path';value='<REDACTED_OR_UNAVAILABLE>'}
     ) {
-        $candidate=[pscustomobject]@{candidate_id='C9';name='codex-helper.exe';pid='42';creation_time_utc='2026-01-01T00:00:00.1234567Z';executable_path='C:\Synthetic\codex-helper.exe';identity_complete=$true}
+        $record=[pscustomobject]@{name='codex-helper.exe';pid=42;creation_time_utc='2026-01-01T00:00:00.1234567Z';executable_path='C:\Synthetic\codex-helper.exe';creation_time_precision='EXACT';capture_status='COMPLETE';field_availability=[pscustomobject]@{creation_time='AVAILABLE';executable_path='AVAILABLE'}}
+        $candidate=[pscustomobject]@{candidate_id='C9';name=$record.name;pid='42';creation_time_utc=$record.creation_time_utc;executable_path=$record.executable_path;identity_complete=$true}
         if ($property) { $candidate.$property=$value }
+        if ($property) { $record.$property=$value }
+        $candidate | Add-Member session_readiness (Get-GuidedSessionReadiness $record COMPLETE -TimeField creation_time_utc)
         $before=$candidate | ConvertTo-Json -Compress
         $text=Format-GuidedComparison @($candidate,$candidate)
         [regex]::Matches($text,'Candidate ID: C9').Count | Should -Be 2
         if ($field -eq 'none') { $text | Should -Match 'Session readiness: READY'; $text | Should -Not -Match 'Missing:' }
-        else { $text | Should -Match 'Session readiness: IDENTITY INCOMPLETE'; $text | Should -Match ([regex]::Escape("Missing: $field")) }
+        else { $text | Should -Match 'Session readiness: BLOCKED'; $text | Should -Match 'Reason:' }
         $text | Should -Match 'SESSION_READY != VERIFIED_ROOT'
-        $text | Should -Not -Match 'VERIFIED_ROOT:|OPERATOR_ASSERTION: RECORDED|BEST CANDIDATE'
+        $text | Should -Not -Match 'VERIFIED_ROOT:|OPERATOR_CONFIRMATION: RECORDED|BEST CANDIDATE'
         ($candidate | ConvertTo-Json -Compress) | Should -BeExactly $before
     }
     It 'UX18 Friendly errors recognize explicit ID and type without echoing exception details' {

@@ -5,7 +5,7 @@ Codex Resource Audit is a Windows-first, read-only evidence tool for answering a
 It is designed for investigations where shells, Node.js, browser helpers, and command runners may also exist independently. A familiar name, a large process count, or a process that remains visible is not enough to prove Codex ownership, a logical session, or a cleanup problem.
 
 ```text
-DISCOVER -> REVIEW -> SELECT TARGET -> VERIFY -> OBSERVE -> RESULTS
+DISCOVER -> REVIEW -> SELECT TARGET -> CONFIRM -> REVALIDATE -> OBSERVE -> RESULTS
 ```
 
 ## Why this exists
@@ -34,7 +34,7 @@ Open an operator-owned PowerShell 7 console in the repository and run:
 .\codex-resource-audit.ps1 -Mode Guided
 ```
 
-Guided is the recommended workflow. It discovers possible roots, asks you to review and select one, requires explicit verification, captures a five-snapshot observation, then presents Task Delta, Process Branch Origin, and a bounded next step.
+Guided is the recommended workflow. It discovers possible roots, asks you to review and select one Session-ready candidate, requires explicit operator confirmation followed by exact identity revalidation, captures a five-snapshot observation, then presents Task Delta, Process Branch Origin, and a bounded next step.
 
 Live Windows validation belongs in that operator-owned console, outside the Codex execution environment. The tool is read-only: it never terminates, suspends, reprioritizes, cleans up, or repairs processes.
 
@@ -46,7 +46,8 @@ Live Windows validation belongs in that operator-owned console, outside the Code
 DISCOVER
   -> REVIEW
   -> SELECT TARGET
-  -> VERIFY
+  -> OPERATOR CONFIRMATION
+  -> EXACT IDENTITY REVALIDATION
   -> S0 BASELINE
   -> PERFORM TASK
   -> S1 TASK ACTIVE
@@ -57,8 +58,8 @@ DISCOVER
   -> RESULTS
 ```
 
-1. **Discover and review.** Guided shows possible root candidates. Review the set; ordering and grouping do not establish trust.
-2. **Select and verify.** Select one candidate only when you can independently identify it as the intended current Codex instance. Type the requested verification assertion.
+1. **Discover and review.** Guided shows possible root candidates with READY or BLOCKED Session readiness. Both remain reviewable; ordering, grouping, and readiness do not establish trust. COPY_READY template status is separate from Session eligibility.
+2. **Select and confirm.** Explicitly select one READY candidate you independently recognize as the Codex instance you intend to observe. Enter Y/YES to confirm, N/NO to decline, or Q/QUIT to cancel. Blank or unexpected input never confirms. A review set with no READY candidates stops before target selection.
 3. **Capture S0.** Guided revalidates the exact PID, creation time, and executable path, then captures the baseline before the task begins.
 4. **Perform the task and capture S1.** Start the activity after S0 and capture S1 while the activity is present when practical.
 5. **Declare `TASK_END`.** Finish the activity, then press Enter. This records the operator-declared event and captures S2; it does not control or terminate a process.

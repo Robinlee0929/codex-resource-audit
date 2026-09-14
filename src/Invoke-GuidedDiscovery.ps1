@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 
 function Resolve-OperatorReviewSet {
-    <# Review grammar. Exact VERIFY semantics stay unchanged.
+    <# Review grammar, separate from operator confirmation.
        Normalize ID case, ASCII space/tab and duplicate IDs, preserving
        first occurrence. Any invalid token rejects the entire request. #>
     param([Parameter(Mandatory)] [object] $InputResult,
@@ -56,12 +56,16 @@ function Invoke-GuidedDiscovery {
         selected_candidate_id = $null
         operator_assertion_recorded = $false
         identity = $null
-        session_identity_revalidation = 'PENDING'
+        reason_code = $null
+        session_identity_revalidation = 'NOT_STARTED'
         session_capture = 'NOT_STARTED'
         s0_capture = 'NOT_STARTED'
     }
-    if (-not $view.available -or $view.capture_status -cne 'COMPLETE') { return $outcome }
-    if ($view.rows.Count -eq 0) { $outcome.status = 'NO_CANDIDATES'; return $outcome }
+    if (-not $view.available) { return $outcome }
+    if ($view.rows.Count -eq 0) {
+        if ($view.capture_status -ceq 'COMPLETE') { $outcome.status = 'NO_CANDIDATES' }
+        return $outcome
+    }
     Write-Information (Format-OperatorLine Step -Step 2 -Label 'SELECT FOR REVIEW') -InformationAction Continue
     try {
         $inputValue = Read-OperatorInput -Prompt 'Select one or more candidate IDs for review, e.g. C3,C9,C12 (Q/QUIT to cancel)' -Reader $Reader
@@ -72,10 +76,15 @@ function Invoke-GuidedDiscovery {
     if ($review.status -ceq 'CANCELLED') { $outcome.status = 'CANCELLED'; return $outcome }
     if ($review.status -cne 'REVIEW_SELECTED') { Stop-GuidedInput -Code GUIDED_REVIEW_INVALID }
     $reviewRows = @($review.candidate_indices | ForEach-Object { $view.rows[$_] })
+    $outcome.review_candidate_ids = @($reviewRows | ForEach-Object { $_.candidate_id })
     Write-Information (Format-GuidedComparison -Candidates $reviewRows) -InformationAction Continue
+    if (@($reviewRows | Where-Object { $_.session_readiness.status -ceq 'READY' }).Count -eq 0) {
+        $outcome.reason_code='NO_SESSION_READY_CANDIDATES'
+        return $outcome
+    }
     Write-Information (Format-OperatorLine Step -Step 4 -Label 'CHOOSE SESSION TARGET') -InformationAction Continue
     try {
-        $inputValue = Read-OperatorInput -Prompt 'Choose ONE candidate ID from the review set for future Session observation (Q/QUIT to cancel)' -Reader $Reader
+        $inputValue = Read-OperatorInput -Prompt 'Choose ONE READY candidate ID from the review set for Session observation (Q/QUIT to cancel)' -Reader $Reader
     }
     catch [Management.Automation.PipelineStoppedException] { throw }
     catch { throw 'GUIDED_INPUT_FAILED: target input failed; no target or assertion retained.' }
@@ -85,21 +94,22 @@ function Invoke-GuidedDiscovery {
         Stop-GuidedInput -Code GUIDED_TARGET_INVALID
     }
     $selected = $view.rows[$choice.candidate_index]
+    if ($selected.session_readiness.status -cne 'READY') {
+        $outcome.reason_code='SESSION_TARGET_BLOCKED'
+        return $outcome
+    }
     Write-Information (Format-GuidedSelectedIdentity -Candidate $selected) -InformationAction Continue
-    # Existing complete safe-template identity is necessary for recognition,
-    # never evidence of root eligibility. Do not reveal suppressed fields or
-    # accept a replacement identity. Display incomplete identity, then stop.
-    if (-not $selected.identity_complete -or $selected.name -ceq '<REDACTED_OR_UNAVAILABLE>') { return $outcome }
-    $assertionPromptView = (Format-OperatorLine Step -Step 5 -Label 'EXPLICIT OPERATOR ASSERTION') + [Environment]::NewLine +
-        (Format-OperatorLine Note -Value 'Type VERIFY only if you independently recognize the captured identity above as the Codex instance you intend to observe.')
+    $assertionPromptView = (Format-OperatorLine Step -Step 5 -Label 'OPERATOR CONFIRMATION') + [Environment]::NewLine +
+        (Format-OperatorLine Note -Value 'Confirm only if you recognize this captured identity as the Codex instance you intend to observe. Confirmation does not verify its current identity or ownership.')
     Write-Information $assertionPromptView -InformationAction Continue
     try {
-        $inputValue = Read-OperatorInput -Prompt 'Type VERIFY to record your operator assertion (Q/QUIT to cancel)' -Reader $Reader
+        $inputValue = Read-OperatorInput -Prompt 'Confirm this captured identity is the Codex instance you intend to observe? (Y/N, Q to cancel)' -Reader $Reader
     }
     catch [Management.Automation.PipelineStoppedException] { throw }
     catch { throw 'GUIDED_INPUT_FAILED: assertion input failed; no operator assertion recorded.' }
     $assertion = Resolve-OperatorChoice -InputResult $inputValue -Purpose Assertion
     if ($assertion.status -ceq 'CANCELLED') { $outcome.status = 'CANCELLED'; return $outcome }
+    if ($assertion.status -ceq 'DECLINED') { $outcome.status='DECLINED'; $outcome.reason_code='OPERATOR_CONFIRMATION_DECLINED'; return $outcome }
     if (-not $assertion.operator_asserted) { Stop-GuidedInput -Code GUIDED_ASSERTION_INVALID }
     $outcome.status = 'OPERATOR_ASSERTION_RECORDED'
     $outcome.review_candidate_ids = @($reviewRows | ForEach-Object { $_.candidate_id })
@@ -116,12 +126,9 @@ function Invoke-GuidedDiscovery {
     # Collection-shaped orchestration state; v0.1.1 still selects/asserts ONE.
     # Keep the existing scalar fields as presentation compatibility projections.
     # Copy identity scalars so those projections cannot mutate execution state.
-    $outcome.selected_session_targets = @([pscustomobject]@{
-        candidate_id = $selected.candidate_id
-        operator_assertion_recorded = $true
-        pid = [int]$selected.pid
-        creation_time_utc = $selected.creation_time_utc
-        executable_path = $selected.executable_path
-    })
+    $target=$selected.session_readiness.identity.PSObject.Copy()
+    $target | Add-Member candidate_id $selected.candidate_id
+    $target | Add-Member operator_assertion_recorded $true
+    $outcome.selected_session_targets = @($target)
     return $outcome
 }

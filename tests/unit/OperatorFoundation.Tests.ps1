@@ -200,7 +200,7 @@ Describe 'T1 internal operator interaction, never root verification' {
         Should -Invoke Read-Host -Times 0 -Exactly
     }
     It 'O14 Blank invalid out-of-set oversized and noncanonical IDs select nothing' {
-        foreach ($text in '', ' ', 'C0', 'C3', 'C01', 'c1bad', ' C1BAD', 'C1 BAD ', "C1`n", 'C999999999999999999999999', 'VERIFY', '99') {
+        foreach ($text in '', ' ', 'C0', 'C3', 'C01', 'c1bad', ' C1BAD', 'C1 BAD ', "C1`n", 'C999999999999999999999999', 'YES', '99') {
             $choice = Resolve-OperatorChoice -InputResult ([pscustomobject]@{ status='INPUT'; text=$text }) -Purpose Candidate -Candidates $script:capturedCandidates
             $choice.status | Should -BeExactly 'INVALID'
             $choice.candidate_index | Should -BeNullOrEmpty
@@ -210,15 +210,15 @@ Describe 'T1 internal operator interaction, never root verification' {
             (Resolve-OperatorChoice -InputResult ([pscustomobject]@{ status='INPUT'; text='C2' }) -Purpose Candidate -Candidates $set).status | Should -BeExactly 'INVALID'
         }
     }
-    It 'O15 Blank Enter wrong token candidate ID and implicit yes never assert verification' {
-        foreach ($text in '', ' ', "`r`n", 'verify', 'Verify', 'VERIFY ', ' VERIFY', "VERIFY`n", 'Y', 'YES', 'C1', 'COPY_READY', 'codex.exe') {
+    It 'O15 Blank Enter unexpected token and candidate ID never record confirmation' {
+        foreach ($text in '', ' ', "`r`n", 'VERIFY', 'verify', 'Verify', 'VERIFY ', ' VERIFY', "VERIFY`n", 'C1', 'COPY_READY', 'codex.exe') {
             $choice = Resolve-OperatorChoice -InputResult ([pscustomobject]@{ status='INPUT'; text=$text }) -Purpose Assertion
             $choice.status | Should -BeExactly 'INVALID'
             $choice.operator_asserted | Should -BeFalse
         }
     }
-    It 'O16 Exact VERIFY records only an orchestration assertion without a root or identity' {
-        $inputValue = Read-OperatorInput -Prompt 'Type VERIFY' -Reader { 'VERIFY' }
+    It 'O16 Explicit YES records only an orchestration assertion without a root or identity' {
+        $inputValue = Read-OperatorInput -Prompt 'Confirm identity (Y/N)' -Reader { 'YES' }
         $before = $inputValue | ConvertTo-Json -Compress
         $choice = Resolve-OperatorChoice -InputResult $inputValue -Purpose Assertion
         $choice.status | Should -BeExactly 'OPERATOR_ASSERTED'
@@ -243,12 +243,12 @@ Describe 'T1 internal operator interaction, never root verification' {
         }
     }
     It 'O18 Malformed scripted output and malformed input envelopes fail closed' {
-        foreach ($reader in { 'VERIFY'; 'VERIFY' }, { $true }, { [pscustomobject]@{ text='VERIFY' } }) {
+        foreach ($reader in { 'YES'; 'YES' }, { $true }, { [pscustomobject]@{ text='YES' } }) {
             $inputValue = Read-OperatorInput -Prompt 'Input' -Reader $reader
             $inputValue.status | Should -BeExactly 'INVALID'
             (Resolve-OperatorChoice -InputResult $inputValue -Purpose Assertion).operator_asserted | Should -BeFalse
         }
-        foreach ($envelope in [pscustomobject]@{}, [pscustomobject]@{ status='INPUT' }, [pscustomobject]@{ status=@('INPUT'); text='VERIFY' }, [pscustomobject]@{ status='INPUT'; text=@('VERIFY') }) {
+        foreach ($envelope in [pscustomobject]@{}, [pscustomobject]@{ status='INPUT' }, [pscustomobject]@{ status=@('INPUT'); text='YES' }, [pscustomobject]@{ status='INPUT'; text=@('YES') }) {
             (Resolve-OperatorChoice -InputResult $envelope -Purpose Assertion).operator_asserted | Should -BeFalse
         }
     }
@@ -267,11 +267,11 @@ Describe 'T1 internal operator interaction, never root verification' {
         Should -Invoke Read-Host -Times 0 -Exactly
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
     }
-    It 'O22 Nonterminating input errors cannot yield a later VERIFY token or change caller preferences' {
+    It 'O22 Nonterminating input errors cannot yield a later YES token or change caller preferences' {
         $previousPreference = $ErrorActionPreference
         try {
             $ErrorActionPreference = 'Continue'
-            { Read-OperatorInput -Prompt 'Input' -Reader { Write-Error 'SYNTHETIC_READER_ERROR'; 'VERIFY' } } | Should -Throw '*SYNTHETIC_READER_ERROR*'
+            { Read-OperatorInput -Prompt 'Input' -Reader { Write-Error 'SYNTHETIC_READER_ERROR'; 'YES' } } | Should -Throw '*SYNTHETIC_READER_ERROR*'
             $ErrorActionPreference | Should -Be 'Continue'
         }
         finally { $ErrorActionPreference = $previousPreference }

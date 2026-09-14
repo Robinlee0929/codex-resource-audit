@@ -85,9 +85,9 @@ Describe 'T7 Help and candidate readability' {
     }
     It 'T7-H grouped candidates preserve IDs and avoid ranking recommendation or automatic selection' {
         $rows=@(
-            [pscustomobject]@{candidate_id='C1';name='codex.exe';pid='10';display_group='NAME_EQUALS_CODEX_EXE'},
-            [pscustomobject]@{candidate_id='C2';name='ChatGPT.exe';pid='11';display_group='NAME_EQUALS_CHATGPT_EXE'},
-            [pscustomobject]@{candidate_id='C3';name='node.exe';pid='12';display_group='PATH_ONLY_MATCH'}
+            [pscustomobject]@{candidate_id='C1';name='codex.exe';pid='10';display_group='NAME_EQUALS_CODEX_EXE';session_readiness=[pscustomobject]@{status='READY'}},
+            [pscustomobject]@{candidate_id='C2';name='ChatGPT.exe';pid='11';display_group='NAME_EQUALS_CHATGPT_EXE';session_readiness=[pscustomobject]@{status='BLOCKED'}},
+            [pscustomobject]@{candidate_id='C3';name='node.exe';pid='12';display_group='PATH_ONLY_MATCH';session_readiness=[pscustomobject]@{status='READY'}}
         )
         $text=Format-GuidedCandidateIndex ([pscustomobject]@{capture_status='COMPLETE';available=$true;rows=$rows}) -ColorCapability Plain
         foreach ($id in 'C1','C2','C3') { ([regex]::Matches($text,"(?m)^    $id ")).Count | Should -Be 1 }

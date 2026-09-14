@@ -72,9 +72,9 @@ function Format-OperatorLine {
         'Note' { $style = 'Secondary'; "  Note: $safeValue" }
         'Status' {
             $positive = @('VERIFIED','MATCHED','CONFIRMED','COMPLETE','PASS','READY')
-            $attention = @('UNKNOWN','PENDING','IDENTITY INCOMPLETE','EVIDENCE_BLOCKED','NOT_SUPPORTED','UNAVAILABLE','FOUNDATION_ONLY','OPERATOR_INPUT_REQUIRED')
+            $attention = @('UNKNOWN','PENDING','BLOCKED','IDENTITY INCOMPLETE','EVIDENCE_BLOCKED','NOT_SUPPORTED','UNAVAILABLE','FOUNDATION_ONLY','OPERATOR_INPUT_REQUIRED')
             $failures = @('FAILED','INVALID','COLLECTION_FAILED')
-            $neutral = @('CANDIDATE_ONLY','STILL_OBSERVED','NO_LONGER_OBSERVED','CANCELLED','NOT_IMPLEMENTED','NONE')
+            $neutral = @('CANDIDATE_ONLY','STILL_OBSERVED','NO_LONGER_OBSERVED','CANCELLED','NOT_IMPLEMENTED','NOT_STARTED','NONE')
             if ($Value -isnot [string] -or $Value -cnotin ($positive + $attention + $failures + $neutral)) {
                 $safeValue = '<REDACTED_STATUS>'
             }

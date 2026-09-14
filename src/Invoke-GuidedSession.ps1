@@ -15,7 +15,7 @@ function Get-GuidedExecutionTarget {
     if (-not (Test-RootCandidateCode $GuidedOutcome 'status' 'OPERATOR_ASSERTION_RECORDED') -or
         $asserted -isnot [bool] -or -not $asserted -or
         $targetAsserted -isnot [bool] -or -not $targetAsserted) {
-        throw 'GUIDED_OPERATOR_ASSERTION_REQUIRED: explicit VERIFY for the execution target is required.'
+        throw 'GUIDED_OPERATOR_ASSERTION_REQUIRED: explicit operator confirmation for the execution target is required.'
     }
     $candidateId = Get-RootCandidateField $target 'candidate_id'
     $review = Get-RootCandidateField $GuidedOutcome 'review_candidate_ids'
@@ -23,18 +23,15 @@ function Get-GuidedExecutionTarget {
         $review -isnot [Collections.IList] -or $candidateId -cnotin $review) {
         throw 'GUIDED_TARGET_INVALID: the execution target must belong to the captured review set.'
     }
-    $processId = Get-RootCandidateField $target 'pid'
-    $time = Get-RootCandidateUtc (Get-RootCandidateField $target 'creation_time_utc')
-    $path = Get-RootCandidateSafePath (Get-RootCandidateField $target 'executable_path')
-    if (($processId -isnot [int] -and $processId -isnot [long]) -or
-        $processId -le 0 -or $processId -gt [int]::MaxValue -or $null -eq $time -or $null -eq $path) {
+    $readiness=Get-GuidedSessionReadiness -Record $target -TimeField creation_time_utc -CaptureLabel (Get-RootCandidateField $target 'snapshot_capture_status')
+    if ($readiness.status -cne 'READY') {
         throw 'GUIDED_TARGET_IDENTITY_INVALID: complete safe captured identity is required.'
     }
     [pscustomobject]@{
         candidate_id = $candidateId
-        pid = [int]$processId
-        creation_time_utc = $time
-        executable_path = $path
+        pid = $readiness.identity.pid
+        creation_time_utc = $readiness.identity.creation_time_utc
+        executable_path = $readiness.identity.executable_path
         operator_assertion_recorded = $true
     }
 }
@@ -45,7 +42,7 @@ function Format-GuidedRevalidation {
     @(
         if ($Status -eq 'PENDING') {
             Format-OperatorLine Step -Step 6 -Label 'EXACT IDENTITY REVALIDATION'
-            Format-OperatorLine KeyValue -Label 'OPERATOR_ASSERTION' -Value 'RECORDED'
+            Format-OperatorLine KeyValue -Label 'OPERATOR_CONFIRMATION' -Value 'RECORDED'
         }
         Format-OperatorLine Status -Label 'SESSION_IDENTITY_REVALIDATION' -Value $Status
         Format-OperatorLine KeyValue -Label 'SESSION_CAPTURE' -Value 'NOT_STARTED'
