@@ -1,0 +1,32 @@
+{
+  "kind": "SANITIZED_REPLAY",
+  "validationSource": "Previously validated external positive-control semantics",
+  "liveCapture": false,
+  "taskDelta": {
+    "availability": "AVAILABLE",
+    "confirmedCreated": 4,
+    "stillObservedAtS4": 0,
+    "noLongerObservedByS4": 4,
+    "firstSeen": "S1",
+    "lastSeen": "S1",
+    "currentResult": "NO_LONGER_OBSERVED"
+  },
+  "branch": {
+    "count": 1,
+    "preExistingAncestor": "codex.exe",
+    "root": "codex-command-runner",
+    "children": [
+      "pwsh.exe",
+      "conhost.exe",
+      "powershell.exe"
+    ]
+  },
+  "negativeControl": {
+    "activity": "External Browser task",
+    "taskDeltaAvailability": "AVAILABLE",
+    "confirmedCreated": 0,
+    "branchAvailability": "AVAILABLE",
+    "branches": 0,
+    "baselineProcesses": "PRE_EXISTING"
+  }
+}

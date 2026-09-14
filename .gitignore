@@ -3,3 +3,4 @@ TestResults.xml
 *.tmp
 *.log
 out/
+demo/v0.1.1/generated/

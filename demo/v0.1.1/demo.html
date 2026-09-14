@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Codex Resource Audit v0.1.1 — Guided sanitized replay</title>
+  <link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<main id="stage" aria-label="Codex Resource Audit v0.1.1 sanitized replay">
+  <header>
+    <span>Codex Resource Audit <b>v0.1.1</b></span>
+    <span class="replay-label">SANITIZED REPLAY · NOT A LIVE CAPTURE</span>
+  </header>
+
+  <section id="intro" class="scene">
+    <p class="eyebrow">A READ-ONLY GUIDED INVESTIGATION</p>
+    <h1>I see extra Codex processes.</h1>
+    <p class="hero-question">What changed, where did they come from,<br>and what should I do next?</p>
+    <p class="hero-flow">Discover <i>→</i> Verify <i>→</i> Observe <i>→</i> Explain</p>
+  </section>
+
+  <section id="start" class="scene">
+    <p class="step">01 · START GUIDED</p>
+    <h2>Guided is the recommended normal-user workflow.</h2>
+    <div class="terminal">
+      <div class="terminal-top"><span>PowerShell 7</span><span>operator-owned console</span></div>
+      <pre><span class="prompt">PS&gt;</span> .\codex-resource-audit.ps1 -Mode Guided</pre>
+    </div>
+    <div class="two-notes">
+      <p><b>Read-only</b><br>Observes; never terminates or cleans up.</p>
+      <p><b>Fail closed</b><br><code>UNKNOWN != CODEX</code></p>
+    </div>
+  </section>
+
+  <section id="workflow" class="scene">
+    <p class="step">02 · SELECT AND VERIFY</p>
+    <h2>Select the Codex instance you intend to observe.</h2>
+    <div class="flow-row">
+      <div>DISCOVER<small>possible candidates</small></div><span>→</span>
+      <div>REVIEW<small>candidates are not trusted</small></div><span>→</span>
+      <div>SELECT<small>exactly one target</small></div><span>→</span>
+      <div>VERIFY<small>confirm your intended instance</small></div>
+    </div>
+    <div class="verify-note">
+      <p><strong>VERIFY</strong> records your operator assertion.</p>
+      <p>Exact Session identity is revalidated separately.</p>
+    </div>
+    <p class="boundary">CANDIDATE != VERIFIED ROOT · VERIFY != AUTOMATIC TRUST</p>
+  </section>
+
+  <section id="observe" class="scene">
+    <p class="step">03 · OBSERVE BEFORE, DURING, AND AFTER</p>
+    <h2>Capture the baseline before you perform the activity.</h2>
+    <div class="observe-flow">
+      <div class="observe-card on"><strong>S0</strong><span>BASELINE<br>BEFORE ACTIVITY</span></div>
+      <b>→</b>
+      <div class="observe-card action"><strong>PERFORM</strong><span>THE CODEX<br>ACTIVITY</span></div>
+      <b>→</b>
+      <div class="observe-card on"><strong>S1</strong><span>CAPTURE<br>TASK ACTIVE</span></div>
+      <b>→</b>
+      <div class="observe-card event"><strong>TASK FINISHES</strong><span>OPERATOR<br>DECLARES TASK_END</span></div>
+    </div>
+    <div class="followup-row">
+      <div><strong>S2</strong><span>POST TASK</span></div>
+      <div><strong>S3</strong><span>FOLLOW-UP</span></div>
+      <div><strong>S4</strong><span>FINAL FOLLOW-UP</span></div>
+      <p>Observation continues after TASK_END to see which process identities remain observed.</p>
+    </div>
+    <p class="boundary">TASK_END != PROCESS_EXIT · OBSERVATION_INTERVAL != LIFECYCLE_GRACE</p>
+  </section>
+
+  <section id="delta" class="scene">
+    <p class="step">04 · TASK DELTA</p>
+    <h2>What was confirmed new in this task window?</h2>
+    <div class="metric-grid">
+      <div class="metric primary"><strong id="created-count">4</strong><span>confirmed Codex-owned<br>created in task window</span></div>
+      <div class="metric"><strong id="still-count">0</strong><span>still observed<br>at S4</span></div>
+      <div class="metric"><strong id="gone-count">4</strong><span>no longer observed<br>by S4</span></div>
+    </div>
+    <div class="observation-row">
+      <span>FIRST <b id="first-stage">S1</b></span>
+      <span>LAST <b id="last-stage">S1</b></span>
+      <span>CURRENT <b id="current-state">NO_LONGER_OBSERVED</b></span>
+    </div>
+    <p class="boundary">FIRST_SEEN != CREATION_TIME · TASK_WINDOW_TIMING != TASK_CAUSATION</p>
+  </section>
+
+  <section id="branch" class="scene">
+    <p class="step">05 · PROCESS BRANCH ORIGIN</p>
+    <h2>Four processes do not mean four sessions.</h2>
+    <div class="branch-layout">
+      <div class="tree-card">
+        <p class="preexisting">PRE-EXISTING · <span id="ancestor">codex.exe</span></p>
+        <pre id="branch-tree"></pre>
+      </div>
+      <div class="equation">
+        <div><strong>4</strong><span>task-window<br>processes</span></div>
+        <b>→</b>
+        <div><strong>1</strong><span>process<br>branch</span></div>
+      </div>
+    </div>
+    <p class="boundary">PROCESS_BRANCH != LOGICAL_SESSION · PROCESS_PARENTAGE != TOOL_CAUSATION</p>
+  </section>
+
+  <section id="next" class="scene">
+    <p class="step">06 · OPERATOR NEXT STEP</p>
+    <h2>Activity was established—without overclaiming the ending.</h2>
+    <div class="answer-card">
+      <p>Task-window Codex process activity was observed and was no longer observed by S4.</p>
+      <hr>
+      <p class="action">Preserve the evidence if useful.</p>
+      <p class="muted">No cleanup issue is established by this observation alone.</p>
+    </div>
+    <p class="boundary">NO_LONGER_OBSERVED != EXIT_CONFIRMED</p>
+  </section>
+
+  <section id="controls" class="scene">
+    <p class="step">07 · ZERO IS EVIDENCE, TOO</p>
+    <h2>Positive and negative controls tell different valid stories.</h2>
+    <div class="control-grid">
+      <div class="control positive">
+        <h3>CONTROLLED SHELL TASK</h3>
+        <p><strong>AVAILABLE · 4</strong> created</p>
+        <p><strong>AVAILABLE · 1</strong> branch</p>
+        <small>Detection and grouping established.</small>
+      </div>
+      <div class="control">
+        <h3>EXTERNAL BROWSER TASK</h3>
+        <p><strong>AVAILABLE · 0</strong> created</p>
+        <p><strong>AVAILABLE · 0</strong> branches</p>
+        <small>Existing Codex identities remained pre-existing.</small>
+      </div>
+    </div>
+    <p class="plain-note">A validated empty set is not unavailable—and does not mean “nothing happened.”</p>
+  </section>
+
+  <section id="final" class="scene">
+    <p class="step">READ THE EVIDENCE. KEEP THE BOUNDARIES.</p>
+    <h2 class="final-heading">Baseline vs new.<br>Four processes → one branch.<br>Observed later vs not observed later.</h2>
+    <div class="final-rules">
+      <p>UNKNOWN != CODEX</p>
+      <p>STILL_OBSERVED != RESIDUE</p>
+      <p>NO_LONGER_OBSERVED != EXIT_CONFIRMED</p>
+    </div>
+    <p class="final-note">Windows-first · Read-only · Evidence-based</p>
+  </section>
+
+  <footer><span id="chapter">01 / 09 · QUESTION</span><span>validated positive-control semantics · privacy-sanitized</span></footer>
+  <div id="progress"></div>
+</main>
+<script type="module" src="demo.js"></script>
+</body>
+</html>
