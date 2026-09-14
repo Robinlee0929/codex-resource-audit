@@ -179,13 +179,13 @@ and temporary local TestDrive directories. Pipeline cancellation is isolated
 in a runspace so it cannot cancel Pester itself. TestDrive owns test cleanup,
 including intentionally retained artifacts from the cleanup-failure vector.
 
-Legacy parameter, Session and Help hashes remain pinned to their original
-values after removing only exact, explicitly checked additive T13 hooks.
+Legacy parameter and Help hashes retain their original protection. Session
+protection now distinguishes the root adapter from shared execution (T13.1 below).
 No protected production implementation changed: collector, attribution,
 lifecycle, stable identity, Task Delta, Process Branch Origin, canonical report,
 history validation, root matching and every T12 exporter file remain unchanged.
-The canonical Session body is relocated, not duplicated; its original hash
-remains pinned after removing exact presentation/export additions. Only
+The canonical Session implementation is relocated, not duplicated; its reviewed
+shared source is pinned separately from the thin root adapter. Only
 CLI/Guided orchestration, Results guidance presentation and optional view
 transport are extended. The package writer is unchanged in the second pass.
 
@@ -243,4 +243,84 @@ remain unchanged; these tests do not replace operator Gate 1/2/3 evidence.
 Next boundary: **T14 — real Guided Issue Evidence Export validation**, in an
 operator-owned PowerShell 7 session after owner review. T13 makes no T14 claim.
 
-Suggested commit message: `feat: integrate guided issue evidence export`.
+### T13.1 — canonical Session protection migration / hosted-CI compatibility
+
+Exact starting HEAD and origin/main: `226d3c59d0c5ada4c917086b18740f748567b426`
+(`feat: integrate guided issue evidence export`). Before edits, the clean
+committed tree passed 750/750 locally (Pester 6.2.0, PowerShell 7.6.6, 230.85s,
+zero failed/skipped/inconclusive/NotRun). Local `core.autocrlf=false` and both
+the execution file and old protection helper used LF. This independently
+reproduces the local result; it is not inferred from the prior worktree report.
+
+The owner-reported hosted run `34832299703` at that exact SHA passed 747/750,
+with only T18, O02/Session and K12 failing. The old `6A1E23...` pin represented
+the pre-T13 Session switch body after exact presentation-hook removal. T13
+moved execution into `Invoke-SessionExecution`; a helper attempted to reconstruct
+that old region, combining adapter validation and execution protection.
+
+The actual failure is more specific than an adapter/body hash mismatch:
+PowerShell parses the old `IndexOf(... -replace ..., ...)` expression as TWO
+method arguments. For CRLF input, the first argument removes line breaks rather
+than replacing them with LF; lookup in the LF-normalized body returns -1.
+The computed parameter-end offset becomes 504 instead of 758, and reconstruction
+starts at `ontractPath,`, accidentally including the parameter declaration tail.
+An entirely in-memory CRLF reproduction of the committed helper produces the
+exact hosted hash `4E2C837505CC5C0433EA7A42E58C323D51DB73070E58680D64A5FD9C324CFA3B`.
+That is NOT the root adapter hash. This explains the LF/CRLF discrepancy without
+changing checkout configuration or claiming a new hosted run was performed.
+
+Review against `51a596a` confirms relocation with the reviewed opt-in T13
+additions, not an unintended canonical semantic change. The correctly extracted
+legacy region still yields `6A1E23FACBF96705D9844F070D49057F6101CD5F9F3B6D29AD10B4F45B35A138`.
+Collection, attribution, history, lifecycle, canonical formatter, Task Delta
+and Process Branch implementation files have no changes between those commits.
+
+The new protection has separate responsibilities:
+
+- **Public Session adapter:** AST checks require exactly four statements: empty
+  dictionary, an eight-name literal input allowlist with bound-input copying,
+  one direct shared-execution call using only that splat, and a payload-free
+  return. No collector, resolver, serializer, writer, raw callback or export
+  option can be inserted. A supplemental static text pin protects the rest.
+- **Shared execution:** structural checks cover one definition, S0–S4 order,
+  TASK_END between S1/S2, single canonical calls and guarded opt-in export.
+  A static whole-file pin protects all parameters/defaults, identity validation,
+  executable statements, report handling and T13 additions without stripping them.
+- **Routing and behavior:** a separate Guided adapter pin, repository-wide
+  definition/capture-site checks, a shared-dispatch spy, and existing behavioral
+  gates protect the common implementation, default output and no recomputation.
+
+All new static pins use SHA-256 of UTF-8 text with CRLF replaced by LF only.
+No whitespace is trimmed; expected hashes are literal constants, never derived
+from HEAD or the current source at runtime.
+
+| Protected region | Reviewed SHA-256 |
+| --- | --- |
+| Root Session clause AST extent, including braces (no following newline) | `6B8CB641ABCA4C893F456432872CA364203A9788EFF818E798865203BFF91C5C` |
+| Entire `src/Invoke-SessionExecution.ps1`, including comments and final newline | `1827397B2861D41093CC534BAAAE5073D987FC241C9AA5C7DBDC47622F29C7C3` |
+| `Invoke-CanonicalSession` function-definition AST extent in Guided orchestration | `BAB6F73A11149A51F74CBF5AF5C511834DFEA8B2FF5FFE4091138CB6D08B9870` |
+
+T18 protects both execution and routing; O02/Session protects the adapter while
+Help/Fixture/Candidates keep their old pins; K12 migrates only the Session
+assumption and retains Fixture and detailed/summary formatter protection.
+The [new protection suite](../tests/unit/SessionProtection.Tests.ps1) tests both
+LF and CRLF in memory and rejects deliberate allowlist, callback, engine,
+identity, timing, output and export-guard mutations. Existing T13 negative CLI
+binding, default Guided/Session, privacy and same-evidence/no-recomputation tests
+remain intact. Evidence semantics and exact Session identity are not loosened.
+
+Production, README, T12, schemas, package writer, CI configuration and release
+tags are unchanged by T13.1. Incident Observation and live validation remain
+out of scope. No commit, push, tag or release is performed by this task.
+
+Final T13.1 local validation (Pester 6.2.0): affected focused tests 187/187
+(51.04s), T13 66/66 (37.30s), T12 55/55 (60.93s), and canonical offline
+regression 777/777 (245.17s). All runs have zero failed, skipped, inconclusive
+and NotRun tests. The 27 added tests cover the new protection contract.
+PowerShell parse passed 60/60; G01 passed all 18 byte comparisons and G02 all
+27 fixture files. Privacy, default Session/Guided, no recomputation and root
+callback rejection passed. All 33 local documentation links and 21 JSON
+fixtures/examples parsed/resolved; whitespace checks passed and index is empty.
+This is local offline verification, not a post-fix hosted-CI or T14 claim.
+
+Suggested commit message: `test: migrate canonical session protection contract`.

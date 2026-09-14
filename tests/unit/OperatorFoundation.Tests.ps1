@@ -23,16 +23,19 @@ Describe 'T1 additive CLI and legacy stream compatibility' {
         & $bindingOnly | Should -BeExactly 'Help'
         { & $bindingOnly -Mode Unknown } | Should -Throw
     }
-    It 'O02 Protected <mode> dispatch remains pinned after exact presentation additions' -ForEach @(
+    It 'O02 Protected <mode> dispatch follows its explicit legacy or thin-adapter contract' -ForEach @(
         @{ mode='Help'; hash='93622D8062B81463B6930077E73CD8971345CC71B565F5B5B484E7F4ED166190' }
         @{ mode='Fixture'; hash='B70766AD8FC75F1F00C1277FC0FFF604184B1A0E89AA94A09B7C79A91CCC1CC0' }
         @{ mode='Candidates'; hash='877BC2023CCFEF9EADC86F1F02B6B09ACA2E187C8EA4EF883ADA7F54FFB95353' }
-        @{ mode='Session'; hash='6A1E23FACBF96705D9844F070D49057F6101CD5F9F3B6D29AD10B4F45B35A138' }
+        @{ mode='Session'; hash=$null } # AST/allowlist/adapter pin; not the old engine-body hash.
     ) {
         $clause = @($script:modeSwitch.Clauses | Where-Object { $_.Item1.Value -eq $mode })
         $clause.Count | Should -Be 1
         $body = $clause[0].Item2.Extent.Text
-        if ($mode -eq 'Session') { $body = Remove-TestSessionPresentationHooks $body }
+        if ($mode -eq 'Session') {
+            Assert-TestPublicSessionAdapter $script:operatorAst
+            return
+        }
         if ($mode -eq 'Candidates') {
             # Allow only the exact shared-predicate extraction; the complete
             # original dispatch hash (including streams/errors) stays pinned.

@@ -383,10 +383,9 @@ Write-Information 'SYNTHETIC_ADAPTER_PROGRESS' -InformationAction Continue
         $output[1].asserted | Should -BeTrue
         $output[1].seconds | Should -Be 7
     }
-    It 'T18 Canonical Session retains its original body with only exact optional presentation notifications' {
-        $modeSwitch=$script:handoffAst.Find({param($node) $node -is [Management.Automation.Language.SwitchStatementAst]},$false)
-        $body=($modeSwitch.Clauses | Where-Object { $_.Item1.Value -eq 'Session' }).Item2.Extent.Text -replace "`r`n","`n"
-        $body=Remove-TestSessionPresentationHooks $body
-        [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($body))) | Should -BeExactly '6A1E23FACBF96705D9844F070D49057F6101CD5F9F3B6D29AD10B4F45B35A138'
+    It 'T18 Public Session is a protected thin adapter to the explicitly pinned shared execution' {
+        Assert-TestPublicSessionAdapter $script:handoffAst
+        Assert-TestSharedSessionExecution (Get-Content -Raw (Join-Path $script:handoffRoot 'src/Invoke-SessionExecution.ps1'))
+        Assert-TestGuidedSessionDispatch (Get-Content -Raw (Join-Path $script:handoffRoot 'src/Invoke-GuidedSession.ps1'))
     }
 }
