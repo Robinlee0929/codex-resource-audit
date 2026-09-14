@@ -38,6 +38,8 @@ Guided is the recommended workflow. It discovers possible roots, asks you to rev
 
 Live Windows validation belongs in that operator-owned console, outside the Codex execution environment. The tool is read-only: it never terminates, suspends, reprioritizes, cleans up, or repairs processes.
 
+<a id="candidate-workflow"></a>
+
 ## Guided workflow
 
 ```text
@@ -217,6 +219,8 @@ Candidate templates are current-capture-only. Regenerate and reverify them after
 
 No execution-policy change is normally required. If reviewed local scripts are blocked, follow your organization’s policy rather than permanently weakening Windows settings.
 
+<a id="current-limitations"></a>
+
 ## Limitations
 
 - Observation is snapshot-based, not continuous; a very short-lived process storm can occur entirely between snapshots.
@@ -258,13 +262,15 @@ The pipeline deliberately keeps collection, attribution, lifecycle analysis, and
 - [T6.9.6 — live-history compatibility](docs/V0_1_1_T6_9_6_LIVE_HISTORY_COMPATIBILITY.md)
 - [T7 — terminal readability and Next Step](docs/V0_1_1_T7_TERMINAL_READABILITY_AND_NEXT_STEP.md)
 - [T7.1 — terminal UX polish](docs/V0_1_1_T7_1_TERMINAL_UX_POLISH.md)
+- [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md)
+- [v0.1.1 release-readiness audit](docs/V0_1_1_RELEASE_READINESS.md)
 - [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md)
 
 ## Project status and compatibility
 
 v0.1.0 is the immutable public release baseline. v0.1.1 adds the Guided operator workflow and presentation layers while preserving the canonical Session report and core evidence semantics. Historical detailed report headers remain for output compatibility.
 
-No release action is performed by this documentation/demo refresh. Release readiness and publication belong to a later gate.
+The linked readiness note preserves the historical v0.1.1 T9 audit snapshot, not current remote-gate status. Publication requires owner review and a release tag pointing to the exact commit that passed the hosted **Windows offline tests** workflow. Final commit and CI run details belong in the GitHub Release body.
 
 ## License
 
