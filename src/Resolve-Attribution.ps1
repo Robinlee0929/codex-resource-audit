@@ -59,6 +59,29 @@ function New-SessionRootAnchor {
     }
 }
 
+function ConvertTo-NormalizedWorkingSetBytes {
+    <# Canonical memory count: a non-negative whole number bounded by Int64,
+       or null when unavailable/invalid. Never parse strings or unwrap collections. #>
+    param([AllowNull()] [object] $Value)
+
+    if ($Value -is [double] -or $Value -is [single]) {
+        # Int64::MaxValue rounds UP to 2^63 as floating point: use an exclusive
+        # upper bound before conversion, and reject non-finite/fractional values.
+        if ([double]::IsNaN($Value) -or $Value -lt 0 -or $Value -ge 9223372036854775808.0 -or
+            [math]::Truncate([double]$Value) -ne $Value) { return $null }
+    }
+    elseif ($Value -is [decimal]) {
+        if ($Value -lt 0 -or $Value -gt [decimal][long]::MaxValue -or
+            [decimal]::Truncate($Value) -ne $Value) { return $null }
+    }
+    elseif ($Value -is [byte] -or $Value -is [sbyte] -or $Value -is [int16] -or $Value -is [uint16] -or
+            $Value -is [int] -or $Value -is [uint32] -or $Value -is [long] -or $Value -is [uint64]) {
+        if ($Value -lt 0 -or ($Value -is [uint64] -and $Value -gt [uint64][long]::MaxValue)) { return $null }
+    }
+    else { return $null }
+    return [long]$Value
+}
+
 function ConvertTo-NormalizedProcess {
     [CmdletBinding()]
     param(
@@ -70,6 +93,13 @@ function ConvertTo-NormalizedProcess {
         $pidValue = [int](Get-PropertyValue $InputObject 'pid' -1)
         $creationTime = ConvertTo-NormalizedCreationTime (Get-PropertyValue $InputObject 'creation_time')
         $fieldAvailability = Get-PropertyValue $InputObject 'field_availability' ([pscustomobject]@{})
+        # Read the property directly so a single-item collection cannot be
+        # enumerated into a scalar by Get-PropertyValue's success stream.
+        $workingSetProperty = $InputObject.PSObject.Properties['working_set_bytes']
+        $workingSetBytes = $null
+        if ($null -ne $workingSetProperty) {
+            $workingSetBytes = ConvertTo-NormalizedWorkingSetBytes -Value $workingSetProperty.Value
+        }
 
         [pscustomobject]@{
             audit_run_id             = $AuditRunId
@@ -82,7 +112,7 @@ function ConvertTo-NormalizedProcess {
             creation_time_precision  = Get-PropertyValue $InputObject 'creation_time_precision' 'UNKNOWN'
             executable_path          = Get-PropertyValue $InputObject 'executable_path'
             command_line             = Get-PropertyValue $InputObject 'command_line'
-            working_set_bytes        = Get-PropertyValue $InputObject 'working_set_bytes'
+            working_set_bytes        = $workingSetBytes
             capture_status           = Get-PropertyValue $InputObject 'capture_status' 'COMPLETE'
             field_availability       = $fieldAvailability
             role_evidence            = Get-PropertyValue $InputObject 'role_evidence'
