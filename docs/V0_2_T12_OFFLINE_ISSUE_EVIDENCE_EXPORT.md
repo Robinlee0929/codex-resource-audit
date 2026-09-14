@@ -389,6 +389,45 @@ starting values. No live collection, SSH, Browser, Computer Use, MCP validation,
 process control, privilege escalation, or system configuration change occurred.
 These synthetic results do not fabricate or replace operator Gate 1/2/3 results.
 
+## T12.3 fixture checkout portability
+
+The original Windows offline tests [run 34819230499](https://github.com/Robinlee0929/codex-resource-audit/actions/runs/34819230499)
+for commit `ea2a94b0208c587a0e3f1fb82817c7962839cbdf` failed: 683 executed,
+674 passed, nine failed, and zero skipped/inconclusive/NotRun. All nine failures
+were G01 golden comparisons. The job log shows expected JSON beginning with
+Base64 `ew0K` (CRLF after `{`) and actual output beginning with `ewog` (LF).
+
+Before T12.3, the repository had no `.gitattributes` or `.editorconfig` policy;
+fixture `text` and `eol` attributes were unspecified. All 27 tracked blobs and
+local files were LF, and local `core.autocrlf=false` explained the local passes.
+Git's checkout filter with command-scoped `core.autocrlf=true` reproduced the
+hosted CRLF prefix from the same tracked blob. This confirms a checkout
+portability defect, not a schema or export-semantic change.
+
+The root `.gitattributes` now sets `text eol=lf` only for
+`tests/fixtures/issue-evidence/*.json` and `*.md` in that same directory,
+including `.source.json` descriptors. Existing blobs already contain LF, so
+no golden regeneration or renormalization is needed. G02 inspects all 27 files
+as bytes for no BOM, no CR (including CRLF and bare CR), exactly one trailing
+LF, and strict valid UTF-8. G01 retains its exact byte comparison unchanged;
+the serializer and all reviewed golden contents are unchanged.
+
+T12.3 local validation (Pester 6.2.0): focused 55/55 passed in 50.86 seconds;
+full canonical offline regression 684/684 passed in 153.77 seconds. Both runs
+had zero failed/skipped/inconclusive/NotRun. All 18 golden byte comparisons
+passed. All 54 PowerShell files and 18 fixture JSON files parsed; all three
+JSON documentation examples parsed and 23 local documentation links resolved.
+Privacy and determinism checks passed. Git checkout filters preserved exact
+fixture bytes in 81/81 checks (27 files with each of `core.autocrlf=true`,
+`false`, and `input`); all files reported `i/lf`, `w/lf`, `attr/text eol=lf`.
+Protected production files, reviewed fixtures, and local v0.1.0/v0.1.1 tag
+objects and targets are unchanged. No commit, push, or release action was run.
+
+The old failed run remains the motivating evidence, not validation of this
+fix. After owner review, a new exact commit must be pushed and receive a fresh
+Windows offline tests run. Do not rerun the old commit as proof of T12.3, and
+do not treat fixture portability as a new platform-support claim.
+
 ## Owner decision and next boundary
 
 All three owner decisions are implemented as approved; no additional schema

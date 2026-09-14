@@ -469,6 +469,21 @@ Describe 'T12 offline Issue Evidence Export' {
             $branch.parent_relation.parent_process_id | Should -BeNullOrEmpty
         }
     }
+    It 'G02 golden and descriptor files are strict UTF-8 without BOM, LF only, with one trailing LF' -Tag Golden {
+        $strictUtf8=[Text.UTF8Encoding]::new($false,$true)
+        foreach ($case in $script:cases.Keys) {
+            foreach ($extension in 'json','md','source.json') {
+                $path=Join-Path $script:exportRoot "tests/fixtures/issue-evidence/$case.$extension"
+                $bytes=[IO.File]::ReadAllBytes($path)
+                $bytes.Length | Should -BeGreaterThan 2 -Because $path
+                ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) | Should -BeFalse -Because $path
+                ($bytes -contains [byte]13) | Should -BeFalse -Because $path
+                $bytes[-1] | Should -Be 10 -Because $path
+                $bytes[-2] | Should -Not -Be 10 -Because $path
+                { $null=$strictUtf8.GetString($bytes) } | Should -Not -Throw -Because $path
+            }
+        }
+    }
     It 'G01 reviewed <case> JSON and Markdown match byte for byte' -Tag Golden -ForEach @(
         @{case='positive'},@{case='empty'},@{case='task-unavailable'},@{case='branch-unavailable'},
         @{case='mixed-unknown'},@{case='creation-unknown'},@{case='timing-partial'},@{case='timing-unavailable'},@{case='external-parent'}

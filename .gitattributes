@@ -1,0 +1,3 @@
+# Preserve the reviewed Issue Evidence byte contract on every checkout.
+tests/fixtures/issue-evidence/*.json text eol=lf
+tests/fixtures/issue-evidence/*.md text eol=lf
