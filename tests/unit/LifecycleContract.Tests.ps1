@@ -42,6 +42,11 @@ Describe 'Exact-identity controlled lifecycle contracts (offline only)' {
         $text = Get-Content -Raw -LiteralPath $entry
         $text | Should -Match ([regex]::Escape(". (Join-Path `$projectRoot 'src\Read-LifecycleContract.ps1')"))
         $text | Should -Match "ContainsKey\('LifecycleContractPath'\)"
+        $text | Should -Match ([regex]::Escape(". (Join-Path `$projectRoot 'src\Invoke-SessionExecution.ps1')"))
+        $text | Should -Match 'Invoke-SessionExecution @sessionParameters'
+        # Inspect the relocated canonical body; retain all original contract checks.
+        $text = Get-Content -Raw -LiteralPath (Join-Path $script:contractRoot 'src/Invoke-SessionExecution.ps1')
+        $text | Should -Match "ContainsKey\('LifecycleContractPath'\)"
         $text | Should -Match '\$contract = \$null'
         $text | Should -Match '-Policies \$sessionEvidence.lifecycle_policies'
         $text.IndexOf('Read-LifecycleContract -Path') | Should -BeLessThan $text.IndexOf("-SnapshotId 'S0'")

@@ -1,6 +1,6 @@
 BeforeAll {
     $script:progressRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Resolve-Attribution','Collect-ProcessSnapshot','Read-LifecycleContract','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Send-SessionProgress') {
+    foreach ($name in 'Resolve-Attribution','Collect-ProcessSnapshot','Read-LifecycleContract','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Invoke-SessionExecution','Send-SessionProgress') {
         . (Join-Path $script:progressRoot "src\$name.ps1")
     }
     $script:originalResolve = (Get-Command Resolve-SessionEvidence).ScriptBlock
@@ -20,6 +20,7 @@ BeforeAll {
     # including PSBoundParameters used by optional contract preflight.
     $parameterText = $script:entryAst.ParamBlock.Extent.Text
     $script:sessionBody = [scriptblock]::Create($parameterText + [Environment]::NewLine + $script:sessionBodyText)
+    $script:sessionBodyText=(Get-Command Invoke-SessionExecution).ScriptBlock.ToString()
     function Invoke-OfflineSession {
         [CmdletBinding()]
         param([int]$RootPid, [string]$RootCreationTimeUtc, [string]$RootExecutablePath,

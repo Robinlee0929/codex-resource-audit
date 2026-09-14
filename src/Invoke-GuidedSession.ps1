@@ -59,8 +59,8 @@ function Format-GuidedRevalidation {
 }
 
 function Invoke-CanonicalSession {
-    <# Reuse the canonical entrypoint itself. No copied S0-S4 engine, prompt,
-       lifecycle logic or formatter. Do not capture or merge its streams. #>
+    <# Both paths use the same canonical Session execution. Export stays inside
+       that execution scope; no raw evidence crosses this orchestration seam. #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [int] $RootPid,
@@ -68,8 +68,16 @@ function Invoke-CanonicalSession {
         [Parameter(Mandatory)] [string] $RootExecutablePath,
         [switch] $OperatorVerifiedKnownCodexInstance,
         [ValidateRange(1,3600)] [int] $FollowUpSeconds = 30,
-        [AllowNull()] [scriptblock] $SessionProgressObserver = $null
+        [AllowNull()] [scriptblock] $SessionProgressObserver = $null,
+        [switch] $ExportIssueEvidence,
+        [string] $IssueEvidenceOutputDirectory,
+        [string] $PreS0ExactIdentity
     )
+    if ($ExportIssueEvidence) {
+        Invoke-SessionExecution @PSBoundParameters
+        return
+    }
+    foreach ($name in 'ExportIssueEvidence','IssueEvidenceOutputDirectory','PreS0ExactIdentity') { $null=$PSBoundParameters.Remove($name) }
     & (Join-Path $PSScriptRoot '..\codex-resource-audit.ps1') -Mode Session @PSBoundParameters
 }
 
@@ -77,9 +85,17 @@ function Invoke-GuidedSession {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [AllowNull()] [object] $GuidedOutcome,
-        [ValidateRange(1,3600)] [int] $FollowUpSeconds = 30
+        [ValidateRange(1,3600)] [int] $FollowUpSeconds = 30,
+        [switch] $ExportIssueEvidence,
+        [AllowNull()] [AllowEmptyString()] [string] $IssueEvidenceOutputDirectory
     )
     $ErrorActionPreference = 'Stop'
+    if ($PSBoundParameters.ContainsKey('IssueEvidenceOutputDirectory') -and -not $ExportIssueEvidence) { throw 'EXPORT_PARAMETERS_INVALID' }
+    if ($ExportIssueEvidence) {
+        $destination=Resolve-IssueEvidenceDestination -Path $IssueEvidenceOutputDirectory
+        if (-not $destination.success) { throw $destination.code }
+        $IssueEvidenceOutputDirectory=$destination.path
+    }
     if (-not (Test-OperatorInteractiveHost)) {
         throw 'GUIDED_INTERACTION_REQUIRED: Guided requires an interactive operator session. Use advanced modes for automation.'
     }
@@ -122,10 +138,14 @@ function Invoke-GuidedSession {
     # observation. Session independently applies its existing per-snapshot rules.
     # Keep handoff outside the preflight catch: Session failures are not mislabeled
     # as a pre-S0 revalidation failure after Session has already started.
+    $exportParameters=@{}
+    if ($ExportIssueEvidence) {
+        $exportParameters=@{ExportIssueEvidence=$true;IssueEvidenceOutputDirectory=$IssueEvidenceOutputDirectory;PreS0ExactIdentity=$rootDiagnostics[0].match_result}
+    }
     try {
         # Capture only the canonical success string. Information and errors retain
         # their streams. Keep this transient result; never parse or recompute it.
-        $detail = Invoke-CanonicalSession -RootPid $target.pid -RootCreationTimeUtc $target.creation_time_utc -RootExecutablePath $target.executable_path -OperatorVerifiedKnownCodexInstance:$target.operator_assertion_recorded -FollowUpSeconds $FollowUpSeconds -SessionProgressObserver $observer
+        $detail = Invoke-CanonicalSession -RootPid $target.pid -RootCreationTimeUtc $target.creation_time_utc -RootExecutablePath $target.executable_path -OperatorVerifiedKnownCodexInstance:$target.operator_assertion_recorded -FollowUpSeconds $FollowUpSeconds -SessionProgressObserver $observer @exportParameters
     }
     catch [Management.Automation.PipelineStoppedException] { throw }
     catch {

@@ -11,12 +11,29 @@ param(
     [switch] $IncludeEvidenceSummary,
     [switch] $IncludeSessionTemplate,
     [switch] $IncludeCandidateGroups,
+    [switch] $ExportIssueEvidence,
+    [AllowNull()] [AllowEmptyString()] [string] $IssueEvidenceOutputDirectory,
     # Internal presentation transport used by Guided; no input or evidence policy.
     [Parameter(DontShow)] [AllowNull()] [scriptblock] $SessionProgressObserver = $null
 )
 
 Set-StrictMode -Version Latest
 $projectRoot = $PSScriptRoot
+# Reject invalid export combinations before loading or invoking any collector.
+if (($PSBoundParameters.ContainsKey('ExportIssueEvidence') -and $Mode -ne 'Guided') -or
+    ($PSBoundParameters.ContainsKey('IssueEvidenceOutputDirectory') -and -not $ExportIssueEvidence) -or
+    ($ExportIssueEvidence -and -not $PSBoundParameters.ContainsKey('IssueEvidenceOutputDirectory'))) {
+    throw 'EXPORT_PARAMETERS_INVALID: export requires Guided mode and an explicit destination.'
+}
+if ($ExportIssueEvidence) {
+    . (Join-Path $projectRoot 'src\Write-IssueEvidencePackage.ps1')
+    . (Join-Path $projectRoot 'src\Invoke-GuidedIssueEvidenceExport.ps1')
+    $destination=Resolve-IssueEvidenceDestination -Path $IssueEvidenceOutputDirectory
+    if (-not $destination.success) { throw $destination.code }
+    $IssueEvidenceOutputDirectory=$destination.path
+    try { Import-Module (Join-Path $projectRoot 'src\IssueEvidence.psm1') -ErrorAction Stop }
+    catch { throw 'EXPORT_ENGINE_UNAVAILABLE' }
+}
 . (Join-Path $projectRoot 'src\Collect-ProcessSnapshot.ps1')
 . (Join-Path $projectRoot 'src\Resolve-Attribution.ps1')
 . (Join-Path $projectRoot 'src\Compare-Lifecycle.ps1')
@@ -31,6 +48,7 @@ $projectRoot = $PSScriptRoot
 . (Join-Path $projectRoot 'src\Format-GuidedTaskDelta.ps1')
 . (Join-Path $projectRoot 'src\Format-GuidedProcessBranches.ps1')
 . (Join-Path $projectRoot 'src\Format-GuidedResults.ps1')
+. (Join-Path $projectRoot 'src\Invoke-SessionExecution.ps1')
 
 $requiredProductionFunctions = @(
     'Get-ProcessSnapshot',
@@ -68,6 +86,9 @@ Recommended:
   Guided
     .\codex-resource-audit.ps1 -Mode Guided
     Interactive discover -> verify -> observe -> review workflow.
+    Optional PUBLIC_SAFE_ONLY JSON + Markdown export (explicit new local directory):
+    .\codex-resource-audit.ps1 -Mode Guided -ExportIssueEvidence -IssueEvidenceOutputDirectory C:\Evidence\cra-run-01
+    Writes only the requested package; no new collection. Review before public sharing.
 
 Advanced:
   Candidates
@@ -123,7 +144,9 @@ switch ($Mode) {
         try {
             $guidedResult = Invoke-GuidedDiscovery
             if ($guidedResult.status -ceq 'OPERATOR_ASSERTION_RECORDED') {
-                Invoke-GuidedSession -GuidedOutcome $guidedResult -FollowUpSeconds $FollowUpSeconds
+                $exportParameters=@{}
+                if ($ExportIssueEvidence) { $exportParameters=@{ExportIssueEvidence=$true;IssueEvidenceOutputDirectory=$IssueEvidenceOutputDirectory} }
+                Invoke-GuidedSession -GuidedOutcome $guidedResult -FollowUpSeconds $FollowUpSeconds @exportParameters
             }
             else { Format-GuidedOutcome -Outcome $guidedResult }
         }
@@ -186,59 +209,11 @@ switch ($Mode) {
         return
     }
     'Session' {
-        if ($RootPid -le 0 -or [string]::IsNullOrWhiteSpace($RootCreationTimeUtc) -or [string]::IsNullOrWhiteSpace($RootExecutablePath) -or -not $OperatorVerifiedKnownCodexInstance) {
-            throw 'Session requires PID, creation time, OS executable path, and -OperatorVerifiedKnownCodexInstance.'
+        $sessionParameters=@{}
+        foreach ($name in 'RootPid','RootCreationTimeUtc','RootExecutablePath','OperatorVerifiedKnownCodexInstance','FollowUpSeconds','LifecycleContractPath','IncludeEvidenceSummary','SessionProgressObserver') {
+            if ($PSBoundParameters.ContainsKey($name)) { $sessionParameters[$name]=$PSBoundParameters[$name] }
         }
-        $contract = $null
-        if ($PSBoundParameters.ContainsKey('LifecycleContractPath')) {
-            $contract = Read-LifecycleContract -Path $LifecycleContractPath
-        }
-        $auditRunId = [guid]::NewGuid().ToString()
-        $anchor = New-SessionRootAnchor -AuditRunId $auditRunId -RootPid $RootPid -RootCreationTimeUtc $RootCreationTimeUtc -RootExecutablePath $RootExecutablePath -OperatorVerifiedKnownCodexInstance:$OperatorVerifiedKnownCodexInstance
-        $snapshots = [System.Collections.Generic.List[object]]::new()
-        $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S0'))
-        Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S0' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
-        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S0 -Snapshot $snapshots[-1] }
-        if ($null -ne $contract) {
-            # Stop before the task prompt if exact S0 binding or ownership fails.
-            $null = Resolve-SessionEvidence -Snapshots @($snapshots[0]) -RootAnchors @($anchor) -LifecycleContract $contract
-        }
-        [void](Read-Host 'Start the task, then press Enter to capture S1')
-        $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S1'))
-        Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S1' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
-        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S1 -Snapshot $snapshots[-1] }
-        if ($null -ne $SessionProgressObserver) {
-            [void](Read-Host 'When the observed Codex activity is finished, press Enter to declare TASK_END and capture S2')
-        }
-        else { [void](Read-Host 'End the task, then press Enter to declare TASK_END and capture S2') }
-        $eventTime = [datetimeoffset]::UtcNow.ToString('o')
-        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event TaskEnd -EventTime $eventTime }
-        $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S2'))
-        Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S2' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
-        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S2 -Snapshot $snapshots[-1] }
-        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Wait -Stage S3 -Seconds $FollowUpSeconds }
-        if ($null -ne $SessionProgressObserver) { Wait-GuidedObservation -Stage S3 -Seconds $FollowUpSeconds }
-        else { Start-Sleep -Seconds $FollowUpSeconds }
-        $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S3'))
-        Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S3' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
-        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S3 -Snapshot $snapshots[-1] }
-        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Wait -Stage S4 -Seconds $FollowUpSeconds }
-        if ($null -ne $SessionProgressObserver) { Wait-GuidedObservation -Stage S4 -Seconds $FollowUpSeconds }
-        else { Start-Sleep -Seconds $FollowUpSeconds }
-        $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S4'))
-        Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S4' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
-        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S4 -Snapshot $snapshots[-1] }
-        $sessionEvidence = Resolve-SessionEvidence -Snapshots @($snapshots) -RootAnchors @($anchor) -LifecycleContract $contract
-        $attributed = $sessionEvidence.attributed_snapshots
-        $events = @([pscustomobject]@{ event_id='task-end'; event_type='TASK_END'; occurred_utc=$eventTime })
-        $lifecycle = @(Compare-Lifecycle -AttributedSnapshots $attributed -Policies $sessionEvidence.lifecycle_policies -Events $events)
-        $detail = Format-SessionAuditReport -SessionEvidence $sessionEvidence -Lifecycle $lifecycle -DataSource LIVE_WINDOWS_CIM
-        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Results -SessionEvidence $sessionEvidence -Lifecycle $lifecycle -Events $events }
-        if ($IncludeEvidenceSummary) {
-            (Format-EvidenceSummary -SessionEvidence $sessionEvidence -Lifecycle $lifecycle -DataSource LIVE_WINDOWS_CIM) + [Environment]::NewLine + $detail
-        }
-        else { $detail }
-        if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Ready -Snapshots @($snapshots) }
+        Invoke-SessionExecution @sessionParameters
         return
     }
 }

@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../../src/Invoke-SessionExecution.ps1')
     $script:uxRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults','Wait-GuidedObservation') {
         . (Join-Path $script:uxRoot "src\$name.ps1")

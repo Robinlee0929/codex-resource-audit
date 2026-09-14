@@ -2,7 +2,7 @@ BeforeAll {
     $script:handoffRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     . (Join-Path $script:handoffRoot 'tests\SessionObserverCompatibility.ps1')
     . (Join-Path $script:handoffRoot 'src\Format-GuidedResults.ps1')
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
         . (Join-Path $script:handoffRoot "src\$name.ps1")
     }
     $script:realRootMatcher = (Get-Command Resolve-Attribution).ScriptBlock

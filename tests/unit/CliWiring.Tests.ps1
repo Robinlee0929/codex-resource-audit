@@ -12,7 +12,7 @@ Describe 'Stage 0 CLI module wiring' {
         }
 
         # Preserve the exact legacy parameter contract, allowing only Guided and
-        # the exact optional presentation transport. All legacy defaults/types/
+        # the exact optional presentation/export transports. All legacy defaults/types/
         # validation stay pinned; observer mode gating is exercised separately.
         $tokens = $null; $errors = $null
         $ast = [Management.Automation.Language.Parser]::ParseInput($entrypointText, [ref]$tokens, [ref]$errors)
@@ -21,6 +21,12 @@ Describe 'Stage 0 CLI module wiring' {
         $modeAddition = "[ValidateSet('Help','Fixture','Candidates','Session','Guided')]"
         ([regex]::Matches($parameters, [regex]::Escape($modeAddition))).Count | Should -Be 1
         $legacyParameters = $parameters.Replace($modeAddition, "[ValidateSet('Help','Fixture','Candidates','Session')]")
+        $exportAddition = @'
+    [switch] $ExportIssueEvidence,
+    [AllowNull()] [AllowEmptyString()] [string] $IssueEvidenceOutputDirectory,
+'@ -replace "`r`n", "`n"
+        ([regex]::Matches($legacyParameters, [regex]::Escape($exportAddition))).Count | Should -Be 1
+        $legacyParameters = $legacyParameters.Replace($exportAddition + "`n", '')
         $observerAddition = @'
     [switch] $IncludeCandidateGroups,
     # Internal presentation transport used by Guided; no input or evidence policy.

@@ -42,7 +42,8 @@ function Send-SessionProgress {
         [int] $Seconds,
         [AllowNull()] [object] $SessionEvidence,
         [AllowNull()] [AllowEmptyCollection()] [object[]] $Lifecycle = $null,
-        [AllowNull()] [AllowEmptyCollection()] [object[]] $Events = $null
+        [AllowNull()] [AllowEmptyCollection()] [object[]] $Events = $null,
+        [AllowNull()] [object] $ResultsView = $null
     )
     $progress = [pscustomobject]@{ event = $Event }
     switch ($Event) {
@@ -59,7 +60,8 @@ function Send-SessionProgress {
             $progress | Add-Member capture_statuses @(foreach ($item in $Snapshots) { Get-SessionCaptureStatus $item })
         }
         'Results' {
-            $progress | Add-Member view (Get-GuidedResultsView -SessionEvidence $SessionEvidence -Lifecycle $Lifecycle -Events $Events)
+            if ($null -eq $ResultsView) { $ResultsView=Get-GuidedResultsView -SessionEvidence $SessionEvidence -Lifecycle $Lifecycle -Events $Events }
+            $progress | Add-Member view $ResultsView
         }
     }
     $null = & $Observer $progress

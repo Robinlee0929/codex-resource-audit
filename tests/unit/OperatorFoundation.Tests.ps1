@@ -44,7 +44,14 @@ Describe 'T1 additive CLI and legacy stream compatibility' {
     }
     It 'O03 T7 Help definition remains pinned and emits only one success string under assignment pipeline and merging' {
         $helpDefinition = $script:operatorAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Show-Help' }, $false)
-        Get-OperatorTestHash $helpDefinition.Extent.Text | Should -BeExactly '635031788B3BADD8F14A9141A36132F355871C7307D47D5D90CE8ED07A38E158'
+        $exportHelp = @'
+    Optional PUBLIC_SAFE_ONLY JSON + Markdown export (explicit new local directory):
+    .\codex-resource-audit.ps1 -Mode Guided -ExportIssueEvidence -IssueEvidenceOutputDirectory C:\Evidence\cra-run-01
+    Writes only the requested package; no new collection. Review before public sharing.
+'@ -replace "`r`n", "`n"
+        $helpText=$helpDefinition.Extent.Text -replace "`r`n", "`n"
+        ([regex]::Matches($helpText,[regex]::Escape($exportHelp))).Count | Should -Be 1
+        Get-OperatorTestHash ($helpText.Replace($exportHelp+"`n",'')) | Should -BeExactly '635031788B3BADD8F14A9141A36132F355871C7307D47D5D90CE8ED07A38E158'
         $assigned = @(& $script:operatorEntry -Mode Help)
         $piped = @(& $script:operatorEntry -Mode Help | ForEach-Object { $_ })
         $merged = @(& $script:operatorEntry -Mode Help *>&1)

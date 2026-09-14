@@ -1,7 +1,7 @@
 BeforeAll {
     $script:observeRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     . (Join-Path $script:observeRoot 'src\Format-GuidedResults.ps1')
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
         . (Join-Path $script:observeRoot "src\$name.ps1")
     }
     $script:observeResolver = (Get-Command Resolve-SessionEvidence).ScriptBlock
@@ -249,7 +249,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         try {
             $source=@'
 param($Repository,$CanonicalText,$FixtureText)
-foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation') {
+foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation') {
     . (Join-Path $Repository "src\$name.ps1")
 }
 $script:fixture=$FixtureText | ConvertFrom-Json -Depth 40 -DateKind String

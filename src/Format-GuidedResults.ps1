@@ -37,6 +37,7 @@ function Get-GuidedResultsView {
         task_delta=$taskDelta
         process_branches=Get-GuidedProcessBranchView -SessionEvidence $SessionEvidence -TaskDelta $taskDelta
     }
+    $view | Add-Member next_step (Get-GuidedNextStep -TaskDelta $taskDelta -ProcessBranches $view.process_branches)
     $snapshots=List $SessionEvidence 'attributed_snapshots'
     if ($null -eq $snapshots -or $snapshots.Count -eq 0 -or $snapshots.Count -gt 5) { return $view }
     $ids=@(); $runs=@(); $anchorKeys=@(); $ordinal=-1
@@ -149,27 +150,54 @@ function Get-GuidedResultsView {
     return $view
 }
 
+function Get-GuidedNextStep {
+    <# The existing presentation choice, structured once for rendering and export.
+       This is guidance, never an evidence classification or a second analysis. #>
+    param([AllowNull()] [object] $TaskDelta, [AllowNull()] [object] $ProcessBranches)
+    function ReadCount($value,[ref]$number) {
+        $number.Value=0
+        return $value -is [string] -and [int]::TryParse($value,[Globalization.NumberStyles]::None,[cultureinfo]::InvariantCulture,$number) -and $number.Value -ge 0
+    }
+    $available=Get-RootCandidateField $TaskDelta 'available'
+    $created=0; $still=0; $gone=0
+    $id='NS_UNAVAILABLE'; $key='task_window_unavailable'
+    if ($available -is [bool] -and $available) {
+        if (-not (ReadCount (Get-RootCandidateField $TaskDelta 'created_count') ([ref]$created)) -or
+            -not (ReadCount (Get-RootCandidateField $TaskDelta 'still_observed_count') ([ref]$still)) -or
+            -not (ReadCount (Get-RootCandidateField $TaskDelta 'no_longer_observed_count') ([ref]$gone)) -or
+            $still + $gone -ne $created) { $id='NS_PARTIAL'; $key='task_window_population_incomplete' }
+        elseif ($created -eq 0) {
+            $branchCount=0; $branchesAvailable=Get-RootCandidateField $ProcessBranches 'available'
+            $branchCountValid=ReadCount (Get-RootCandidateField $ProcessBranches 'branch_count') ([ref]$branchCount)
+            if ($branchesAvailable -is [bool] -and $branchesAvailable -and $branchCountValid -and $branchCount -eq 0) {
+                $id='NS_EMPTY_BRANCHES'; $key='no_task_window_branches'
+            } else { $id='NS_EMPTY'; $key='no_task_window_processes' }
+        }
+        elseif ($still -eq 0 -and $gone -gt 0) { $id='NS_ALL_NO_LONGER_OBSERVED'; $key='all_task_window_processes_no_longer_observed' }
+        elseif ($still -gt 0 -and $gone -eq 0) { $id='NS_STILL_OBSERVED'; $key='task_window_processes_still_observed' }
+        else { $id='NS_MIXED'; $key='task_window_mixed_observations' }
+    }
+    [pscustomobject]@{kind='GUIDANCE';guidance_id=$id;text_key=$key;evidence_classification=$false}
+}
+
 function Format-GuidedNextStep {
     <# Fixed operator guidance over the existing Task Delta and branch projections.
        It creates no ownership, lifecycle, trust or evidence classification. #>
     param(
         [AllowNull()] [object] $TaskDelta,
         [AllowNull()] [object] $ProcessBranches,
-        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability='Auto'
+        [ValidateSet('Plain','Ansi','Auto')] [string] $ColorCapability='Auto',
+        [AllowNull()] [object] $NextStep=$null
     )
     function GuidanceNote($text,[string]$style='Secondary') {
         Add-OperatorStyle -Text (Format-OperatorLine Note -Value $text -ColorCapability Plain) -Style $style -ColorCapability $ColorCapability
     }
-    function ReadCount($value,[ref]$number) {
-        $number.Value = 0
-        return $value -is [string] -and [int]::TryParse($value,[Globalization.NumberStyles]::None,[cultureinfo]::InvariantCulture,$number) -and $number.Value -ge 0
-    }
+    if ($null -eq $NextStep) { $NextStep=Get-GuidedNextStep -TaskDelta $TaskDelta -ProcessBranches $ProcessBranches }
     $lines=@(
         ''
         Format-OperatorLine Section -Label 'OPERATOR NEXT STEP' -ColorCapability $ColorCapability
     )
-    $available=Get-RootCandidateField $TaskDelta 'available'
-    if ($available -isnot [bool] -or -not $available) {
+    if ($NextStep.guidance_id -ceq 'NS_UNAVAILABLE') {
         $lines += GuidanceNote 'Task-window evidence could not be safely established. Review the diagnostic reason or DETAILS before drawing a task-specific process conclusion.' 'Attention'
         $diagnostic=Get-GuidedTaskDeltaSafeDiagnostic (Get-RootCandidateField $TaskDelta 'diagnostic_code')
         if ($null -ne $diagnostic) {
@@ -179,30 +207,23 @@ function Format-GuidedNextStep {
         $lines += GuidanceNote 'NEXT_STEP_GUIDANCE != EVIDENCE_CLASSIFICATION.'
         return $lines -join [Environment]::NewLine
     }
-    $created=0; $still=0; $gone=0
-    if (-not (ReadCount (Get-RootCandidateField $TaskDelta 'created_count') ([ref]$created)) -or
-        -not (ReadCount (Get-RootCandidateField $TaskDelta 'still_observed_count') ([ref]$still)) -or
-        -not (ReadCount (Get-RootCandidateField $TaskDelta 'no_longer_observed_count') ([ref]$gone)) -or
-        $still + $gone -ne $created) {
+    if ($NextStep.guidance_id -ceq 'NS_PARTIAL') {
         $lines += GuidanceNote 'A complete task-window population could not be safely established. Review the Task Delta details before drawing a task-specific process conclusion.' 'Attention'
         $lines += GuidanceNote 'NEXT_STEP_GUIDANCE != EVIDENCE_CLASSIFICATION.'
         return $lines -join [Environment]::NewLine
     }
-    if ($created -eq 0) {
-        $branchCount=0
-        $branchesAvailable=Get-RootCandidateField $ProcessBranches 'available'
-        $branchCountValid=ReadCount (Get-RootCandidateField $ProcessBranches 'branch_count') ([ref]$branchCount)
-        if ($branchesAvailable -is [bool] -and $branchesAvailable -and $branchCountValid -and $branchCount -eq 0) {
+    if ($NextStep.guidance_id -cin @('NS_EMPTY','NS_EMPTY_BRANCHES')) {
+        if ($NextStep.guidance_id -ceq 'NS_EMPTY_BRANCHES') {
             $lines += GuidanceNote 'No task-window confirmed Codex process branch was established in this observation window.'
         }
         else { $lines += GuidanceNote 'No confirmed Codex-owned process was established in the validated task-window set for this observation window.' }
         $lines += GuidanceNote 'If you expected a new branch, reproduce the activity while keeping the same observation procedure.'
     }
-    elseif ($still -eq 0 -and $gone -gt 0) {
+    elseif ($NextStep.guidance_id -ceq 'NS_ALL_NO_LONGER_OBSERVED') {
         $lines += GuidanceNote 'Task-window Codex process activity was observed and all established task-window processes were no longer observed by S4. No cleanup issue is established by this observation.'
         $lines += GuidanceNote 'NO_LONGER_OBSERVED != EXIT_CONFIRMED.'
     }
-    elseif ($still -gt 0 -and $gone -eq 0) {
+    elseif ($NextStep.guidance_id -ceq 'NS_STILL_OBSERVED') {
         $lines += GuidanceNote 'One or more task-window Codex processes are still observed at S4. Continue observation or reproduce the same task before treating this as an issue.' 'Attention'
         $lines += GuidanceNote 'STILL_OBSERVED != RESIDUE.'
     }
@@ -290,7 +311,7 @@ function Format-GuidedResults {
             Note 'Counts describe existing history entries, including unresolved identities.'
             Format-GuidedTaskDelta -View $View.task_delta -ColorCapability $ColorCapability
             Format-GuidedProcessBranches -View $View.process_branches -ColorCapability $ColorCapability
-            Format-GuidedNextStep -TaskDelta $View.task_delta -ProcessBranches $View.process_branches -ColorCapability $ColorCapability
+            Format-GuidedNextStep -TaskDelta $View.task_delta -ProcessBranches $View.process_branches -ColorCapability $ColorCapability -NextStep (Get-RootCandidateField $View 'next_step')
             Section 'LIFECYCLE'
             Value 'Observation basis' $View.lifecycle_basis
             Value 'Result coverage' $View.coverage
