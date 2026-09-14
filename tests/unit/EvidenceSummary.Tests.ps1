@@ -257,14 +257,24 @@ Describe 'Concise evidence summary from resolved data only' {
         $life = @(Compare-Lifecycle -AttributedSnapshots $evidence.attributed_snapshots)
     }
 
-    It 'E01 Unflagged <file> matches pre-feature golden output' -ForEach @(
+    It 'E01 Unflagged <file> matches pre-feature output except the reviewed ownership reason rename' -ForEach @(
         @{file='negative-controls.json'; hash='9F4A8E4263C6BD989E7145BAB22FA3287CA207B7DBA30F9724DF0CF4792F1B68'},
         @{file='session-root-history.json'; hash='2D2B29B6E2FE42D1991F16C1CB2DDE41D21BBF2F073F26A1D6FFB27ED5D9FEDF'}
     ) {
         # Recorded at clean 731a5f7 before feature edits; only CRLF/LF normalized.
         $output = @(& (Join-Path $script:summaryRoot 'codex-resource-audit.ps1') -Mode Fixture -FixturePath (Join-Path $script:summaryRoot "tests\fixtures\$file"))
         $output.Count | Should -Be 1
-        Get-TextHash $output[0] | Should -Be $hash
+        $historicalText=$output[0]
+        if ($file -eq 'negative-controls.json') {
+            # T14.0.2 aligns the producer with the existing Guided/T12 reason.
+            # Preserve the original whole-report hash, allowing ONLY these two
+            # exact reason lines to carry the reviewed vocabulary migration.
+            $pattern='(?m)^  UNKNOWN_REASON: NO_CONFIRMED_CODEX_ROOT_CHAIN(?=\r?$)'
+            [regex]::Matches($historicalText,$pattern).Count | Should -Be 2
+            $historicalText | Should -Not -Match 'NO_VERIFIED_ROOT_AND_COMPLETE_LINEAGE'
+            $historicalText=[regex]::Replace($historicalText,$pattern,'  UNKNOWN_REASON: NO_VERIFIED_ROOT_AND_COMPLETE_LINEAGE')
+        }
+        Get-TextHash $historicalText | Should -Be $hash
         $output[0] | Should -Not -Match 'EVIDENCE_SUMMARY:'
     }
     It 'E02 Opt-in <file> is one string with exact unchanged detailed suffix' -ForEach @(

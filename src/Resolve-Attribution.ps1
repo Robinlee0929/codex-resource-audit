@@ -297,7 +297,7 @@ function Resolve-Attribution {
         $contradicting = @()
         $evidenceIds = @()
         $ruleId = 'ATTR-UNKNOWN-001'
-        $unknownReason = 'NO_VERIFIED_ROOT_AND_COMPLETE_LINEAGE'
+        $unknownReason = 'NO_CONFIRMED_CODEX_ROOT_CHAIN'
 
         if ($isRoot) {
             $ruleId = 'ATTR-ROOT-001'
