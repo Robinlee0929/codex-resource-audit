@@ -52,6 +52,9 @@ if ($ExportIssueEvidence) {
 . (Join-Path $projectRoot 'src\Resolve-IncidentObservation.ps1')
 . (Join-Path $projectRoot 'src\Format-IncidentObservation.ps1')
 . (Join-Path $projectRoot 'src\Invoke-IncidentObservation.ps1')
+. (Join-Path $projectRoot 'src\Resolve-ActivityTargetFinder.ps1')
+. (Join-Path $projectRoot 'src\Format-ActivityTargetFinder.ps1')
+. (Join-Path $projectRoot 'src\Invoke-ActivityTargetFinder.ps1')
 
 $requiredProductionFunctions = @(
     'Get-ProcessSnapshot',
@@ -76,7 +79,19 @@ $requiredProductionFunctions = @(
     'Resolve-IncidentContinuity',
     'Get-IncidentObservationView',
     'Format-IncidentObservation',
-    'Invoke-IncidentObservation'
+    'Invoke-IncidentObservation',
+    'New-ActivityFinderResult',
+    'Test-ActivityFinderCandidateMap',
+    'Get-ActivityFinderBaselineFailure',
+    'Get-ActivityFinderPidGroups',
+    'Resolve-ActivityFinderDelta',
+    'Resolve-ActivityFinderParentTrace',
+    'Resolve-ActivityFinderIntersection',
+    'Resolve-ActivityTargetFinder',
+    'Get-ActivityFinderConditionText',
+    'Get-ActivityTargetFinderView',
+    'Format-ActivityTargetFinder',
+    'Invoke-ActivityTargetFinder'
 )
 foreach ($functionName in $requiredProductionFunctions) {
     if ($null -eq (Get-Command -Name $functionName -CommandType Function -ErrorAction SilentlyContinue)) {

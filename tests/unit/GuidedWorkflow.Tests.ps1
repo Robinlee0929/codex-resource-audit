@@ -1,5 +1,8 @@
 BeforeAll {
     $script:guidedRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    foreach ($name in 'Resolve-ActivityTargetFinder','Format-ActivityTargetFinder','Invoke-ActivityTargetFinder') {
+        . (Join-Path $script:guidedRoot "src/$name.ps1")
+    }
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
         . (Join-Path $script:guidedRoot "src\$name.ps1")
     }

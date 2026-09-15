@@ -71,12 +71,29 @@ function Invoke-GuidedDiscovery {
         if ($view.capture_status -ceq 'COMPLETE') { $outcome.status = 'NO_CANDIDATES' }
         return $outcome
     }
-    Write-Information (Format-OperatorLine Step -Step 2 -Label 'SELECT FOR REVIEW') -InformationAction Continue
-    try {
-        $inputValue = Read-OperatorInput -Prompt 'Select one or more candidate IDs for review, e.g. C3,C9,C12 (Q/QUIT to cancel)' -Reader $Reader
+    Write-Information ((Format-OperatorLine Step -Step 2 -Label 'SELECT FOR REVIEW') + [Environment]::NewLine +
+        'Not sure which process to inspect? Type F to find candidates related to a reproduced activity.') -InformationAction Continue
+    $finderUsed=$false
+    while ($true) {
+        try {
+            $inputValue = Read-OperatorInput -Prompt 'Select one or more candidate IDs for review, e.g. C3,C9,C12 (Q/QUIT to cancel)' -Reader $Reader
+        }
+        catch [Management.Automation.PipelineStoppedException] { throw }
+        catch { throw 'GUIDED_INPUT_FAILED: selection input failed; no selection or assertion recorded.' }
+        $reviewText=Get-RootCandidateField $inputValue 'text'
+        if (-not (Test-RootCandidateCode $inputValue 'status' 'INPUT') -or $reviewText -isnot [string] -or
+            -not [string]::Equals($reviewText,'F',[StringComparison]::OrdinalIgnoreCase)) {break}
+        if ($finderUsed) {
+            Write-Information 'Finder has already been used. Enter candidate IDs for normal review.' -InformationAction Continue
+            continue
+        }
+        $finderUsed=$true
+        $finder=Invoke-ActivityTargetFinder -Baseline $snapshot -Candidates $candidates -ScopeId $observationScopeId -Reader $Reader
+        if (-not $finder.can_return_to_review) {
+            if ($finder.status -ceq 'FINDER_CANCELLED') {$outcome.status='CANCELLED'}
+            return $outcome
+        }
     }
-    catch [Management.Automation.PipelineStoppedException] { throw }
-    catch { throw 'GUIDED_INPUT_FAILED: selection input failed; no selection or assertion recorded.' }
     $review = Resolve-OperatorReviewSet -InputResult $inputValue -Candidates $view.rows
     if ($review.status -ceq 'CANCELLED') { $outcome.status = 'CANCELLED'; return $outcome }
     if ($review.status -cne 'REVIEW_SELECTED') { Stop-GuidedInput -Code GUIDED_REVIEW_INVALID }

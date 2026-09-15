@@ -1,5 +1,8 @@
 BeforeAll {
     $script:handoffRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    foreach ($name in 'Resolve-ActivityTargetFinder','Format-ActivityTargetFinder','Invoke-ActivityTargetFinder') {
+        . (Join-Path $script:handoffRoot "src/$name.ps1")
+    }
     . (Join-Path $script:handoffRoot 'tests\SessionObserverCompatibility.ps1')
     . (Join-Path $script:handoffRoot 'src\Format-GuidedResults.ps1')
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {

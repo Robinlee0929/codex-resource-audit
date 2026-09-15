@@ -21,7 +21,8 @@ Describe 'Stage 0 CLI module wiring' {
         $entrypointText = Get-Content -Raw -LiteralPath $script:entrypoint
         $entrypointText | Should -Match '(?m)^\$projectRoot = \$PSScriptRoot\s*$'
         foreach ($sourceName in @('Collect-ProcessSnapshot.ps1','Resolve-Attribution.ps1','Compare-Lifecycle.ps1','Format-AuditReport.ps1',
-            'Resolve-IncidentObservation.ps1','Format-IncidentObservation.ps1','Invoke-IncidentObservation.ps1')) {
+            'Resolve-IncidentObservation.ps1','Format-IncidentObservation.ps1','Invoke-IncidentObservation.ps1',
+            'Resolve-ActivityTargetFinder.ps1','Format-ActivityTargetFinder.ps1','Invoke-ActivityTargetFinder.ps1')) {
             $entrypointText | Should -Match ([regex]::Escape(". (Join-Path `$projectRoot 'src\$sourceName')"))
         }
 
@@ -74,6 +75,30 @@ Describe 'Stage 0 CLI module wiring' {
         finally {
             Set-Location -LiteralPath $originalLocation
         }
+    }
+    It 'W04 startup guard pins every Finder function used by the Guided path' {
+        $requiredNames=@($script:requiredFunctionsAssignment.Right.FindAll({param($node)
+            $node -is [Management.Automation.Language.StringConstantExpressionAst]
+        },$true) | ForEach-Object Value)
+        foreach ($file in 'Resolve-ActivityTargetFinder','Format-ActivityTargetFinder','Invoke-ActivityTargetFinder') {
+            $tokens=$null;$errors=$null
+            $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:projectRoot "src/$file.ps1"),[ref]$tokens,[ref]$errors)
+            foreach ($function in $ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst]},$true)) {
+                @($requiredNames | Where-Object {$_ -ceq $function.Name}).Count | Should -Be 1
+            }
+        }
+    }
+    It 'W05 missing Finder function <entryFunction> fails before dispatch' -ForEach @(
+        @{entryFunction='New-ActivityFinderResult'},@{entryFunction='Test-ActivityFinderCandidateMap'},
+        @{entryFunction='Get-ActivityFinderBaselineFailure'},@{entryFunction='Get-ActivityFinderPidGroups'},
+        @{entryFunction='Resolve-ActivityFinderDelta'},@{entryFunction='Resolve-ActivityFinderParentTrace'},
+        @{entryFunction='Resolve-ActivityFinderIntersection'},@{entryFunction='Resolve-ActivityTargetFinder'},
+        @{entryFunction='Get-ActivityFinderConditionText'},@{entryFunction='Get-ActivityTargetFinderView'},
+        @{entryFunction='Format-ActivityTargetFinder'},@{entryFunction='Invoke-ActivityTargetFinder'}
+    ) {
+        $script:missingFinderFunction=$entryFunction
+        Mock Get-Command {param($Name) if ($Name -cne $script:missingFinderFunction) {[pscustomobject]@{Name=$Name}}}
+        {& $script:startupWiringGuard} | Should -Throw "*CLI_MODULE_WIRING_FAILED: required function '$entryFunction' was not loaded.*"
     }
     It 'W02 startup guard pins the six Incident entry functions' {
         $requiredNames=@($script:requiredFunctionsAssignment.Right.FindAll({param($node)
