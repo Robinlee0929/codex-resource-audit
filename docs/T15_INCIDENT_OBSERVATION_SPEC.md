@@ -2,6 +2,9 @@
 
 Status: **COMPLETE** — Owner approved.
 
+T15.1 timing amendment: COMPLETE — Owner approved.
+Amendment baseline: `e9248f0aabf4e779e9f30c902a9a0390bebce15c` on `main`.
+
 Audited baseline: `c4af25bb0f920546ce0776360996ece28816ccc4` on `main`.
 This document specifies future T16 behavior. It adds no executable behavior,
 CLI mode, collector, fixture, schema, export, or AI interface. T17 owns subsequent
@@ -55,7 +58,8 @@ All file links below are repository-relative to this document.
 | Guided readiness/projection | [Format-GuidedCandidates.ps1](../src/Format-GuidedCandidates.ps1), `Get-GuidedSessionReadiness`, `Get-GuidedCandidateView`; GuidedReadiness R01–R14 | REUSE_WITH_ADAPTER | Preserve canonical Session result unchanged; compute separate Observation eligibility from captured source records, not display strings or the nullable Session identity. Use a distinct Incident-safe projection. |
 | Candidate discovery | [Select-RootCandidates.ps1](../src/Select-RootCandidates.ps1); [RootCandidates.Tests.ps1](../tests/unit/RootCandidates.Tests.ps1), K04/K25 | REUSE_AS_IS | Current name/path discovery predicate is unchanged. An unavailable path can still yield a name-matched candidate. Eligibility neither broadens discovery nor proves that all observable processes are discoverable. |
 | Timing/wait concept | [Wait-GuidedObservation.ps1](../src/Wait-GuidedObservation.ps1), monotonic deadline; [Invoke-SessionExecution.ps1](../src/Invoke-SessionExecution.ps1) | REUSE_WITH_ADAPTER | Reuse monotonic elapsed-time arithmetic; do not reuse S3/S4 wait labels or Session prompts/events/executor. |
-| Acquisition timeout mechanism | Collector is synchronous and has no cancellation/timeout contract | NEEDS_T16_DECISION | Optional safe acquisition timeout/cancellation can be considered separately; capture attempts and configured waits remain bounded, while collector and overall hard runtime bounds are NOT_CURRENTLY_ESTABLISHED. Never weaken the collector or terminate a process to meet a deadline. |
+| Incident operator input | [Read-OperatorInput.ps1](../src/Read-OperatorInput.ps1), synchronous Read-Host/scripted reader; T16 pre-flight found no safe cancellable timed-read contract | REUSE_WITH_ADAPTER | T16 MUST preserve the existing safe synchronous interaction seam; it may reuse or adapt it for Incident without changing Session input semantics. Incident operator prompt hard timeout is NOT_CURRENTLY_ESTABLISHED. No background reader or abandoned input consumer; Console.KeyAvailable alone does not establish a safe replacement contract. A future cancellable timed-input adapter requires a separately reviewed contract and implementation task and is not required for T16 MVP. |
+| Acquisition timeout mechanism | Collector is synchronous and has no cancellation/timeout contract | NEEDS_T16_DECISION | Optional safe acquisition timeout/cancellation can be considered separately; capture attempts and the configured O2-to-O3 wait remain bounded, while prompt, collector, and overall hard runtime bounds are NOT_CURRENTLY_ESTABLISHED. Never weaken the collector or terminate a process to meet a deadline. |
 
 The history finding does **not** trigger stop condition 3: retained exact keys,
 per-stage observations, and complete source snapshot membership can represent
@@ -208,9 +212,9 @@ After O0 passes, later NOT_OBSERVED/MISMATCH/UNKNOWN continuity results do not
 retarget or restart the run. If a stage returns a result, including an incomplete
 snapshot, record its state and allow only the remaining original scheduled stages;
 there is no additional current-identity gate or mismatch probe. An acquisition
-exception or operator cancellation/expiry stops further scheduling and leaves
-unattempted stages NOT_STARTED. Later matches always refer to the original exact
-identity; prior gaps remain recorded.
+exception, reader failure, or operator cancellation stops further scheduling and
+leaves unattempted stages NOT_STARTED. Later matches always refer to the original
+exact identity; prior gaps remain recorded.
 
 ### Observation-state procedure
 
@@ -283,18 +287,36 @@ one attempt; O0 MATCHED permits the remaining three. Cancellation or acquisition
 failure may leave fewer stages, which must be reported as stopped/cancelled or
 partial as applicable, never completed.
 
-O3 uses a single configured 30-second wait after O2 capture ends. O1 and the
-activity-boundary prompt each have a configured 300-second operator wait budget; expiry
-ends the run with remaining stages NOT_STARTED and no invented boundary event.
-These are configured scheduling bounds, not lifecycle grace periods or guarantees
-of actual wall-clock completion. The three runtime dimensions are distinct:
+O3 uses a single configured 30-second wait after O2 capture ends. O1 and
+ACTIVITY_END remain synchronous operator-controlled interaction points, with
+`INCIDENT_OPERATOR_PROMPT_HARD_TIMEOUT = NOT_CURRENTLY_ESTABLISHED`.
+Each prompt ends only by valid explicit operator input, Q/QUIT, EOF, Ctrl+C /
+pipeline cancellation, or reader failure. Elapsed time or inactivity does not end
+a prompt; no internally fabricated timeout or input representing expiry is allowed.
+
+T16 MUST preserve the existing safe synchronous interaction seam. It may reuse
+or adapt the existing synchronous input handling for Incident; Session input
+semantics remain unchanged. Do not implement a background input reader. No
+background input consumer may survive a stopped prompt, and no timed task,
+runspace, or thread may continue reading after orchestration moves on. Do not
+leave an abandoned ReadLine/Read-Host consumer. Console.KeyAvailable alone is not
+sufficient evidence for a safe replacement interaction contract. A future
+cancellable timed-input adapter requires a separately reviewed contract and
+implementation task; it is not required for T16 MVP.
+
+The configured O2-to-O3 wait is a scheduling bound, not a lifecycle grace period
+or a guarantee of actual wall-clock completion.
+`CONFIGURED_WAIT_BOUNDED != OVERALL_RUNTIME_BOUNDED`. The absence of a prompt
+timeout does not change the already unestablished overall hard runtime bound.
+The runtime dimensions are distinct:
 
 | RUNTIME DIMENSION | CONTRACT | LIMIT / MEANING |
 | --- | --- | --- |
 | Capture attempts | CAPTURE_ATTEMPTS_BOUNDED = YES | At most four; one on O0 gate failure; no retries |
-| Configured inter-stage waits | CONFIGURED_INTER_STAGE_WAITS_BOUNDED = YES | One 30-second O2-to-O3 wait; at most 300 seconds configured for each of two operator prompts; scheduling overhead is not a hard runtime guarantee |
+| Configured inter-stage wait | CONFIGURED_INTER_STAGE_WAIT_BOUNDED = YES | One 30-second O2-to-O3 wait; scheduling overhead is not a hard runtime guarantee |
+| Incident operator prompts | INCIDENT_OPERATOR_PROMPT_HARD_TIMEOUT = NOT_CURRENTLY_ESTABLISHED | O1 and ACTIVITY_END use synchronous operator-controlled input; no enforced prompt deadline or synthesized expiry input |
 | Collector acquisition duration | COLLECTOR_ACQUISITION_HARD_TIMEOUT = NOT_CURRENTLY_ESTABLISHED | Synchronous collector has no established hard acquisition timeout |
-| Overall wall-clock duration | OVERALL_WALL_CLOCK_HARD_BOUND = NOT_CURRENTLY_ESTABLISHED | Capture-count and configured-wait bounds do not bound acquisition or total elapsed runtime |
+| Overall wall-clock duration | OVERALL_WALL_CLOCK_HARD_BOUND = NOT_CURRENTLY_ESTABLISHED | Capture-count and configured-wait bounds do not bound operator input, acquisition, or total elapsed runtime |
 
 T16 may separately decide whether to add a safe acquisition timeout/cancellation
 mechanism, without weakening collection evidence or changing these claims until
@@ -310,14 +332,20 @@ do not synthesize an empty or COMPLETE snapshot when a countdown ends.
 | --- | --- | --- | --- | --- |
 | Review / explicit Observe selection | Bind captured PID/exact time and show both readiness dimensions | Choose reviewed target and Observe action explicitly | Eligible to attempt O0 | Current identity already matched; operator verified ownership; automatic fallback |
 | O0 — baseline / current-identity gate | Fresh capture compared with immutable selected reference | Start the O0 attempt | MATCHED permits later stages; otherwise STOPPED with fixed reason | Session revalidation, VERIFIED_ROOT, ownership, or continuation after failed gate |
-| O1 — activity / immediate follow-up | Second capture, only after O0 MATCHED | Request O1; optionally perform intended activity externally | Recorded presence/resource facts at O1 | Different same-PID process replaces target; process is doing task |
-| ACTIVITY_END — operator event | Record boundary after O1; only reachable after O0 MATCHED | Explicitly declare observed activity ended | Operator declared boundary at recorded relative time | Event after failed O0; process exit, task success, lifecycle trigger |
+| O1 — activity / immediate follow-up | Second capture, only after O0 MATCHED | Explicitly request O1 through synchronous input without an enforced prompt timeout; optionally perform intended activity externally | Recorded presence/resource facts at O1 | Capture triggered by inactivity or elapsed time; different same-PID process replaces target; process is doing task |
+| ACTIVITY_END — operator event | Record boundary after O1; only reachable after O0 MATCHED | Explicitly declare observed activity ended through synchronous input without an enforced prompt timeout | Operator declared boundary at recorded relative time | Event synthesized from inactivity, elapsed time, EOF, cancellation, or reader failure; event after failed O0; process exit, task success, lifecycle trigger |
 | O2 — post-boundary | Capture after declaration in admitted run | Declaration requests O2 | Observed after operator boundary | Created by task; residue or cleanup result |
 | O3 — final follow-up | One capture after configured 30-second wait in admitted run | May cancel; otherwise no extra assertion | Final captured continuity/resources after capture returns | Countdown proves capture completion; hard overall runtime bound; leak, orphan, residue, exit |
 
 ACTIVITY_END is recorded only on explicit declaration after O1; do not synthesize
-it on timeout, failed input, or cancellation. A short activity may already have
-ended before O1: the recorded declaration remains a declaration time, not a
+it on inactivity, elapsed time, invalid input, EOF, cancellation, or reader failure.
+Q/QUIT/EOF/Ctrl+C or pipeline cancellation while awaiting O1 or ACTIVITY_END leaves
+ACTIVITY_END absent and unattempted later stages NOT_STARTED. Reader failure also
+stops scheduling without inventing the event. Cancellation after an explicit
+declaration retains that recorded event and leaves unattempted later stages
+NOT_STARTED. Ctrl+C / pipeline cancellation remains cancellation, never timeout
+or success. A short activity may already have ended before O1: the recorded
+declaration remains a declaration time, not a
 reconstructed actual finish time. `TASK_END != PROCESS_EXIT` applies equally here;
 ACTIVITY_END is not a Session TASK_END event or a lifecycle-policy input.
 
@@ -518,8 +546,9 @@ READY, explicitly select the reviewed identity and action, then start that chose
 path by attempting O0. Later prompts and captures are enabled only after target
 O0 MATCHED; any other O0 result stops with the fixed reason above. The explicit
 Observe action means **“I want to observe this captured process
-identity.”** It is sufficient authorization for the bounded read-only run; no
-separate “I verify this is Codex” assertion is appropriate. No default action,
+identity.”** It is sufficient authorization for the read-only run of at most four
+capture attempts; no separate “I verify this is Codex” assertion is appropriate.
+No default action,
 single-candidate auto-selection, stale candidate-ID remapping, or implicit Enter
 acceptance. Decline/cancel/EOF before action means no O0. If no candidates are
 Observation-ready, review remains available and no target is started.
@@ -530,6 +559,12 @@ revalidation, root matching, and S0–S4 semantics are unchanged. Incident MATCH
 must be labeled **Identity continuity**, never Session revalidation, verified,
 trusted, or known Codex instance. No existing compatibility contract requires such
 verification words for this new path.
+
+After O0 MATCHED, the operator explicitly requests O1 and then explicitly declares
+ACTIVITY_END using the existing safe synchronous interaction seam. These prompts
+have no established hard timeout. Q/QUIT, EOF, Ctrl+C / pipeline cancellation, or
+reader failure stops the interaction as specified above; inactivity never supplies
+an action or event. Session input semantics remain unchanged.
 
 ## Privacy, future export, and AI boundary
 
@@ -597,12 +632,23 @@ they are not executable tests or claims of existing T16 coverage.
 | Numeric parent PID matches another row but endpoint time is insufficient | PID_REFERENCE_ONLY; parent_reference null; numeric PPID stays private |
 | O3 countdown ends while capture remains pending | Wait is complete, capture is not; no synthesized snapshot; collector/overall hard duration remains NOT_CURRENTLY_ESTABLISHED |
 | Source/scope changes, missing provenance, invalid monotonic order | Initial source block or subsequent UNKNOWN; no cross-scope join or fabricated duration |
-| Operator cancel before start; timeout waiting for activity declaration | No O0 in first case; retained partial stages and no invented ACTIVITY_END in second |
+| Operator cancels before start | No O0 |
+| Inactivity or elapsed time while waiting for O1 or ACTIVITY_END | Synchronous prompt remains operator-controlled; no fabricated timeout, input, capture, or ACTIVITY_END |
+| Valid explicit O1 request followed by explicit ACTIVITY_END declaration | O1 capture precedes the declared event; O2 follows declaration; one configured 30-second wait precedes O3; at most four capture attempts |
+| Q/QUIT, EOF, Ctrl+C / pipeline cancellation, or reader failure while waiting for O1 or ACTIVITY_END | Retain attempted stages; ACTIVITY_END remains absent; unattempted later stages NOT_STARTED; cancellation/failure is never timeout or success |
+| Prompt stops and orchestration moves on | No background input consumer survives; no timed task/runspace/thread continues reading or consumes later input |
 
 T16 must run synthetic/offline acceptance and existing regression gates before
 T17 operator-owned PowerShell 7 live validation. Gate 2 is a hard stop: one
 confirmed ownership false positive makes that version NO-GO. Documentation or
 passing parse checks do not establish Gate 1, Gate 2, Gate 3, or live success.
+
+T16 input acceptance must cover the synchronous prompt/event vectors above and
+preserve Session input semantics. An enforced prompt timeout and a new cancellable
+timed-input adapter are not T16 MVP requirements. This T15.1 documentation-only
+amendment requires `git diff --check`, an exact changed-file audit showing only
+this document, and an empty frozen T12 guard. No full offline suite is required
+for the amendment; T16 implementation still requires its offline acceptance gates.
 
 T15 validation is Markdown diff/whitespace checking, PowerShell parser-only
 checking of unchanged sources/tests, no production/test diff, and the frozen T12
@@ -639,12 +685,18 @@ changes, live process validation by Codex, archive-repository edits, commit, or 
 | 6: T12 schema modification required | Not triggered: separate conceptual model, no export implementation or schema. |
 | 7–8: weakened Session or automatic fallback required | Not triggered: separate eligibility/action/continuity path; Session stays unchanged. |
 | 9: private path/command required for safe presentation | Not triggered: fixed display labels/generic fallback and private identity backing suffice. |
+| T16 pre-flight: INCIDENT_PROMPT_TIMEOUT_CONTRACT_UNSAFE | The Owner-reviewed T15.1 amendment removes the enforced prompt budget, preserves synchronous input, and resolves the prompt-timeout blocker. A timed-input adapter is not required for T16 MVP. T16 may resume from the committed amendment baseline. |
 
 `TASK_RESULT = DONE`; `T15_STATUS = COMPLETE`;
-`OWNER_DECISION_REQUIRED = NO`; `READY_FOR_OWNER_REVIEW = YES`;
-`READY_FOR_T16_IMPLEMENTATION = YES` (all four Owner-review ambiguities are pinned:
-fresh O0 gate, identity/state crosswalk with discovery excluded, separate runtime
-bounds, and exact role/relationship policy).
+`T15_1_STATUS = COMPLETE`;
+`OWNER_DECISION_REQUIRED = NO`; `READY_FOR_OWNER_REVIEW = NO`;
+`T16_STATUS = READY_TO_RESUME`;
+`READY_FOR_T16_IMPLEMENTATION = YES`;
+`READY_FOR_T16_RESUME = YES`.
+The original four Owner-review decisions remain pinned: fresh O0 gate,
+identity/state crosswalk with discovery excluded, separate runtime bounds, and
+exact role/relationship policy. The T15.1 timing decision is Owner-approved; no
+further contract decision is requested by this amendment.
 T16's optional acquisition-wait mechanism is an implementation
 decision within these limits, not authority to weaken them. If implementation
 evidence contradicts any finding above, stop with OWNER_DECISION_REQUIRED = YES.
