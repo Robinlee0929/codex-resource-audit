@@ -85,6 +85,25 @@ function Format-IncidentObservation {
                     $event.start_offset_seconds.ToString('0.###',[cultureinfo]::InvariantCulture),$event.end_offset_seconds.ToString('0.###',[cultureinfo]::InvariantCulture)
             }
         }
+        '=== ACTIVITY CHANGES ==='
+        # Select already-resolved states from the closed view; retain the full
+        # stage evidence below without changing its order or contents.
+        $changedRows=@($view.processes | Where-Object {
+            @($_.observations | Where-Object observation_state -CIn @('NEWLY_OBSERVED','NO_LONGER_OBSERVED')).Count -gt 0
+        })
+        if ($changedRows.Count -eq 0) {
+            '  No NEWLY_OBSERVED or NO_LONGER_OBSERVED transitions were recorded.'
+        }
+        foreach ($row in $changedRows) {
+            "  $($row.observation_process_id)"
+            foreach ($observation in $row.observations) {
+                if ($observation.observation_state -cnotin @('NEWLY_OBSERVED','NO_LONGER_OBSERVED')) {continue}
+                "    $($observation.stage): $($observation.observation_state)"
+                if ($observation.relationship_status -ceq 'OBSERVED_PARENT_CHILD' -and $null -ne $observation.parent_reference) {
+                    "      Relationship: OBSERVED_PARENT_CHILD -> $($observation.parent_reference)"
+                }
+            }
+        }
         '=== OBSERVED CONTEXT ==='
         '  ID | STAGE | PROCESS | ROLE HINT | CONTINUITY | STATE | WORKING SET | RELATIONSHIP | PARENT'
         foreach ($row in $view.processes) {foreach ($observation in $row.observations) {

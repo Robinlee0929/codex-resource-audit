@@ -7,8 +7,23 @@ function Get-IncidentClock {
 function Read-IncidentAction {
     # Same synchronous seam as Guided; no timer, worker, or outstanding reader.
     param([ValidateSet('O1','ACTIVITY_END')][string]$Action, [AllowNull()][scriptblock]$Reader=$null)
-    $prompt=if ($Action -ceq 'O1') {'Perform the intended activity externally, then type O1 to capture (Q/QUIT to cancel)'}
-        else {'Type ACTIVITY_END to declare the observed activity ended and capture O2 (Q/QUIT to cancel)'}
+    $instructions=if ($Action -ceq 'O1') {@(
+        '=== CAPTURE DURING ACTIVITY ==='
+        'Start or continue the external activity now.'
+        'INPUT REQUIRED: O1'
+        'Type O1 while the activity is still running. This captures the during-activity observation.'
+        'Q/QUIT cancels.'
+    )} else {@(
+        '=== DECLARE ACTIVITY END ==='
+        'Wait until the external activity has finished.'
+        'INPUT REQUIRED: ACTIVITY_END'
+        'After ACTIVITY_END is accepted, O2 will be captured automatically.'
+        'Do not type O2 manually.'
+        'Q/QUIT cancels.'
+    )}
+    Write-Information ($instructions -join [Environment]::NewLine) -InformationAction Continue
+    $prompt=if ($Action -ceq 'O1') {'Type O1 (Q/QUIT to cancel)'}
+        else {'Type ACTIVITY_END (Q/QUIT to cancel)'}
     while ($true) {
         try {$inputResult=Read-OperatorInput -Prompt $prompt -Reader $Reader}
         catch [Management.Automation.PipelineStoppedException] {throw}
@@ -91,6 +106,7 @@ function Invoke-IncidentObservation {
                     $event.end_offset_seconds=$event.start_offset_seconds
                 }
                 $stage='O2'
+                Write-Information 'ACTIVITY_END accepted. Capturing O2 automatically.' -InformationAction Continue
             } else {$stage='O1'}
             $capture=Invoke-IncidentCapture $run $stage
             if ($capture.failed) {$run.reason='OBSERVATION_COLLECTION_FAILED';return $run}
