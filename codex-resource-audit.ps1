@@ -49,6 +49,9 @@ if ($ExportIssueEvidence) {
 . (Join-Path $projectRoot 'src\Format-GuidedProcessBranches.ps1')
 . (Join-Path $projectRoot 'src\Format-GuidedResults.ps1')
 . (Join-Path $projectRoot 'src\Invoke-SessionExecution.ps1')
+. (Join-Path $projectRoot 'src\Resolve-IncidentObservation.ps1')
+. (Join-Path $projectRoot 'src\Format-IncidentObservation.ps1')
+. (Join-Path $projectRoot 'src\Invoke-IncidentObservation.ps1')
 
 $requiredProductionFunctions = @(
     'Get-ProcessSnapshot',
@@ -67,7 +70,13 @@ $requiredProductionFunctions = @(
     'Format-GuidedProcessBranches',
     'Read-LifecycleContract',
     'New-BoundLifecyclePolicy',
-    'Add-LifecycleContractEvidence'
+    'Add-LifecycleContractEvidence',
+    'Get-IncidentName',
+    'Get-IncidentObservationReadiness',
+    'Resolve-IncidentContinuity',
+    'Get-IncidentObservationView',
+    'Format-IncidentObservation',
+    'Invoke-IncidentObservation'
 )
 foreach ($functionName in $requiredProductionFunctions) {
     if ($null -eq (Get-Command -Name $functionName -CommandType Function -ErrorAction SilentlyContinue)) {
@@ -143,7 +152,11 @@ switch ($Mode) {
         # DETAILS emits the retained canonical report on the success stream.
         try {
             $guidedResult = Invoke-GuidedDiscovery
-            if ($guidedResult.status -ceq 'OPERATOR_ASSERTION_RECORDED') {
+            if ($guidedResult.status -ceq 'INCIDENT_ACTION_SELECTED') {
+                $incidentResult=Invoke-IncidentObservation -GuidedOutcome $guidedResult -ExportIssueEvidence:$ExportIssueEvidence
+                Write-Information (Format-IncidentObservation $incidentResult) -InformationAction Continue
+            }
+            elseif ($guidedResult.status -ceq 'OPERATOR_ASSERTION_RECORDED') {
                 $exportParameters=@{}
                 if ($ExportIssueEvidence) { $exportParameters=@{ExportIssueEvidence=$true;IssueEvidenceOutputDirectory=$IssueEvidenceOutputDirectory} }
                 Invoke-GuidedSession -GuidedOutcome $guidedResult -FollowUpSeconds $FollowUpSeconds @exportParameters

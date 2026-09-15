@@ -1,7 +1,7 @@
 BeforeAll {
     . (Join-Path $PSScriptRoot '../../src/Invoke-SessionExecution.ps1')
     $script:uxRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults','Wait-GuidedObservation') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Send-SessionProgress','Format-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults','Wait-GuidedObservation') {
         . (Join-Path $script:uxRoot "src\$name.ps1")
     }
     $tokens=$null; $errors=$null
@@ -45,6 +45,8 @@ Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
         Mock Start-Sleep { param($Seconds) $script:uxTrace.Add("wait:$Seconds") }
         Mock Read-Host {
             param($Prompt)
+            # This fixture explicitly chooses Session at the new action prompt.
+            if ($Prompt -like 'Choose action:*') {return 'S'}
             $script:uxPrompts.Add($Prompt)
             if ($Prompt -match 'capture S[12]$') { $script:uxTrace.Add('prompt:'+ $Prompt); return '' }
             if ($script:uxInputs.Count -eq 0) { throw 'UNEXPECTED_EXTRA_INPUT' }

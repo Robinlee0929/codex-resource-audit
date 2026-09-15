@@ -1,7 +1,7 @@
 BeforeAll {
     $script:observeRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     . (Join-Path $script:observeRoot 'src\Format-GuidedResults.ps1')
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
         . (Join-Path $script:observeRoot "src\$name.ps1")
     }
     $script:observeResolver = (Get-Command Resolve-SessionEvidence).ScriptBlock
@@ -72,6 +72,8 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         }
         Mock Read-Host {
             param($Prompt)
+            # This fixture explicitly chooses Session at the new action prompt.
+            if ($Prompt -like 'Choose action:*') {return 'S'}
             if ($Prompt -like 'Type DETAILS*') { return 'DETAILS' }
             if ($Prompt -eq 'Start the task, then press Enter to capture S1') {
                 $script:observeTrace.Add('prompt:start')
@@ -191,7 +193,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         $waits=@($script:observeInfo | Where-Object { $_ -match 'Waiting 7 seconds' })
         $waits.Count | Should -Be 2
         foreach ($wait in $waits) { $wait | Should -Match 'not lifecycle grace' }
-        Should -Invoke Read-Host -Times 6 -Exactly
+        Should -Invoke Read-Host -Times 7 -Exactly
     }
     It 'U06 Canonical result stays one unchanged success string and explicit DETAILS follows readiness' {
         Invoke-ObserveTest
@@ -249,7 +251,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         try {
             $source=@'
 param($Repository,$CanonicalText,$FixtureText)
-foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation') {
+foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation') {
     . (Join-Path $Repository "src\$name.ps1")
 }
 $script:fixture=$FixtureText | ConvertFrom-Json -Depth 40 -DateKind String

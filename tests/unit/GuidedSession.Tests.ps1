@@ -2,7 +2,7 @@ BeforeAll {
     $script:handoffRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     . (Join-Path $script:handoffRoot 'tests\SessionObserverCompatibility.ps1')
     . (Join-Path $script:handoffRoot 'src\Format-GuidedResults.ps1')
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
         . (Join-Path $script:handoffRoot "src\$name.ps1")
     }
     $script:realRootMatcher = (Get-Command Resolve-Attribution).ScriptBlock
@@ -140,6 +140,8 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
         }
         Mock Read-Host {
             param($Prompt)
+            # This fixture explicitly chooses Session at the new action prompt.
+            if ($Prompt -like 'Choose action:*') {return 'S'}
             $script:trace.Add('prompt:'+ $Prompt)
             if ($Prompt -like 'Type DETAILS*') { return 'DETAILS' }
             if ($Prompt -eq 'Start the task, then press Enter to capture S1' -or $Prompt -eq 'When the observed Codex activity is finished, press Enter to declare TASK_END and capture S2') { return '' }
@@ -287,7 +289,7 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
         Invoke-TestHandoff -Cli
         @($script:trace | Where-Object { $_ -match '^capture:' }) | Should -Be @('capture:CANDIDATES','capture:GUIDED_REVALIDATION','capture:S0','capture:S1','capture:S2','capture:S3','capture:S4')
         Should -Invoke Select-RootCandidates -Times 1 -Exactly
-        Should -Invoke Read-Host -Times 6 -Exactly
+        Should -Invoke Read-Host -Times 7 -Exactly
         Should -Invoke Invoke-CanonicalSession -Times 1 -Exactly
         $script:reports.Count | Should -Be 1
         $script:reports[0] | Should -BeExactly (Format-SessionAuditReport $script:sessionEvidence $script:life LIVE_WINDOWS_CIM)

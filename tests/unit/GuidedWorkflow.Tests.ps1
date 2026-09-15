@@ -1,6 +1,6 @@
 BeforeAll {
     $script:guidedRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Format-GuidedTaskDelta','Format-GuidedProcessBranches') {
         . (Join-Path $script:guidedRoot "src\$name.ps1")
     }
     $script:realSelector = (Get-Command Select-RootCandidates).ScriptBlock
@@ -76,6 +76,8 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         }
         Mock Read-Host {
             param($Prompt)
+            # This fixture explicitly chooses Session at the new action prompt.
+            if ($Prompt -like 'Choose action:*') {return 'S'}
             $script:trace.Add('prompt')
             if ($script:inputQueue.Count -eq 0) { throw 'UNEXPECTED_EXTRA_PROMPT' }
             return $script:inputQueue.Dequeue()
@@ -101,14 +103,14 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly -ParameterFilter { $SnapshotId -in @('S0','S1','S2','S3','S4') }
     }
 
-    It 'H01 Actual Guided CLI captures and discovers once and displays before each of three prompts' {
+    It 'H01 Actual Guided CLI captures and discovers once with explicit target action and confirmation' {
         $before = $script:snapshot | ConvertTo-Json -Depth 30 -Compress
         Invoke-CapturedGuided
         Should -Invoke Get-ProcessSnapshot -Times 1 -Exactly -ParameterFilter { $SnapshotId -ceq 'CANDIDATES' }
         Should -Invoke Select-RootCandidates -Times 1 -Exactly
         Should -Invoke Get-RootCandidatePresentation -Times 3 -Exactly
-        Should -Invoke Read-Host -Times 3 -Exactly
-        @($script:trace) | Should -Be @('capture','discover','project:0','project:1','project:2','display','display','prompt','display','display','prompt','display','display','prompt')
+        Should -Invoke Read-Host -Times 4 -Exactly
+        @($script:trace) | Should -Be @('capture','discover','project:0','project:1','project:2','display','display','prompt','display','display','prompt','display','display','display','prompt')
         $script:success.Count | Should -Be 1
         $script:success[0] | Should -BeOfType [string]
         $script:success[0] | Should -Match 'OPERATOR_CONFIRMATION: RECORDED'
@@ -121,9 +123,9 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         $index | Should -Match 'Candidates: 3'
         $rows = @($index -split '\r?\n' | Where-Object { $_ -match '^    C[1-9]' })
         $rows | Should -Be @(
-            '    C1 | ChatGPT.exe | 9003 | READY'
-            '    C3 | codex.exe | 9001 | READY'
-            '    C2 | codex-helper.exe | 9002 | READY'
+            '    C1 | ChatGPT.exe | 9003 | READY | BLOCKED'
+            '    C3 | codex.exe | 9001 | READY | BLOCKED'
+            '    C2 | Process | 9002 | READY | BLOCKED'
         )
         $index | Should -Match 'ChatGPT name match \(1\)'
         $index | Should -Match 'Codex name match \(1\)'
@@ -146,7 +148,7 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         $comparison = $script:info[2]
         $ids = @([regex]::Matches($comparison,'Candidate ID: (C[1-9][0-9]*)') | ForEach-Object { $_.Groups[1].Value })
         $ids | Should -Be $expected
-        Should -Invoke Read-Host -Times 3 -Exactly
+        Should -Invoke Read-Host -Times 4 -Exactly
     }
     It 'H04 Any invalid review token rejects the whole attempt before compare target or confirmation' {
         foreach ($text in '', ' ', 'C', 'C1,BAD,C3', 'C1,C4', 'C0', 'C01', 'c1bad', 'C1-C3', 'C*', '9003', 'ChatGPT.exe', 'C1,', ',C1', 'C1,,C3', 'C1,Q', 'C1,QUIT', "C1`n", 'C99999999999999999999') {
@@ -186,9 +188,10 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
             $script:inputQueue.Count | Should -Be 1
         }
     }
-    It 'H08 Comparison preserves every reviewed captured identity and full long path' {
+    It 'H08 Comparison preserves PID and time; explicit Session retains its full identity display' {
         $longPath = 'C:\Synthetic\Codex\' + ('long-path-segment\' * 25) + 'codex.exe'
         $script:snapshot.processes[2].executable_path = $longPath
+        Set-GuidedTestInput @('C3,C1','C3','YES')
         Invoke-CapturedGuided
         $comparison = $script:info[2]
         foreach ($i in 2,0) {
@@ -196,12 +199,13 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
             $comparison | Should -Match ([regex]::Escape('Process Name: ' + $row.name))
             $comparison | Should -Match ([regex]::Escape('PID: ' + $row.pid))
             $comparison | Should -Match ([regex]::Escape('Creation Time UTC: ' + $row.creation_time))
-            $comparison | Should -Match ([regex]::Escape('Executable Path: ' + $row.executable_path))
         }
         $comparison | Should -Match 'REVIEW_SET != VERIFIED_ROOT'
         $comparison | Should -Match 'Captured candidate identities only'
         $comparison | Should -Not -Match 'REVALIDATED|TRUSTED ROOT|VERIFIED ROOT'
-        $script:info[4] | Should -Match 'SESSION_TARGET != VERIFIED_ROOT'
+        $comparison | Should -Not -Match 'Executable Path:'
+        $script:info[5] | Should -Match 'SESSION_TARGET != VERIFIED_ROOT'
+        $script:info[5] | Should -Match ([regex]::Escape('Executable Path: ' + $longPath))
         Should -Invoke Get-ProcessSnapshot -Times 1 -Exactly
     }
     It 'H09 Unavailable comparison identity is shown and another complete reviewed target may be asserted' {
@@ -210,7 +214,7 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         Invoke-CapturedGuided -Internal
         $comparison = $script:info[2]
         $comparison | Should -Match 'Creation Time UTC: UNAVAILABLE'
-        $comparison | Should -Match 'Executable Path: <REDACTED_OR_UNAVAILABLE>'
+        $comparison | Should -Not -Match 'Executable Path:'
         $comparison | Should -Not -Match 'PrivatePerson'
         $script:success[0].selected_candidate_id | Should -BeExactly 'C1'
         $script:success[0].operator_assertion_recorded | Should -BeTrue
@@ -317,7 +321,7 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
             $script:info[0] | Should -Match 'Candidates: 3'
             $script:info[0] | Should -Not -Match 'PRIVATE_CAPTURE'
             $script:success[0].status | Should -BeExactly 'EVIDENCE_BLOCKED'
-            $script:success[0].reason_code | Should -BeExactly 'NO_SESSION_READY_CANDIDATES'
+            $script:success[0].reason_code | Should -BeExactly 'NO_READY_CANDIDATES'
             $script:success[0].review_candidate_ids | Should -Be @('C1','C3')
         }
         Should -Invoke Read-Host -Times 4 -Exactly
@@ -348,7 +352,7 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         Invoke-CapturedGuided
         $all = (@($script:info) + @($script:success)) -join "`n"
         $all | Should -Not -Match 'PRIVATE_NAME|PrivatePerson|PRIVATE_COMMAND|PRIVATE_ENV|private.exe|\x1B|[\x80-\x9F\p{Cf}\p{Zl}\p{Zp}]'
-        $all | Should -Match '<REDACTED_OR_UNAVAILABLE>'
+        $all | Should -Match 'Process Name: Process'
     }
     It 'H20 No previous run supplies a review or target to a new captured namespace' {
         Invoke-CapturedGuided -Internal
@@ -361,7 +365,8 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         $previous.selected_candidate_id | Should -BeExactly 'C1'
         @($previous.review_candidate_ids) | Should -Be @('C3','C1')
     }
-    It 'H21 Scripted input seam works offline and still requires explicit target and confirmation' {
+    It 'H21 Scripted input seam works offline and requires explicit target action and confirmation' {
+        Set-GuidedTestInput @('C3,C1','C1','S','YES')
         $result = Invoke-GuidedDiscovery -Reader { $script:inputQueue.Dequeue() } 6>$null
         $result.operator_assertion_recorded | Should -BeTrue
         Should -Invoke Read-Host -Times 0 -Exactly
@@ -370,7 +375,7 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
     It 'H22 Ctrl+C is rethrown at every input stage without creating a successful result' {
         # Inspect typed cancellation branches without sending Ctrl+C to Pester itself.
         $source = (Get-Command Invoke-GuidedDiscovery).ScriptBlock.ToString()
-        ([regex]::Matches($source,'catch \[Management.Automation.PipelineStoppedException\] \{ throw \}')).Count | Should -Be 3
+        ([regex]::Matches($source,'catch \[Management.Automation.PipelineStoppedException\] \{\s*throw\s*\}')).Count | Should -Be 4
     }
 }
 
@@ -426,7 +431,7 @@ Describe 'Guided pure projection comparison styling and stream boundaries' {
         $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:guidedRoot 'src\Format-GuidedCandidates.ps1'),[ref]$tokens,[ref]$errors)
         $errors.Count | Should -Be 0
         foreach ($command in $ast.FindAll({param($node) $node -is [Management.Automation.Language.CommandAst]},$true)) {
-            $command.GetCommandName() | Should -BeIn @('Set-StrictMode','Get-RootCandidateField','Get-RootCandidatePresentation','Get-RootCandidateFriendlyGroupLabel','Format-OperatorLine','Add-OperatorStyle','ConvertTo-OperatorCell','ForEach-Object','Where-Object','Format-GuidedIdentityBlock','Get-RootCandidateUtc','Get-RootCandidateSafePath','Get-RootCandidateSafeName','Test-RootCandidateCode','Get-GuidedSessionReadiness','Get-GuidedReadinessLabel','Add-Member')
+            $command.GetCommandName() | Should -BeIn @('Set-StrictMode','Get-RootCandidateField','Get-RootCandidatePresentation','Get-RootCandidateFriendlyGroupLabel','Format-OperatorLine','Add-OperatorStyle','ConvertTo-OperatorCell','ForEach-Object','Where-Object','Format-GuidedIdentityBlock','Get-RootCandidateUtc','Get-RootCandidateSafePath','Get-RootCandidateSafeName','Test-RootCandidateCode','Get-GuidedSessionReadiness','Get-GuidedReadinessLabel','Add-Member','Get-IncidentObservationReadiness','Get-IncidentName','Format-GuidedActionTarget')
             $command.InvocationOperator | Should -Not -BeIn @('Ampersand','Dot')
         }
     }

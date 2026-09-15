@@ -1,6 +1,6 @@
 BeforeAll {
     $script:t13Root=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults','Write-IssueEvidencePackage','Invoke-GuidedIssueEvidenceExport') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Wait-GuidedObservation','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults','Write-IssueEvidencePackage','Invoke-GuidedIssueEvidenceExport') {
         . (Join-Path $script:t13Root "src/$name.ps1")
     }
     Import-Module (Join-Path $script:t13Root 'src/IssueEvidence.psm1') -Force
@@ -201,6 +201,8 @@ Describe 'T13 Guided CLI source reuse, compatibility, and failure boundaries (of
         }
         Mock Read-Host {
             param($Prompt)
+            # This fixture explicitly chooses Session at the new action prompt.
+            if ($Prompt -like 'Choose action:*') {return 'S'}
             $script:t13Trace.Add('prompt:'+$Prompt)
             if ($Prompt -like 'Type DETAILS*') {if ($script:t13Details) {return 'DETAILS'}; return ''}
             if ($Prompt -like 'Start the task*') {if ($script:t13Failure -eq 'cancel') {throw [Management.Automation.PipelineStoppedException]::new()}; return ''}
@@ -290,7 +292,7 @@ Describe 'T13 Guided CLI source reuse, compatibility, and failure boundaries (of
         Should -Invoke New-GuidedIssueEvidenceSource -Times 0 -Exactly
         Should -Invoke ConvertTo-IssueEvidencePackage -Times 0 -Exactly
         Should -Invoke Write-IssueEvidencePackage -Times 0 -Exactly
-        Should -Invoke Read-Host -Times 6 -Exactly
+        Should -Invoke Read-Host -Times 7 -Exactly
     }
     It 'T13-I01 shares completed evidence and the displayed view, exports once, and never recomputes engines' {
         Invoke-T13Guided -Export
@@ -316,7 +318,7 @@ Describe 'T13 Guided CLI source reuse, compatibility, and failure boundaries (of
         Should -Invoke Get-GuidedResultsView -Times 1 -Exactly
         Should -Invoke Get-GuidedNextStep -Times 1 -Exactly
         Should -Invoke ConvertTo-IssueEvidencePackage -Times 1 -Exactly
-        Should -Invoke Read-Host -Times 6 -Exactly
+        Should -Invoke Read-Host -Times 7 -Exactly
     }
     It 'T13-I02 DETAILS still returns exactly one canonical report after export' {
         Invoke-T13Guided -Export -Details
@@ -351,7 +353,7 @@ Describe 'T13 Guided CLI source reuse, compatibility, and failure boundaries (of
         try {
             $source=@'
 param($Repository,$CanonicalText,$FixtureText,$Destination)
-foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Write-IssueEvidencePackage') {
+foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedSession','Invoke-SessionExecution','Send-SessionProgress','Format-GuidedObservation','Write-IssueEvidencePackage') {
     . (Join-Path $Repository "src/$name.ps1")
 }
 $script:fixture=$FixtureText | ConvertFrom-Json -Depth 50 -DateKind String

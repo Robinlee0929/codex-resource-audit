@@ -1,6 +1,6 @@
 BeforeAll {
     $script:t7Root=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    foreach ($name in 'Format-AuditReport','Format-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults') {
+    foreach ($name in 'Format-AuditReport','Format-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults') {
         . (Join-Path $script:t7Root "src\$name.ps1")
     }
     $script:t7Entry=Join-Path $script:t7Root 'codex-resource-audit.ps1'
@@ -89,7 +89,12 @@ Describe 'T7 Help and candidate readability' {
             [pscustomobject]@{candidate_id='C2';name='ChatGPT.exe';pid='11';display_group='NAME_EQUALS_CHATGPT_EXE';session_readiness=[pscustomobject]@{status='BLOCKED'}},
             [pscustomobject]@{candidate_id='C3';name='node.exe';pid='12';display_group='PATH_ONLY_MATCH';session_readiness=[pscustomobject]@{status='READY'}}
         )
+        foreach ($row in $rows) {
+            $row | Add-Member observation_name (Get-IncidentName $row.name).display_name
+            $row | Add-Member observation_readiness ([pscustomobject]@{status='READY'})
+        }
         $text=Format-GuidedCandidateIndex ([pscustomobject]@{capture_status='COMPLETE';available=$true;rows=$rows}) -ColorCapability Plain
+        $text | Should -Match 'C2 \| ChatGPT.exe \| 11 \| BLOCKED \| READY'
         foreach ($id in 'C1','C2','C3') { ([regex]::Matches($text,"(?m)^    $id ")).Count | Should -Be 1 }
         $text | Should -Match 'not trust levels or recommendations'
         $text | Should -Match 'Group order is presentation-only'

@@ -2,7 +2,7 @@ BeforeAll {
     . (Join-Path $PSScriptRoot '../../src/Invoke-SessionExecution.ps1')
     $script:candidateRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     . (Join-Path $script:candidateRoot 'tests\SessionObserverCompatibility.ps1')
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Send-SessionProgress') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Read-LifecycleContract','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Send-SessionProgress','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation') {
         . (Join-Path $script:candidateRoot "src\$name.ps1")
     }
     $script:realAttribution = (Get-Command Resolve-Attribution).ScriptBlock

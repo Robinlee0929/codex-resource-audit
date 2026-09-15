@@ -36,7 +36,8 @@ function Invoke-GuidedDiscovery {
         throw 'GUIDED_INTERACTION_REQUIRED: Guided requires an interactive operator session. Use advanced modes for automation.'
     }
     try {
-        $snapshot = Get-ProcessSnapshot -AuditRunId ([guid]::NewGuid().ToString()) -SnapshotId 'CANDIDATES' -ErrorAction Stop
+        $observationScopeId = [guid]::NewGuid().ToString()
+        $snapshot = Get-ProcessSnapshot -AuditRunId $observationScopeId -SnapshotId 'CANDIDATES' -ErrorAction Stop
         $candidates = $null
         if ($null -ne $snapshot -and $null -ne $snapshot.PSObject.Properties['processes'] -and
             $snapshot.PSObject.Properties['processes'].Value -is [Collections.IList]) {
@@ -47,7 +48,7 @@ function Invoke-GuidedDiscovery {
         # Never echo collector exceptions, which may contain private OS fields.
         throw 'GUIDED_COLLECTION_FAILED: candidate collection unavailable; no candidate count established.'
     }
-    $view = Get-GuidedCandidateView -Snapshot $snapshot -Candidates $candidates
+    $view = Get-GuidedCandidateView -Snapshot $snapshot -Candidates $candidates -ObservationScopeId $observationScopeId
     Write-Information (Format-GuidedCandidateIndex -View $view) -InformationAction Continue
     $outcome = [pscustomobject]@{
         status = 'EVIDENCE_BLOCKED'
@@ -60,6 +61,10 @@ function Invoke-GuidedDiscovery {
         session_identity_revalidation = 'NOT_STARTED'
         session_capture = 'NOT_STARTED'
         s0_capture = 'NOT_STARTED'
+        incident_target = $null
+        incident_action = $null
+        incident_target_trust = $null
+        incident_discovery_marker = $null
     }
     if (-not $view.available) { return $outcome }
     if ($view.rows.Count -eq 0) {
@@ -78,13 +83,13 @@ function Invoke-GuidedDiscovery {
     $reviewRows = @($review.candidate_indices | ForEach-Object { $view.rows[$_] })
     $outcome.review_candidate_ids = @($reviewRows | ForEach-Object { $_.candidate_id })
     Write-Information (Format-GuidedComparison -Candidates $reviewRows) -InformationAction Continue
-    if (@($reviewRows | Where-Object { $_.session_readiness.status -ceq 'READY' }).Count -eq 0) {
-        $outcome.reason_code='NO_SESSION_READY_CANDIDATES'
+    if (@($reviewRows | Where-Object { $_.session_readiness.status -ceq 'READY' -or $_.observation_readiness.status -ceq 'READY' }).Count -eq 0) {
+        $outcome.reason_code='NO_READY_CANDIDATES'
         return $outcome
     }
-    Write-Information (Format-OperatorLine Step -Step 4 -Label 'CHOOSE SESSION TARGET') -InformationAction Continue
+    Write-Information (Format-OperatorLine Step -Step 4 -Label 'CHOOSE TARGET AND ACTION') -InformationAction Continue
     try {
-        $inputValue = Read-OperatorInput -Prompt 'Choose ONE READY candidate ID from the review set for Session observation (Q/QUIT to cancel)' -Reader $Reader
+        $inputValue = Read-OperatorInput -Prompt 'Choose ONE READY candidate ID from the review set (Q/QUIT to cancel)' -Reader $Reader
     }
     catch [Management.Automation.PipelineStoppedException] { throw }
     catch { throw 'GUIDED_INPUT_FAILED: target input failed; no target or assertion retained.' }
@@ -94,10 +99,28 @@ function Invoke-GuidedDiscovery {
         Stop-GuidedInput -Code GUIDED_TARGET_INVALID
     }
     $selected = $view.rows[$choice.candidate_index]
-    if ($selected.session_readiness.status -cne 'READY') {
-        $outcome.reason_code='SESSION_TARGET_BLOCKED'
+    if ($selected.session_readiness.status -cne 'READY' -and $selected.observation_readiness.status -cne 'READY') {
+        $outcome.reason_code='TARGET_BLOCKED'
         return $outcome
     }
+    Write-Information ((Format-GuidedActionTarget $selected) + [Environment]::NewLine +
+        (Format-OperatorLine Status -Label 'Session readiness' -Value $selected.session_readiness.status)) -InformationAction Continue
+    try {$inputValue=Read-OperatorInput -Prompt 'Choose action: S/SESSION or O/OBSERVE (Q/QUIT to cancel)' -Reader $Reader}
+    catch [Management.Automation.PipelineStoppedException] {throw}
+    catch {throw 'GUIDED_INPUT_FAILED: action input failed; no action or assertion retained.'}
+    $action=Resolve-GuidedAction $inputValue
+    if ($action -ceq 'CANCELLED') {$outcome.status='CANCELLED';return $outcome}
+    if ($action -ceq 'INVALID') {$outcome.reason_code='GUIDED_ACTION_INVALID';return $outcome}
+    if ($action -ceq 'OBSERVE') {
+        if ($selected.observation_readiness.status -cne 'READY') {$outcome.reason_code='OBSERVATION_TARGET_BLOCKED';return $outcome}
+        $outcome.status='INCIDENT_ACTION_SELECTED'
+        $outcome.incident_action='OBSERVE'
+        $outcome.incident_target_trust='OPERATOR_SELECTED_UNVERIFIED'
+        $outcome.incident_target=$selected.observation_readiness.identity.PSObject.Copy()
+        $outcome.incident_discovery_marker=Get-RootCandidateField $snapshot 'monotonic_marker'
+        return $outcome
+    }
+    if ($selected.session_readiness.status -cne 'READY') {$outcome.reason_code='SESSION_TARGET_BLOCKED';return $outcome}
     Write-Information (Format-GuidedSelectedIdentity -Candidate $selected) -InformationAction Continue
     $assertionPromptView = (Format-OperatorLine Step -Step 5 -Label 'OPERATOR CONFIRMATION') + [Environment]::NewLine +
         (Format-OperatorLine Note -Value 'Confirm only if you recognize this captured identity as the Codex instance you intend to observe. Confirmation does not verify its current identity or ownership.')
@@ -131,4 +154,14 @@ function Invoke-GuidedDiscovery {
     $target | Add-Member operator_assertion_recorded $true
     $outcome.selected_session_targets = @($target)
     return $outcome
+}
+
+function Resolve-GuidedAction {
+    param([Parameter(Mandatory)][object]$InputResult)
+    if (Test-RootCandidateCode $InputResult 'status' 'CANCELLED') {return 'CANCELLED'}
+    $text=Get-RootCandidateField $InputResult 'text'
+    if (-not (Test-RootCandidateCode $InputResult 'status' 'INPUT') -or $text -isnot [string]) {return 'INVALID'}
+    foreach ($token in 'S','SESSION') {if ([string]::Equals($text,$token,[StringComparison]::OrdinalIgnoreCase)) {return 'SESSION'}}
+    foreach ($token in 'O','OBSERVE') {if ([string]::Equals($text,$token,[StringComparison]::OrdinalIgnoreCase)) {return 'OBSERVE'}}
+    return 'INVALID'
 }

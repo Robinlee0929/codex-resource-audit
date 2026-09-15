@@ -1,6 +1,6 @@
 BeforeAll {
     $script:readinessRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession') {
+    foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Format-AuditReport','Format-RootCandidates','Select-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession') {
         . (Join-Path $script:readinessRoot "src/$name.ps1")
     }
     function New-ReadinessRecord {
@@ -114,6 +114,8 @@ Describe 'T14.1 readiness gates and explicit confirmation (offline)' {
         }
         Mock Read-Host {
             param($Prompt)
+            # This fixture explicitly chooses Session at the new action prompt.
+            if ($Prompt -like 'Choose action:*') {return 'S'}
             $script:prompts.Add($Prompt)
             if ($script:answers.Count -eq 0) {throw 'Unexpected prompt'}
             $script:answers.Dequeue()
@@ -134,11 +136,11 @@ Describe 'T14.1 readiness gates and explicit confirmation (offline)' {
         Invoke-ReadinessFlow @('C1')
         $script:prompts.Count | Should -Be 1
         $script:flowResult.status | Should -BeExactly 'EVIDENCE_BLOCKED'
-        $script:flowResult.reason_code | Should -BeExactly 'NO_SESSION_READY_CANDIDATES'
+        $script:flowResult.reason_code | Should -BeExactly 'NO_READY_CANDIDATES'
         $script:flowResult.review_candidate_ids | Should -Be @('C1')
         $script:flowText -join "`n" | Should -Match 'Session readiness: BLOCKED'
         $text=Format-GuidedOutcome $script:flowResult -ColorCapability Plain
-        foreach ($line in 'Outcome: EVIDENCE_BLOCKED','Reason: NO_SESSION_READY_CANDIDATES','REVIEW_SET: COMPLETE','REVIEW_COUNT: 1','SESSION_TARGET: NONE','OPERATOR_CONFIRMATION: NONE','SESSION_IDENTITY_REVALIDATION: NOT_STARTED','SESSION_CAPTURE: NOT_STARTED','S0_CAPTURE: NOT_STARTED') {
+        foreach ($line in 'Outcome: EVIDENCE_BLOCKED','Reason: NO_READY_CANDIDATES','REVIEW_SET: COMPLETE','REVIEW_COUNT: 1','SESSION_TARGET: NONE','OPERATOR_CONFIRMATION: NONE','SESSION_IDENTITY_REVALIDATION: NOT_STARTED','SESSION_CAPTURE: NOT_STARTED','S0_CAPTURE: NOT_STARTED') {
             $text | Should -Match ([regex]::Escape($line))
         }
         $text | Should -Not -Match 'PENDING|REDACTED_STATUS'
@@ -147,7 +149,7 @@ Describe 'T14.1 readiness gates and explicit confirmation (offline)' {
         $script:records[0].executable_path=$null
         Invoke-ReadinessFlow @('C1,C2','C1')
         $script:prompts.Count | Should -Be 2
-        $script:flowResult.reason_code | Should -BeExactly 'SESSION_TARGET_BLOCKED'
+        $script:flowResult.reason_code | Should -BeExactly 'TARGET_BLOCKED'
         $script:flowResult.review_candidate_ids | Should -Be @('C1','C2')
         $script:flowResult.selected_session_targets.Count | Should -Be 0
         $script:flowResult.operator_assertion_recorded | Should -BeFalse
@@ -217,7 +219,7 @@ Describe 'T14.1 readiness gates and explicit confirmation (offline)' {
         Should -Invoke Get-GuidedSessionReadiness -Times 2 -Exactly
         $script:flowText -join "`n" | Should -Match 'C1 \| codex.exe \| 42 \| BLOCKED'
         $script:flowText -join "`n" | Should -Match 'Session readiness: BLOCKED'
-        $script:flowResult.reason_code | Should -BeExactly 'NO_SESSION_READY_CANDIDATES'
+        $script:flowResult.reason_code | Should -BeExactly 'NO_READY_CANDIDATES'
         $script:prompts.Count | Should -Be 1
     }
     It 'R14 preserves unavailable evidence for an empty incomplete capture' {

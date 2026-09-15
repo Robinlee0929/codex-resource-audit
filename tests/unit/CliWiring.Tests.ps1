@@ -1,13 +1,27 @@
 BeforeAll {
     $script:projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     $script:entrypoint = Join-Path $script:projectRoot 'codex-resource-audit.ps1'
+    $tokens=$null;$errors=$null
+    $script:wiringAst=[Management.Automation.Language.Parser]::ParseFile($script:entrypoint,[ref]$tokens,[ref]$errors)
+    if ($errors.Count) {throw 'CLI wiring test requires a parseable entrypoint.'}
+    $script:requiredFunctionsAssignment=$script:wiringAst.Find({param($node)
+        $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left -is [Management.Automation.Language.VariableExpressionAst] -and
+        $node.Left.VariablePath.UserPath -ceq 'requiredProductionFunctions'
+    },$false)
+    $guardLoop=$script:wiringAst.Find({param($node)
+        $node -is [Management.Automation.Language.ForEachStatementAst] -and
+        $node.Variable.VariablePath.UserPath -ceq 'functionName'
+    },$false)
+    $script:startupWiringGuard=[scriptblock]::Create($script:requiredFunctionsAssignment.Extent.Text+"`n"+$guardLoop.Extent.Text)
 }
 
 Describe 'Stage 0 CLI module wiring' {
     It 'W01 Root entrypoint resolves every required production function without live collection' {
         $entrypointText = Get-Content -Raw -LiteralPath $script:entrypoint
         $entrypointText | Should -Match '(?m)^\$projectRoot = \$PSScriptRoot\s*$'
-        foreach ($sourceName in @('Collect-ProcessSnapshot.ps1','Resolve-Attribution.ps1','Compare-Lifecycle.ps1','Format-AuditReport.ps1')) {
+        foreach ($sourceName in @('Collect-ProcessSnapshot.ps1','Resolve-Attribution.ps1','Compare-Lifecycle.ps1','Format-AuditReport.ps1',
+            'Resolve-IncidentObservation.ps1','Format-IncidentObservation.ps1','Invoke-IncidentObservation.ps1')) {
             $entrypointText | Should -Match ([regex]::Escape(". (Join-Path `$projectRoot 'src\$sourceName')"))
         }
 
@@ -59,6 +73,30 @@ Describe 'Stage 0 CLI module wiring' {
         }
         finally {
             Set-Location -LiteralPath $originalLocation
+        }
+    }
+    It 'W02 startup guard pins the six Incident entry functions' {
+        $requiredNames=@($script:requiredFunctionsAssignment.Right.FindAll({param($node)
+            $node -is [Management.Automation.Language.StringConstantExpressionAst]
+        },$true) | ForEach-Object Value)
+        foreach ($name in 'Get-IncidentName','Get-IncidentObservationReadiness','Resolve-IncidentContinuity',
+            'Get-IncidentObservationView','Format-IncidentObservation','Invoke-IncidentObservation') {
+            @($requiredNames | Where-Object {$_ -ceq $name}).Count | Should -Be 1
+        }
+    }
+    It 'W03 removed or renamed Incident function <entryFunction> fails before dispatch' -ForEach @(
+        @{entryFunction='Get-IncidentName'},@{entryFunction='Get-IncidentObservationReadiness'},
+        @{entryFunction='Resolve-IncidentContinuity'},@{entryFunction='Get-IncidentObservationView'},
+        @{entryFunction='Format-IncidentObservation'},@{entryFunction='Invoke-IncidentObservation'}
+    ) {
+        $script:missingIncidentFunction=$entryFunction
+        Mock Get-Command {
+            param($Name)
+            if ($Name -cne $script:missingIncidentFunction) {[pscustomobject]@{Name=$Name}}
+        }
+        {& $script:startupWiringGuard} | Should -Throw "*CLI_MODULE_WIRING_FAILED: required function '$entryFunction' was not loaded.*"
+        Should -Invoke Get-Command -Times 1 -Exactly -ParameterFilter {
+            $Name -ceq $script:missingIncidentFunction -and $CommandType -eq 'Function'
         }
     }
 }
