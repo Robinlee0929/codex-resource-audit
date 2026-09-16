@@ -109,6 +109,10 @@ Describe 'T17.2 PowerShell in-process Incident result' {
         $r.boundaries.verified_root | Should -BeExactly NOT_ESTABLISHED
         $script:igTrace | Should -Be @('CANDIDATES','O0','O1','ACTIVITY_END','O2','WAIT:30','O3')
         $script:igPrompts.Count | Should -Be 5
+        $script:igPrompts[2] | Should -BeExactly 'Choose action: O/OBSERVE (Q/QUIT to cancel)'
+        ($script:igPrompts -join "`n") | Should -Not -Match 'S/SESSION|Type F'
+        ($info -join "`n") | Should -Match 'PassThru supports Incident Observation only'
+        ($info -join "`n") | Should -Not -Match 'Type F to find'
         $info.Count | Should -BeGreaterThan 0
         $warnings.Count | Should -Be 0
         $errors.Count | Should -Be 0
@@ -160,6 +164,9 @@ Describe 'T17.2 PowerShell in-process Incident result' {
         @{case='invalid target';inputs=@('C1','P1');reason='GUIDED_TARGET_INVALID'},
         @{case='no automatic target';inputs=@('C1','');reason='GUIDED_TARGET_INVALID'},
         @{case='invalid action';inputs=@('C1','C1','O2');reason='GUIDED_ACTION_INVALID'},
+        @{case='no automatic Observe';inputs=@('C1','C1','');reason='GUIDED_ACTION_INVALID'},
+        @{case='action EOF';inputs=@('C1','C1',$null);reason='GUIDED_OPERATOR_CANCELLED'},
+        @{case='action cancel';inputs=@('C1','C1','Q');reason='GUIDED_OPERATOR_CANCELLED'},
         @{case='reader';inputs=@('THROW');reason='GUIDED_INPUT_FAILED'},
         @{case='cancel';inputs=@('Q');reason='GUIDED_OPERATOR_CANCELLED'}
     ) {
@@ -172,6 +179,9 @@ Describe 'T17.2 PowerShell in-process Incident result' {
         $r[0].timeline.Count | Should -Be 0
         $r[0].observed_context.Count | Should -Be 0
         $script:igCaptures | Should -Be @('CANDIDATES')
+        if ($inputs.Count -eq 3) {
+            $script:igPrompts[2] | Should -BeExactly 'Choose action: O/OBSERVE (Q/QUIT to cancel)'
+        }
     }
     It 'MR06 rejects unsupported CLI combinations before prompts or collection' -ForEach @(
         @{options=@{Mode='Session'}},@{options=@{Mode='Candidates'}},@{options=@{Mode='Guided';ExportIssueEvidence=$true}},
@@ -209,9 +219,16 @@ Describe 'T17.2 PowerShell in-process Incident result' {
         $r=@(& $script:igEntry -Mode Guided -InformationVariable info 6>$null)
         $r.Count | Should -Be 0
         ($info -join "`n") | Should -Match '=== INCIDENT OBSERVATION ==='
+        ($info -join "`n") | Should -Match 'Type F to find'
+        ($info -join "`n") | Should -Not -Match 'PassThru supports Incident Observation only'
+        $script:igPrompts[2] | Should -BeExactly 'Choose action: S/SESSION or O/OBSERVE (Q/QUIT to cancel)'
         Set-IncidentInputs @('C1','C1','O','O1','ACTIVITY_END')
-        $r=@(& $script:igEntry -Mode Guided -PassThru:$false 6>$null)
+        $info=@()
+        $r=@(& $script:igEntry -Mode Guided -PassThru:$false -InformationVariable info 6>$null)
         $r.Count | Should -Be 0
+        ($info -join "`n") | Should -Match 'Type F to find'
+        ($info -join "`n") | Should -Not -Match 'PassThru supports Incident Observation only'
+        $script:igPrompts[7] | Should -BeExactly 'Choose action: S/SESSION or O/OBSERVE (Q/QUIT to cancel)'
     }
     It 'MR10 projects transitions, role, relations, zero/unavailable memory and full history without source aliases' {
         $run=New-IncidentTestRun

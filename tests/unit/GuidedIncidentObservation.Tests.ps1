@@ -185,6 +185,7 @@ Describe 'T16 Guided action and Incident execution use synthetic captures only' 
         Mock Invoke-GuidedSession {param($GuidedOutcome) $GuidedOutcome.operator_assertion_recorded | Should -BeTrue}
         $null=& $script:igEntry -Mode Guided 6>$null
         $script:igPrompts.Count | Should -Be 4
+        $script:igPrompts[2] | Should -BeExactly 'Choose action: S/SESSION or O/OBSERVE (Q/QUIT to cancel)'
         $script:igPrompts[-1] | Should -Match 'Confirm this captured identity'
         Should -Invoke Invoke-GuidedSession -Times 1 -Exactly
         Should -Invoke Invoke-IncidentObservation -Times 0 -Exactly

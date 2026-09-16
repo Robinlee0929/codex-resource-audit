@@ -396,6 +396,8 @@ Describe 'T16.3 synchronous acquisition and manual Guided handoff' {
         $outcome=$all[-1];$text=($all | Where-Object {$_ -is [Management.Automation.InformationRecord]} | ForEach-Object MessageData) -join "`n"
         $script:finderCaptures | Should -Be @('CANDIDATES','F1')
         $text | Should -Match 'Finder has already been used'
+        $text | Should -Match 'Type F to find'
+        $text | Should -Not -Match 'PassThru supports Incident Observation only'
         $text | Should -Match 'Finder finished. Returning to normal candidate review.'
         $outcome.review_candidate_ids.Count | Should -Be 0;$outcome.selected_session_targets.Count | Should -Be 0
         $outcome.incident_action | Should -BeNullOrEmpty;$outcome.incident_target | Should -BeNullOrEmpty

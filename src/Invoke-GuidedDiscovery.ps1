@@ -80,10 +80,14 @@ function Invoke-GuidedDiscovery {
         if ($view.capture_status -ceq 'COMPLETE') { $outcome.status = 'NO_CANDIDATES' }
         return $outcome
     }
+    $reviewGuidance = if ($IncidentOnly) {
+        'PassThru supports Incident Observation only. F/Finder and S/Session are unavailable.'
+    } else {
+        'Not sure which process to inspect? Type F to find candidates related to a reproduced activity.'
+    }
     Write-Information ((Format-OperatorLine Step -Step 2 -Label 'SELECT FOR REVIEW') + [Environment]::NewLine +
-        'Not sure which process to inspect? Type F to find candidates related to a reproduced activity.') -InformationAction Continue
+        $reviewGuidance) -InformationAction Continue
     $finderUsed=$false
-    if ($IncidentOnly) {Write-Information 'PassThru supports Incident Observation only. F/Finder and S/Session are unavailable.' -InformationAction Continue}
     while ($true) {
         try {
             $inputValue = Read-OperatorInput -Prompt 'Select one or more candidate IDs for review, e.g. C3,C9,C12 (Q/QUIT to cancel)' -Reader $Reader
@@ -141,7 +145,12 @@ function Invoke-GuidedDiscovery {
     }
     Write-Information ((Format-GuidedActionTarget $selected) + [Environment]::NewLine +
         (Format-OperatorLine Status -Label 'Session readiness' -Value $selected.session_readiness.status)) -InformationAction Continue
-    try {$inputValue=Read-OperatorInput -Prompt 'Choose action: S/SESSION or O/OBSERVE (Q/QUIT to cancel)' -Reader $Reader}
+    $actionPrompt = if ($IncidentOnly) {
+        'Choose action: O/OBSERVE (Q/QUIT to cancel)'
+    } else {
+        'Choose action: S/SESSION or O/OBSERVE (Q/QUIT to cancel)'
+    }
+    try {$inputValue=Read-OperatorInput -Prompt $actionPrompt -Reader $Reader}
     catch [Management.Automation.PipelineStoppedException] {throw}
     catch {throw 'GUIDED_INPUT_FAILED: action input failed; no action or assertion retained.'}
     $action=Resolve-GuidedAction $inputValue
