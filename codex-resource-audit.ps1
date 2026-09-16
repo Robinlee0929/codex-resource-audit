@@ -11,6 +11,7 @@ param(
     [switch] $IncludeEvidenceSummary,
     [switch] $IncludeSessionTemplate,
     [switch] $IncludeCandidateGroups,
+    [switch] $PassThru,
     [switch] $ExportIssueEvidence,
     [AllowNull()] [AllowEmptyString()] [string] $IssueEvidenceOutputDirectory,
     # Internal presentation transport used by Guided; no input or evidence policy.
@@ -19,6 +20,17 @@ param(
 
 Set-StrictMode -Version Latest
 $projectRoot = $PSScriptRoot
+if ($PassThru) {
+    . (Join-Path $projectRoot 'src\New-IncidentResult.ps1')
+    # Reject unsupported combinations before collection, export setup or prompts.
+    $unsupported=@('FixturePath','RootPid','RootCreationTimeUtc','RootExecutablePath','OperatorVerifiedKnownCodexInstance',
+        'FollowUpSeconds','LifecycleContractPath','IncludeEvidenceSummary','IncludeSessionTemplate','IncludeCandidateGroups',
+        'ExportIssueEvidence','IssueEvidenceOutputDirectory','SessionProgressObserver')
+    if ($Mode -ne 'Guided' -or @($unsupported | Where-Object {$PSBoundParameters.ContainsKey($_)}).Count -gt 0) {
+        New-IncidentRequestResult -Reason PASSTHRU_INVOCATION_UNSUPPORTED
+        return
+    }
+}
 # Reject invalid export combinations before loading or invoking any collector.
 if (($PSBoundParameters.ContainsKey('ExportIssueEvidence') -and $Mode -ne 'Guided') -or
     ($PSBoundParameters.ContainsKey('IssueEvidenceOutputDirectory') -and -not $ExportIssueEvidence) -or
@@ -166,11 +178,13 @@ switch ($Mode) {
         # Summary and recognized input errors stay on stream 6. Only explicit
         # DETAILS emits the retained canonical report on the success stream.
         try {
-            $guidedResult = Invoke-GuidedDiscovery
+            $guidedResult = Invoke-GuidedDiscovery -IncidentOnly:$PassThru
             if ($guidedResult.status -ceq 'INCIDENT_ACTION_SELECTED') {
                 $incidentResult=Invoke-IncidentObservation -GuidedOutcome $guidedResult -ExportIssueEvidence:$ExportIssueEvidence
                 Write-Information (Format-IncidentObservation $incidentResult) -InformationAction Continue
+                if ($PassThru) {New-IncidentResult -Run $incidentResult}
             }
+            elseif ($PassThru) {ConvertTo-IncidentRequestFailure -Outcome $guidedResult}
             elseif ($guidedResult.status -ceq 'OPERATOR_ASSERTION_RECORDED') {
                 $exportParameters=@{}
                 if ($ExportIssueEvidence) { $exportParameters=@{ExportIssueEvidence=$true;IssueEvidenceOutputDirectory=$IssueEvidenceOutputDirectory} }
@@ -180,6 +194,7 @@ switch ($Mode) {
         }
         catch [Management.Automation.PipelineStoppedException] { throw }
         catch {
+            if ($PassThru) {ConvertTo-IncidentRequestError -Record $_; return}
             $friendly = Format-GuidedInputError -Record $_
             if ($null -eq $friendly) { throw }
             $guidedResult = $null

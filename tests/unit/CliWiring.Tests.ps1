@@ -36,6 +36,9 @@ Describe 'Stage 0 CLI module wiring' {
         $modeAddition = "[ValidateSet('Help','Fixture','Candidates','Session','Guided')]"
         ([regex]::Matches($parameters, [regex]::Escape($modeAddition))).Count | Should -Be 1
         $legacyParameters = $parameters.Replace($modeAddition, "[ValidateSet('Help','Fixture','Candidates','Session')]")
+        $passThruAddition = '    [switch] $PassThru,'
+        ([regex]::Matches($legacyParameters, [regex]::Escape($passThruAddition))).Count | Should -Be 1
+        $legacyParameters = $legacyParameters.Replace($passThruAddition + "`n", '')
         $exportAddition = @'
     [switch] $ExportIssueEvidence,
     [AllowNull()] [AllowEmptyString()] [string] $IssueEvidenceOutputDirectory,

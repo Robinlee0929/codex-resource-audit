@@ -30,7 +30,7 @@ function Invoke-GuidedDiscovery {
        CLI: only Format-GuidedOutcome reaches success output. No Session or root
        anchor exists here. Every call starts a fresh capture-local selection. #>
     [CmdletBinding()]
-    param([AllowNull()] [scriptblock] $Reader = $null)
+    param([AllowNull()] [scriptblock] $Reader = $null, [switch]$IncidentOnly)
     $ErrorActionPreference = 'Stop'
     if (-not (Test-OperatorInteractiveHost)) {
         throw 'GUIDED_INTERACTION_REQUIRED: Guided requires an interactive operator session. Use advanced modes for automation.'
@@ -65,6 +65,7 @@ function Invoke-GuidedDiscovery {
         incident_action = $null
         incident_target_trust = $null
         incident_discovery_marker = $null
+        incident_review_readiness = @()
     }
     if (-not $view.available) { return $outcome }
     if ($view.rows.Count -eq 0) {
@@ -74,6 +75,7 @@ function Invoke-GuidedDiscovery {
     Write-Information ((Format-OperatorLine Step -Step 2 -Label 'SELECT FOR REVIEW') + [Environment]::NewLine +
         'Not sure which process to inspect? Type F to find candidates related to a reproduced activity.') -InformationAction Continue
     $finderUsed=$false
+    if ($IncidentOnly) {Write-Information 'PassThru supports Incident Observation only. F/Finder and S/Session are unavailable.' -InformationAction Continue}
     while ($true) {
         try {
             $inputValue = Read-OperatorInput -Prompt 'Select one or more candidate IDs for review, e.g. C3,C9,C12 (Q/QUIT to cancel)' -Reader $Reader
@@ -83,6 +85,7 @@ function Invoke-GuidedDiscovery {
         $reviewText=Get-RootCandidateField $inputValue 'text'
         if (-not (Test-RootCandidateCode $inputValue 'status' 'INPUT') -or $reviewText -isnot [string] -or
             -not [string]::Equals($reviewText,'F',[StringComparison]::OrdinalIgnoreCase)) {break}
+        if ($IncidentOnly) {$outcome.reason_code='PASSTHRU_FINDER_UNSUPPORTED';return $outcome}
         if ($finderUsed) {
             Write-Information 'Finder has already been used. Enter candidate IDs for normal review.' -InformationAction Continue
             continue
@@ -98,6 +101,11 @@ function Invoke-GuidedDiscovery {
     if ($review.status -ceq 'CANCELLED') { $outcome.status = 'CANCELLED'; return $outcome }
     if ($review.status -cne 'REVIEW_SELECTED') { Stop-GuidedInput -Code GUIDED_REVIEW_INVALID }
     $reviewRows = @($review.candidate_indices | ForEach-Object { $view.rows[$_] })
+    if ($IncidentOnly) {
+        $outcome.incident_review_readiness=@(foreach ($row in $reviewRows) {
+            [pscustomobject]@{candidate_id=$row.candidate_id;status=$row.observation_readiness.status;reason=$row.observation_readiness.reason_code}
+        })
+    }
     $outcome.review_candidate_ids = @($reviewRows | ForEach-Object { $_.candidate_id })
     Write-Information (Format-GuidedComparison -Candidates $reviewRows) -InformationAction Continue
     if (@($reviewRows | Where-Object { $_.session_readiness.status -ceq 'READY' -or $_.observation_readiness.status -ceq 'READY' }).Count -eq 0) {
@@ -128,6 +136,7 @@ function Invoke-GuidedDiscovery {
     $action=Resolve-GuidedAction $inputValue
     if ($action -ceq 'CANCELLED') {$outcome.status='CANCELLED';return $outcome}
     if ($action -ceq 'INVALID') {$outcome.reason_code='GUIDED_ACTION_INVALID';return $outcome}
+    if ($IncidentOnly -and $action -ceq 'SESSION') {$outcome.reason_code='PASSTHRU_SESSION_UNSUPPORTED';return $outcome}
     if ($action -ceq 'OBSERVE') {
         if ($selected.observation_readiness.status -cne 'READY') {$outcome.reason_code='OBSERVATION_TARGET_BLOCKED';return $outcome}
         $outcome.status='INCIDENT_ACTION_SELECTED'
