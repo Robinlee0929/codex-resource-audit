@@ -1,7 +1,8 @@
 # T17.3 — Local AI Bridge and Safe Artifacts v1
 
-Status: T17.3B implementation for Owner review. No checkpoint commit, Skill,
-automatic launcher or live integration acceptance is included in this change.
+Status: complete in the current checkout, including the local Codex Skill and
+Owner-accepted Windows operator integration acceptance. An automatic launcher is
+not provided. This status does not assert inclusion in a published release tag.
 
 Semantic authority remains the [T17.1 contract](T17_1_AI_CALLABLE_CONTRACT_SPEC.md)
 and the [T17.2 in-process result API](T17_2_POWERSHELL_RESULT_API_SPEC.md).
@@ -253,30 +254,38 @@ HTTP endpoint, daemon, MCP, arbitrary shell proxy, AI write-back, automatic targ
 selection or auto launcher is implemented. The existing plain Guided and Guided
 PassThru public usages retain their behavior and do not publish artifacts.
 
-## Verification and next stages
+## Verification and integration status
 
 Offline tests: [bridge integration](../tests/unit/CraAiBridge.Tests.ps1),
 [handoff tests](../tests/unit/CraAiHandoff.Tests.ps1), existing
 [T17.2 regression](../tests/unit/IncidentResult.Tests.ps1) and full
 `pwsh -NoProfile -File scripts/Test-Stage0.ps1 -Offline`.
-Tests replace collection, clocks and human input with synthetic fixtures. No new
-Windows live process observation is claimed. Pipeline-stop propagation is checked
-in an isolated synthetic PowerShell runspace and at the typed catch boundary;
-interactive Ctrl+C acceptance remains an operator check.
+Tests replace collection, clocks and human input with synthetic fixtures. These
+tests are offline evidence. Pipeline-stop propagation is checked in an isolated
+synthetic PowerShell runspace and at the typed catch boundary; no new live Ctrl+C
+result is claimed here.
 
-T17.3C: create a Codex Skill only after Owner review stabilizes this bridge API.
-The future Skill must use explicit safe reader paths and correlation IDs, explain
-artifacts without trust upgrades, and leave all terminal decisions to the operator.
-No Skill is included in T17.3B.
+The [canonical Codex Skill](../skills/cra-incident/SKILL.md) guides the operator and
+reads safe artifacts through the existing reader. Its installed copy is deployment
+only. It resolves the current Git workspace or an explicit operator-supplied root,
+then validates CRA markers; it never derives the repository from its install path.
+See the [Codex Quick Start](../README.md#use-with-codex) for deployment and usage.
 
-T17.3D: operator integration acceptance after offline checks pass. In an
-operator-owned PowerShell 7 session, manually start a new request, share only the
-safe IDs/path, read candidate before review and review before target selection,
-complete or cancel actual gates, inspect the final envelope/receipt distinction,
-and verify Ctrl+C produces no fabricated completion. Also check stale/mixed IDs,
-duplicate destinations and interrupted delivery using disposable synthetic
-artifacts. Do not run integration observation from Codex's execution environment.
+Windows operator integration acceptance passed after offline checks. It exercised
+Skill deployment/content matching, actual Codex recognition, repository resolution,
+manual wrapper launch, safe candidate/review/final reads, O0 MATCHED, operator O1
+and ACTIVITY_END, automatic O2/O3, and Owner review of the AI interpretation.
+This is acceptance of the exercised local workflow, not a universal compatibility
+claim. Malformed/missing artifacts, unsupported versions, correlation mismatch,
+unsafe paths and duplicate destinations were covered by offline tests, not
+deliberately induced during the live run. Private local acceptance artifacts are
+not part of the public documentation.
 
-Collection, identity and timing engines are unchanged, so new engine live
-revalidation is not recommended for this plumbing-only change. Operator integration
-acceptance **is** recommended. Gate 2 false-positive prevention remains a hard stop.
+Manual Guided retains Finder, Session and Observation. PassThru/bridge prompts
+offer Observation only and still require explicit target and O/OBSERVE input.
+This prompt polish does not change the contracts or human gates. No live
+observation is run from Codex's execution environment.
+
+Collection, identity and timing engines are unchanged. Prompt presentation changes
+do not require a new engine live revalidation. Gate 2 false-positive prevention
+remains a hard stop.

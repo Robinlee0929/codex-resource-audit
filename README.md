@@ -1,202 +1,184 @@
 # Codex Resource Audit
 
-Codex Resource Audit is a Windows-first, read-only evidence tool for answering a practical question: **which process activity was actually observed as Codex-owned during one task, where did it come from, and what should an operator do next?**
+Codex Resource Audit (CRA) is a **Windows-first, read-only evidence tool for observing Codex-related process activity, with safe local AI-assisted interpretation**.
 
-It is designed for investigations where shells, Node.js, browser helpers, and command runners may also exist independently. A familiar name, a large process count, or a process that remains visible is not enough to prove Codex ownership, a logical session, or a cleanup problem.
+CRA records process context around an operator-selected target before, during and after an activity. You can read the terminal evidence yourself or ask local Codex to explain safe artifacts while you retain control of every human confirmation.
 
-```text
-DISCOVER -> REVIEW -> SELECT TARGET -> CONFIRM -> REVALIDATE -> OBSERVE -> RESULTS
-```
+## What CRA can answer
 
-## Why this exists
+- Which identities were observed at the baseline, during the activity and at later captures?
+- What was first observed, or no longer observed, in this observation history?
+- What reported parent relationships, name-based role hints and working-set measurements were available?
+- Which facts remain unknown or unavailable?
 
-Questions such as these are easy to over-answer from a process list:
-
-- Did this task create a new Codex-owned shell branch?
-- Are the visible helpers new, or were they already present at baseline?
-- Do four processes represent four sessions, or one process branch?
-- Was an identity still observed after the operator declared the task finished?
-- Is the evidence genuinely empty, or unavailable?
-
-The tool records bounded evidence for those questions. It does not automatically prove the underlying product bug.
-
-## What it can answer
-
-With a complete Guided observation, Codex Resource Audit can distinguish processes present at baseline from confirmed Codex-owned identities created during the observed task window, group those new identities into process branches, and show whether each identity remains observed after `TASK_END`.
-
-It can help investigate shell wrappers that remain visible, repeated helper branches, MCP/Node accumulation questions, old versus newly created Codex process trees, and uncertainty about whether a helper is actually Codex-owned.
+Snapshots do not establish everything that happened between captures. Incident Observation does not automatically prove ownership, creation, exit, causation, residue, orphaning or a leak.
 
 ## Quick Start
 
-Open an operator-owned PowerShell 7 console in the repository and run:
+Use a local checkout and your own interactive **PowerShell 7** console. Live collection belongs there, outside Codex's execution environment.
+
+| Entry point | Use it for | Human interaction |
+| --- | --- | --- |
+| [Manual Guided](#manual-guided) | Read terminal evidence; use Finder, Session or Observation where eligible | You review, select and supply the workflow's confirmations. |
+| [PowerShell structured-result API](#powershell-structured-result-api) | Receive an Incident result as a PowerShell object | The same Incident human gates remain required. |
+| [Use with Codex](#use-with-codex) | Get guidance and explanations of safe local artifacts | Codex supplies a complete command; you run it and make all selections. |
+
+### Manual Guided
+
+From the repository directory:
 
 ```powershell
 .\codex-resource-audit.ps1 -Mode Guided
 ```
-
-Guided is the recommended workflow. It discovers possible roots, asks you to review and select one Session-ready candidate, requires explicit operator confirmation followed by exact identity revalidation, captures a five-snapshot observation, then presents Task Delta, Process Branch Origin, and a bounded next step.
-
-Live Windows validation belongs in that operator-owned console, outside the Codex execution environment. The tool is read-only: it never terminates, suspends, reprioritizes, cleans up, or repairs processes.
 
 <a id="candidate-workflow"></a>
+<a id="guided-workflow"></a>
 
-## Guided workflow
+Guided discovers candidates, asks you to choose a review set, then requires one explicit target and an action. **Finder remains available with F** to help navigate candidates related to a reproduced activity. Choose **S/SESSION** or **O/OBSERVE** where that action's readiness permits. Readiness and list order never select or trust a target automatically.
 
-```text
-DISCOVER
-  -> REVIEW
-  -> SELECT TARGET
-  -> OPERATOR CONFIRMATION
-  -> EXACT IDENTITY REVALIDATION
-  -> S0 BASELINE
-  -> PERFORM TASK
-  -> S1 TASK ACTIVE
-  -> TASK_END
-  -> S2 POST TASK
-  -> S3 FOLLOW-UP
-  -> S4 FINAL FOLLOW-UP
-  -> RESULTS
-```
+- **Observation:** fresh O0 checks the selected identity. Only `MATCHED` allows continuation. Enter `O1` while the intended activity runs; after that capture returns and the activity finishes, enter `ACTIVITY_END`. CRA captures O2, waits 30 seconds, then captures O3 automatically.
+- **Session:** the separate manual workflow retains explicit recognition/confirmation, exact revalidation, S0–S4, `TASK_END`, Task Delta and Process Branch Origin. Its evidence requirements and classifications do not transfer to Incident Observation. See the [Session operator guide](docs/V0_1_1_GUIDED_SESSION_TARGET_AND_HANDOFF.md) and [sanitized Session demo](demo/v0.1.1/DEMO_NOTES.md).
 
-1. **Discover and review.** Guided shows possible root candidates with READY or BLOCKED Session readiness. Both remain reviewable; ordering, grouping, and readiness do not establish trust. COPY_READY template status is separate from Session eligibility.
-2. **Select and confirm.** Explicitly select one READY candidate you independently recognize as the Codex instance you intend to observe. Enter Y/YES to confirm, N/NO to decline, or Q/QUIT to cancel. Blank or unexpected input never confirms. A review set with no READY candidates stops before target selection.
-3. **Capture S0.** Guided revalidates the exact PID, creation time, and executable path, then captures the baseline before the task begins.
-4. **Perform the task and capture S1.** Start the activity after S0 and capture S1 while the activity is present when practical.
-5. **Declare `TASK_END`.** Finish the activity, then press Enter. This records the operator-declared event and captures S2; it does not control or terminate a process.
-6. **Observe S3 and S4.** Guided waits the configured observation interval before each follow-up snapshot.
-7. **Read Results.** Start with the summary, Task Delta, Process Branch Origin, and Next Step. Use `DETAILS` only when the canonical report is needed.
+### PowerShell structured-result API
 
-Important boundaries:
-
-```text
-REVIEW_SET != VERIFIED_ROOT
-SESSION_TARGET != VERIFIED_ROOT
-TASK_END != PROCESS_EXIT
-```
-
-Exact identity revalidation remains separate from the operator assertion. A verification word, candidate ID, PID, name, path fragment, or presentation group cannot independently create a verified root.
-
-## Reading Results
-
-The result separates current ownership, historical observation, task-window membership, process topology, and lifecycle. Do not add counts from those sections as though they represented one population.
-
-`UNKNOWN` is an intentional fail-closed result: required evidence was insufficient for the stronger claim. It is not automatically an error, suspicion score, or Codex ownership.
-
-### Task Delta
-
-Task Delta asks which confirmed Codex-owned identities were created inside the declared task window. Membership requires the exact creation time to satisfy:
-
-```text
-creation_time > S0.capture_end_utc
-AND
-creation_time <= TASK_END.occurred_utc
-```
-
-Snapshots are observations, not continuous monitoring. A process created before `TASK_END` may first appear in S2 if it was created after S1 and before the operator declaration.
-
-```text
-FIRST_SEEN != CREATION_TIME
-TASK_WINDOW_TIMING != TASK_CAUSATION
-TASK_WINDOW_PROCESS != BROWSER_PROCESS
-PRE_EXISTING_AT_S0 != TASK_CREATED
-```
-
-### Zero versus unavailable
-
-`0` means the required evidence was available, validation succeeded, and the resulting set was empty:
-
-```text
-Confirmed Codex-owned created in observed task window: 0
-```
-
-`UNAVAILABLE` means the required evidence could not safely establish the result. A reason and diagnostic may accompany it. It must not be converted to zero or described as “nothing happened.”
-
-### Process Branch Origin
-
-Several new processes do not necessarily represent several sessions. A validated positive-control observation had four task-window identities in one branch:
-
-```text
-pre-existing codex.exe
-  `-- codex-command-runner
-      |-- pwsh.exe
-      |-- conhost.exe
-      `-- powershell.exe
-
-4 confirmed task-window processes -> 1 process branch
-```
-
-Branches use exact identities and recorded confirmed parent edges. IDs such as `B1` and `B2` are deterministic presentation labels for one result, not process or session identities.
-
-```text
-PROCESS_BRANCH != LOGICAL_SESSION
-PROCESS_PARENTAGE != TOOL_CAUSATION
-COMMON_ANCESTOR != COMMON_SESSION
-SHARED_PARENT != SAME_LOGICAL_SESSION
-```
-
-### What next?
-
-The Next Step section is guidance derived from the available presentation result; it is not a new evidence classification.
-
-| Result | Meaning | Suggested action |
-| --- | --- | --- |
-| Task Delta available, count `0` | No confirmed task-window Codex branch was established. | If a new branch was expected, reproduce the same activity using the same observation procedure. This does not establish that everything is normal. |
-| All task-window identities `NO_LONGER_OBSERVED` by S4 | Activity was established, but those identities were absent from the later snapshot. | Preserve the evidence if useful. No cleanup issue is established by this observation alone. |
-| One or more identities `STILL_OBSERVED` at S4 | The exact identities remain observed after `TASK_END`. | Continue observation and/or reproduce the same activity. Survival alone does not establish residue. |
-| Same still-observed pattern across separate runs | A repeated pattern may be useful issue evidence. | Preserve each run and consider reporting a reproducible issue. The tool does not automatically correlate runs or label the result reproducible, a leak, residue, or orphaning. |
-
-```text
-NEXT_STEP_GUIDANCE != EVIDENCE_CLASSIFICATION
-NO_LONGER_OBSERVED != EXIT_CONFIRMED
-STILL_OBSERVED != RESIDUE
-```
-
-## Validated controls
-
-The documented external controls validate bounded behavior, not universal process behavior.
-
-**Positive control.** A controlled external shell task intentionally created four confirmed Codex-owned task-window identities grouped into one process branch: a command runner with `pwsh.exe`, `conhost.exe`, and `powershell.exe`. All four were first and last observed at S1 and were `NO_LONGER_OBSERVED` by S4. This validates detection sensitivity, time-window membership, ownership filtering, pre-existing/new distinction, branch grouping, confirmed parent origin, and later observation state. It does not prove normal exit, cleanup success, or a logical session.
-
-**Negative control.** A real external Browser task produced an available Task Delta with zero created identities and an available Branch Origin with zero branches; existing Codex processes remained correctly classified as pre-existing. This validates a genuinely empty result without forced branch creation or Browser-based ownership inference. It does not claim that Browser activity never creates processes.
-
-See the [v0.1.1 sanitized replay demo](demo/v0.1.1/DEMO_NOTES.md) for the positive-control operator story.
-
-## Trust boundaries
-
-```text
-UNKNOWN != CODEX
-ROOT_CANDIDATE != VERIFIED_ROOT
-DISCOVERY_RESULT != OPERATOR_VERIFICATION
-ATTACHED_BROWSER != CODEX_OWNED
-PROCESS_SURVIVAL != RESIDUE
-PROCESS_SURVIVAL != ORPHAN
-PARENT_NOT_OBSERVED != PARENT_EXIT_CONFIRMED
-TASK_END != PROCESS_EXIT
-```
-
-Names, paths, flags, timing, user identity, and process counts cannot independently prove ownership. Role and Playwright attribution are separate attributes; neither creates Codex ownership. A confirmed Gate 2 false positive makes the affected version NO-GO.
-
-## Advanced modes
-
-Commands shown here match the current CLI:
+From the repository in your own PowerShell 7 console:
 
 ```powershell
-# Recommended interactive workflow
-.\codex-resource-audit.ps1 -Mode Guided
-
-# Discover possible root candidates
-.\codex-resource-audit.ps1 -Mode Candidates
-
-# Deterministic, offline analysis
-.\codex-resource-audit.ps1 -Mode Fixture -FixturePath <local-json-file>
-
-# Compact command overview
-.\codex-resource-audit.ps1 -Mode Help
+$result = .\codex-resource-audit.ps1 -Mode Guided -PassThru
+$result.result_type
+$result.outcome
 ```
 
-In an interactive, unredirected `ConsoleHost`, standalone Candidates uses the compact grouped human view. Noninteractive, redirected, or pipeline use preserves legacy machine-oriented candidate records. `-IncludeSessionTemplate` preserves the detailed candidate contract; discovery still does not establish trust.
+`-PassThru` returns a **PSCustomObject through PowerShell's in-process success stream**, with `contract_version=1`. It supports **Incident Observation only**: Finder and Session are unavailable. The action prompt offers `O/OBSERVE`, and you must still explicitly enter it. Review, target selection, O1 and ACTIVITY_END remain human actions.
 
-Session is the advanced direct observation mode. Replace every placeholder with independently verified current values; the generated candidate template is the safest way to preserve exact quoting.
+Read `result_type` first: `GUIDED_INCIDENT_REQUEST` means no Incident run was produced; `INCIDENT_OBSERVATION` carries the retained observation result. Preserve blocked, stopped, cancelled, partial and unknown states. Interruptions can prevent any result from returning.
+
+This is not a native stdout JSON contract. Human terminal output is separate; do not merge or parse it as machine evidence. Plain `-PassThru` does not publish artifacts. See the [T17.2 result API](docs/T17_2_POWERSHELL_RESULT_API_SPEC.md).
+
+## Use with Codex
+
+### 1. Deploy and recognize the Skill
+
+Keep a CRA checkout on the same Windows machine as local Codex. The version-controlled [skills/cra-incident/SKILL.md](skills/cra-incident/SKILL.md) is the **canonical source**; the Codex-installed copy is deployment only.
+
+The local user-Skill mechanism used in Windows acceptance is a normal file copy to **`$CODEX_HOME/skills/cra-incident/SKILL.md`**, defaulting to **`~/.codex/skills/cra-incident/SKILL.md`** when `CODEX_HOME` is unset. Confirm the user-Skill root used by your Codex installation before copying. You can ask Codex:
+
+> Install this checkout's skills/cra-incident/SKILL.md into your configured local user-Skill root. Use a normal copy, verify SHA-256 matches, and stop if an existing destination has different content. Do not modify global configuration.
+
+For manual deployment, copy the repository's `skills/cra-incident` directory into that user-Skill root. If the destination is absent, create it and copy; if its file already matches SHA-256/content, it is current. Stop on different or unknown existing content rather than overwriting it. Do not use the installed directory as the repository root.
+
+On your **next Codex turn**, confirm that `cra-incident` appears in its available Skill list. File existence alone is not recognition. If it is still absent, stop before observation and resolve discovery; your client may need a reload or a new conversation.
+
+### 2. Ask for an observation
+
+Work in the CRA Git checkout, or explicitly provide its absolute repository root. Codex uses the current workspace's `git rev-parse --show-toplevel` as a candidate location and validates CRA markers. An explicit root must pass the same checks: CLI, wrapper, handoff module, three canonical contracts and repository Skill source. Failure stops the workflow; there is no installed-parent inference, filesystem scan or artifact-derived repository lookup. This validates a location, not process trust.
+
+For example:
+
+> Use cra-incident to help me inspect Codex-related process activity while I reproduce my task.
+
+CRA cannot reconstruct a finished task without retained evidence. For a new observation, reproduce the activity at the requested stage.
+
+**You do not need to compose the long bridge command.** Codex resolves the checkout, agrees on a new output directory, and supplies the complete copy/paste command with your actual paths. No alias or persistent global configuration is needed.
+
+A short conversation might look like this (paths below are illustrative):
+
+**User:** Use cra-incident to help me inspect Codex-related process activity while I reproduce my task.
+
+**Codex:** I'll use the read-only CRA workflow. Run this command in your own PowerShell 7 console:
+
+```powershell
+$receipt = & 'C:\Projects\cra\scripts\Invoke-CraAiBridge.ps1' -OutputDirectory 'C:\CRA-Handoffs\observation-001'
+```
+
+**Codex:** Share only the safe request/candidate-set ID line and the output directory. I can explain candidate and review artifacts. You personally review candidates, choose the target and Observe, and enter O1 and ACTIVITY_END in PowerShell.
+
+The [fixed bridge wrapper](scripts/Invoke-CraAiBridge.ps1) accepts **`OutputDirectory` as its only feature parameter**. Use an absolute local directory whose parent already exists; the per-request directory must not exist. The wrapper creates it and generates fresh `request_id` and `candidate_set_id` values. Do not supply IDs as launch arguments or reuse an old directory. This wrapper is not an arbitrary PowerShell command proxy.
+
+### 3. Complete the human steps; let Codex explain
+
+1. Manually run the command in your own PowerShell 7 ConsoleHost. Codex must not launch the terminal or wrapper for you.
+2. Share the safe `request_id` / `candidate_set_id` line emitted before collection, plus the explicit output directory. Leave the review prompt pending while Codex reads the candidate artifact. Do not paste the full process table, PID, creation time, paths or private transcript.
+3. Personally choose candidates for review in PowerShell. Let Codex read the review artifact before you select one target and explicitly choose `O/OBSERVE`, even if only one candidate is available. Finder and Session are unavailable in this path.
+4. Continue only after O0 `MATCHED`. Enter `O1` while your activity runs. After O1 returns and the activity finishes, personally enter `ACTIVITY_END`. Codex cannot substitute a timer or command-completion event for your declaration. A non-MATCHED O0 stops the attempt without automatic retry or retargeting.
+5. CRA performs O2 and the configured wait/O3 sequence. After `final_result` is published, Codex validates and explains it. A completed wait or delivered artifact alone does not establish observation success.
+
+### Safe artifacts
+
+| Artifact | What Codex can explain |
+| --- | --- |
+| `candidate.json` | Safe names, capture-local C references, readiness and fixed reasons. |
+| `review.json` | Human-selected review membership; no target choice or Observe consent implied. |
+| `final_result.json` | The T17.2 PSCustomObject delivered by the T17.3 serializer, preserving result type, outcome, history and semantic limits. |
+
+These are **one-way data handoffs**, never AI control messages. Candidate/review projections exclude private/raw identity data. Codex reads through the existing `Read-CraAiArtifact` reader using the operator-supplied directory and both expected IDs; it validates type, versions and correlation. It must not obtain expected IDs from an unvalidated artifact, choose a latest file, parse the console, or write back an action.
+
+Missing, partial, malformed, unsupported-version or mismatched artifacts stop consumption. There is no raw-file fallback, repair or inferred empty-success result. A cancelled or interrupted run may have no final artifact. See the [T17.3 bridge and safe-artifact contract](docs/T17_3_LOCAL_AI_INTEGRATION_SPEC.md).
+
+## What AI can and cannot do
+
+| Codex can | Operator-only or unsupported |
+| --- | --- |
+| Explain candidate/review data and readiness | Choose or type candidate/target selections |
+| Provide a complete bridge command and remind you of the next step | Launch the terminal, run the wrapper, or choose Observe for you |
+| Read and summarize validated final artifacts | Enter O1 or ACTIVITY_END, or proxy your confirmations |
+| Describe supported observations and uncertainty | Send control messages through artifacts, kill, clean up or remediate processes |
+
+Manual Guided leaves the full terminal evidence with you. AI-assisted use adds safe artifact explanations while PowerShell continues to own trust-sensitive human input. Codex cannot promote Incident evidence into an ownership claim.
+
+## What the evidence does not prove
+
+| Evidence | Meaning and limit |
+| --- | --- |
+| `NEWLY_OBSERVED` | First observed in this Incident history at that stage; not created by Codex/task. |
+| `NO_LONGER_OBSERVED` | Previously observed identity not observed in a later capture; not proven exit or cleanup success. |
+| O3 `PRESENT` | Observed at that follow-up capture; not residue, orphan, leak or continuous presence between captures. |
+| `OBSERVED_PARENT_CHILD` | Reported stage-specific relationship; not ownership, causation or logical Session membership. |
+| `NODE_LIKE` / `SHELL_LIKE` / `BROWSER_LIKE` | Name-based role hint only; not actual purpose. |
+| Working set | Captured measurement with availability; not task cost. Unknown/unavailable is not zero. |
+| Same PID | Insufficient by itself to establish the same exact identity. |
+
+```text
+Incident-derived ownership = UNKNOWN
+Incident lifecycle = NOT_APPLICABLE
+Observation != VERIFIED_ROOT
+UNKNOWN != CODEX
+```
+
+These are Incident semantic boundaries, not independent ownership/lifecycle determinations. P references belong only to one result; C references belong only to one discovery. An empty transition list does not prove no activity. Read the [T17.1 evidence and human-boundary contract](docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md) for full semantics.
+
+<a id="current-limitations"></a>
+
+## Supported and not currently supported
+
+**Supported:** Windows, PowerShell 7, read-only Incident Observation, Manual Guided with Finder/Session/Observation, the in-process `-PassThru` Incident result, and local Codex with the Skill, fixed bridge and safe artifacts. Every required human gate remains operator-owned. Missing or denied Windows metadata stays unavailable; CRA never elevates privileges or changes host configuration.
+
+**Not currently supported:** autonomous AI target selection, AI confirmation proxies, automatic AI terminal launch, native stdout JSON, AI-callable Finder or Session, cleanup/kill/remediation, an MCP server, public/remote endpoints, or ChatGPT cloud direct control of a local PC. CRA is not a definitive ownership detector, residue classifier or memory-leak detector. It is not a continuous profiler or full-host accounting tool. WSL/native Linux live collection is not supported.
+
+Browser names or attached tools do not prove ownership. A confirmed Gate 2 false positive is NO-GO. Existing browser lifecycle limits remain:
+
+```text
+REAL_BROWSER_MCP_LIFECYCLE_POLICY: EVIDENCE_BLOCKED
+REAL_BROWSER_MCP_RESIDUE_CLAIM: NOT_SUPPORTED
+```
+
+## Privacy
+
+Windows collection can retain private process metadata in memory, and local human recognition displays can contain identity details. Do not forward terminal transcripts as AI evidence. The AI workflow uses only the safe projections described above.
+
+Plain Guided/PassThru does not automatically persist artifacts; the bridge deliberately writes them into the explicit local request directory. CRA does not automatically upload them. Treat external logging and shell redirection separately, and review any material before sharing. Never publish real command lines, credentials, private paths, account data or unrelated process details.
+
+## Advanced modes and reference docs
+
+From the repository:
+
+```powershell
+.\codex-resource-audit.ps1 -Mode Help
+.\codex-resource-audit.ps1 -Mode Candidates
+.\codex-resource-audit.ps1 -Mode Fixture -FixturePath '<local-json-file>'
+```
+
+Direct Session is a separate advanced mode. Replace these placeholders with independently verified current values; a candidate template is not verification:
 
 ```powershell
 .\codex-resource-audit.ps1 `
@@ -208,70 +190,29 @@ Session is the advanced direct observation mode. Replace every placeholder with 
   -IncludeEvidenceSummary
 ```
 
-Candidate templates are current-capture-only. Regenerate and reverify them after restart, update, reboot, or machine migration.
+- [Incident Observation and timing](docs/T15_INCIDENT_OBSERVATION_SPEC.md)
+- [Manual Finder](docs/T16_2_ISSUE_CENTRIC_ACTIVITY_TARGET_FINDER_SPEC.md)
+- [Canonical Codex Skill](skills/cra-incident/SKILL.md)
+- [T17.1 AI-callable semantic contract](docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md)
+- [T17.2 PowerShell result API](docs/T17_2_POWERSHELL_RESULT_API_SPEC.md)
+- [T17.3 local bridge / reader / artifacts](docs/T17_3_LOCAL_AI_INTEGRATION_SPEC.md)
+- [Session Task Delta](docs/V0_1_1_T6_9_TASK_DELTA_ISSUE_EVIDENCE.md) and [Process Branch Origin](docs/V0_1_1_T6_9_5_PROCESS_BRANCH_ORIGIN.md)
+- [Pipeline design](docs/STAGE0_PLAN.md#pipeline), [validation record](docs/STAGE0_VALIDATION.md) and [synthetic examples](docs/EXAMPLES.md)
+- Historical [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md) and [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md)
 
-## Requirements and platform status
+## Development, tests and status
 
-- PowerShell 7 (`pwsh`). Pester is needed only for development/testing.
-- Windows process metadata access sufficient for the chosen live mode. Missing or denied fields remain unavailable; the tool never elevates privileges or changes host configuration.
-- Codex Desktop on Windows is supported and validated within the recorded host/product evidence boundary; this is not a universal version guarantee.
-- Native Windows Codex CLI has no broader v0.1.x compatibility claim than the evidence already recorded in this repository.
-- WSL and native Linux are not supported in v0.1.x.
-
-No execution-policy change is normally required. If reviewed local scripts are blocked, follow your organization’s policy rather than permanently weakening Windows settings.
-
-<a id="current-limitations"></a>
-
-## Limitations
-
-- Observation is snapshot-based, not continuous; a very short-lived process storm can occur entirely between snapshots.
-- This is not a primary real-time CPU or memory profiler.
-- No logical Codex session identifier or tool-call/invocation ID is established.
-- Process parentage does not establish tool causation.
-- No automatic residue, orphan, leak, reproducibility, or cleanup-success conclusion is made.
-- The tool performs no cleanup, termination, suspension, repair, or background monitoring.
-- Browser role or ownership is never inferred from names alone.
-- Live collection is Windows-only; unsupported platforms are not silently generalized.
-
-```text
-REAL_BROWSER_MCP_LIFECYCLE_POLICY: EVIDENCE_BLOCKED
-REAL_BROWSER_MCP_RESIDUE_CLAIM: NOT_SUPPORTED
-```
-
-## Privacy
-
-Live modes collect process metadata into memory, potentially including command-line values when Windows exposes them. Normal reports do not emit process command lines. Formatting redacts supported user-profile path patterns and URL credentials, neutralizes terminal controls, and restricts labels, but cannot promise recognition of every sensitive string.
-
-Candidates and Session do not automatically persist or upload process snapshots. Shell redirection, transcripts, or external logging can still save output. Before sharing, remove real command lines, credentials, tokens, private paths, account data, browsing/conversation content, and unrelated process details. Teaching material must be clearly synthetic or explicitly sanitized.
-
-## Testing and safety
-
-The offline suite uses Pester **6.2.0 exactly** and synthetic/mocked evidence; it does not enumerate live processes, launch child processes, use browsers, or access network endpoints.
+The pipeline keeps collection, attribution, lifecycle analysis and reporting separate. Offline tests use synthetic/mocked evidence and **Pester 6.2.0**; the runner installs nothing and fails on test failures or a blocked environment:
 
 ```powershell
 pwsh -NoProfile -File .\scripts\Test-Stage0.ps1 -Offline
 ```
 
-Latest local regression recorded for this documentation refresh: **629/629 PASS** with zero failed, skipped, inconclusive, or NotRun tests. The runner installs nothing and returns a nonzero exit code for a failed/discovered test, missing required ID, or blocked test environment.
+The latest local code checkpoint passed **1368/1368** tests, with zero failed, skipped, inconclusive or NotRun tests. This docs-only update does not claim a new full-suite run.
 
-The pipeline deliberately keeps collection, attribution, lifecycle analysis, and reporting separate. See the [pipeline design](docs/STAGE0_PLAN.md#pipeline), [validation record](docs/STAGE0_VALIDATION.md), and [synthetic examples](docs/EXAMPLES.md).
+T17.1, T17.2 and T17.3 are complete in the current checkout. Local Windows operator integration acceptance passed, including Skill deployment and recognition, repository resolution, candidate/review/final artifact consumption, human gates and Owner review of Codex's interpretation. This is evidence for the exercised local workflow, not a universal host/client-version guarantee. Failure cases are covered separately by offline tests.
 
-## Engineering notes
-
-- [T6.9 — Task Delta and issue evidence](docs/V0_1_1_T6_9_TASK_DELTA_ISSUE_EVIDENCE.md)
-- [T6.9.5 — Process Branch Origin](docs/V0_1_1_T6_9_5_PROCESS_BRANCH_ORIGIN.md)
-- [T6.9.6 — live-history compatibility](docs/V0_1_1_T6_9_6_LIVE_HISTORY_COMPATIBILITY.md)
-- [T7 — terminal readability and Next Step](docs/V0_1_1_T7_TERMINAL_READABILITY_AND_NEXT_STEP.md)
-- [T7.1 — terminal UX polish](docs/V0_1_1_T7_1_TERMINAL_UX_POLISH.md)
-- [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md)
-- [v0.1.1 release-readiness audit](docs/V0_1_1_RELEASE_READINESS.md)
-- [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md)
-
-## Project status and compatibility
-
-v0.1.0 is the immutable public release baseline. v0.1.1 adds the Guided operator workflow and presentation layers while preserving the canonical Session report and core evidence semantics. Historical detailed report headers remain for output compatibility.
-
-The linked readiness note preserves the historical v0.1.1 T9 audit snapshot, not current remote-gate status. Publication requires owner review and a release tag pointing to the exact commit that passed the hosted **Windows offline tests** workflow. Final commit and CI run details belong in the GitHub Release body.
+This README describes **repository-current functionality**. Local T17 commits have not yet been pushed to remote main at this documentation checkpoint; no published release tag is claimed to contain them. Historical release notes retain their own scope. Release publication and hosted CI verification remain separate steps.
 
 ## License
 
