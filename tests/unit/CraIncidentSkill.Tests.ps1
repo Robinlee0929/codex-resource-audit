@@ -1,4 +1,5 @@
 BeforeAll {
+    Set-StrictMode -Version Latest
     $script:skillRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
     $script:skillPath = Join-Path $script:skillRoot 'skills/cra-incident/SKILL.md'
     $script:skill = Get-Content -LiteralPath $script:skillPath -Raw
@@ -46,7 +47,189 @@ BeforeAll {
             Commands = @($ast.FindAll({ param($n) $n -is [Management.Automation.Language.CommandAst] }, $true))
         }
     })
-    $script:commands = @($script:examples | ForEach-Object Commands)
+    $script:workspaceExample = @($script:examples | Where-Object { 'git' -in @($_.Commands | ForEach-Object GetCommandName) })
+    $script:markerExample = @($script:examples | Where-Object { 'Get-Item' -in @($_.Commands | ForEach-Object GetCommandName) })
+    $script:operationalExamples = @($script:examples | Where-Object { $_ -notin $script:workspaceExample -and $_ -notin $script:markerExample })
+    $script:commands = @($script:operationalExamples | ForEach-Object Commands)
+    $script:resourceRows = @(Get-SkillTableRows $script:skill 'Repository-relative path')
+    function Test-SkillBridgeCall($Command) {
+        if ($Command.InvocationOperator -ne 'Ampersand' -or
+            $Command.CommandElements[0] -isnot [Management.Automation.Language.ParenExpressionAst]) { return $false }
+        $inner = @($Command.CommandElements[0].FindAll({param($n) $n -is [Management.Automation.Language.CommandAst]}, $true))
+        return ($inner.Count -eq 1 -and $inner[0].GetCommandName() -eq 'Join-Path' -and
+            $inner[0].CommandElements.Count -eq 3 -and
+            $inner[0].CommandElements[1].Extent.Text -ceq '$RepoRoot' -and
+            $inner[0].CommandElements[2].Value -ceq 'scripts/Invoke-CraAiBridge.ps1')
+    }
+    function Invoke-SkillMarkerExample([AllowNull()][string]$CandidateRepoRoot, $Example = $script:markerExample[0]) {
+        # Execute only the documented read-only marker block, never the bridge.
+        $RepoRoot = 'STALE_ROOT_MUST_BE_CLEARED'
+        . $Example.Ast.GetScriptBlock()
+        return $RepoRoot
+    }
+    function Invoke-SkillWorkspaceExample([object[]]$GitRoots, [int]$GitExitCode = 0) {
+        # Simulate Git stdout/exit status; do not discover the machine's repositories.
+        function git { return $GitRoots }
+        $LASTEXITCODE = $GitExitCode
+        . $script:workspaceExample[0].Ast.GetScriptBlock()
+        return $CandidateRepoRoot
+    }
+}
+
+Describe 'T17.3C.1 repository resolution from a deployed copy (synthetic only)' {
+    BeforeAll {
+        $script:requiredMarkers = @(
+            'codex-resource-audit.ps1', 'scripts/Invoke-CraAiBridge.ps1', 'src/CraAiHandoff.psm1',
+            'docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md', 'docs/T17_2_POWERSHELL_RESULT_API_SPEC.md',
+            'docs/T17_3_LOCAL_AI_INTEGRATION_SPEC.md', 'skills/cra-incident/SKILL.md'
+        )
+        function New-SkillResolutionFixture([string]$Root, [string]$Omit = '', [string]$DirectoryMarker = '') {
+            $null = New-Item -ItemType Directory -Path $Root -Force
+            foreach ($marker in $script:requiredMarkers) {
+                if ($marker -eq $Omit) { continue }
+                $path = Join-Path $Root $marker
+                $null = New-Item -ItemType Directory -Path (Split-Path $path) -Force
+                if ($marker -eq $DirectoryMarker) {
+                    $null = New-Item -ItemType Directory -Path $path
+                } elseif ($marker -eq 'skills/cra-incident/SKILL.md') {
+                    Copy-Item -LiteralPath $script:skillPath -Destination $path
+                } else {
+                    # Presence markers only: no real runtime code is copied or invoked.
+                    [IO.File]::WriteAllText($path, 'synthetic marker')
+                }
+            }
+        }
+    }
+    BeforeEach {
+        $script:scenario = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        $script:syntheticRepo = Join-Path $script:scenario 'X/repo'
+    }
+    It 'SK25 keeps installed and canonical location roles separate and bans parent inference' {
+        $script:plain | Should -Match 'installed Skill directory and CRA repository root are separate'
+        $script:plain | Should -Match 'Never derive the repository from the installed Skill path or its parents'
+        $script:plain | Should -Match 'deployed copy supplies instructions'
+        $script:plain | Should -Match 'validated repository remains the canonical source'
+        $script:plain | Should -Not -Match 'repository root is two directories above|Resolve these links from this Skill'
+        ($script:examples.Ast.Extent.Text -join "`n") | Should -Not -Match '\$PSScriptRoot|Split-Path|\.\.[\\/]'
+    }
+    It 'SK26 the primary probe is only current-workspace Git top-level discovery' {
+        $script:workspaceExample.Count | Should -Be 1
+        $script:workspaceExample[0].Errors.Count | Should -Be 0
+        $calls = $script:workspaceExample[0].Commands
+        $calls.Count | Should -Be 1
+        $calls[0].GetCommandName() | Should -BeExactly 'git'
+        @($calls[0].CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text }) | Should -Be @('rev-parse','--show-toplevel')
+        $script:plain | Should -Match 'Git top-level path is only a candidate'
+    }
+    It 'SK27 <case> workspace discovery does not supply a guessed root' -ForEach @(
+        @{case='not a Git repository';roots=@();code=128},
+        @{case='empty output';roots=@();code=0},
+        @{case='ambiguous roots';roots=@('X:\one','X:\two');code=0},
+        @{case='failed command with output';roots=@('X:\one');code=1}
+    ) {
+        Invoke-SkillWorkspaceExample -GitRoots $roots -GitExitCode $code | Should -BeNullOrEmpty
+    }
+    It 'SK28 accepts a root only after every required marker passes' {
+        $script:markerExample.Count | Should -Be 1
+        $script:markerExample[0].Errors.Count | Should -Be 0
+        New-SkillResolutionFixture $script:syntheticRepo
+        Invoke-SkillMarkerExample $script:syntheticRepo | Should -BeExactly ([IO.Path]::GetFullPath($script:syntheticRepo))
+    }
+    It 'SK29 missing <marker> blocks both workspace and explicit operator candidates' -ForEach @(
+        @{marker='codex-resource-audit.ps1'},
+        @{marker='scripts/Invoke-CraAiBridge.ps1'},
+        @{marker='src/CraAiHandoff.psm1'},
+        @{marker='docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md'},
+        @{marker='docs/T17_2_POWERSHELL_RESULT_API_SPEC.md'},
+        @{marker='docs/T17_3_LOCAL_AI_INTEGRATION_SPEC.md'},
+        @{marker='skills/cra-incident/SKILL.md'}
+    ) {
+        New-SkillResolutionFixture -Root $script:syntheticRepo -Omit $marker
+        $workspaceCandidate = Invoke-SkillWorkspaceExample -GitRoots @($script:syntheticRepo)
+        Invoke-SkillMarkerExample $workspaceCandidate | Should -BeNullOrEmpty
+        Invoke-SkillMarkerExample $script:syntheticRepo | Should -BeNullOrEmpty
+    }
+    It 'SK30 rejects a non-CRA Git root even if its directory has the project name' {
+        $otherRepo = Join-Path $script:scenario 'codex-resource-audit-public'
+        $null = New-Item -ItemType Directory -Path $otherRepo
+        $candidate = Invoke-SkillWorkspaceExample -GitRoots @($otherRepo)
+        $candidate | Should -BeExactly $otherRepo
+        Invoke-SkillMarkerExample $candidate | Should -BeNullOrEmpty
+    }
+    It 'SK31 rejects <case> without retaining an earlier resolved root' -ForEach @(
+        @{case='missing candidate';candidate=$null},
+        @{case='relative candidate';candidate='repo'},
+        @{case='parent traversal candidate';candidate='..\..'}
+    ) {
+        Invoke-SkillMarkerExample $candidate | Should -BeNullOrEmpty
+    }
+    It 'SK32 a directory cannot impersonate a required marker file' {
+        New-SkillResolutionFixture -Root $script:syntheticRepo -DirectoryMarker 'scripts/Invoke-CraAiBridge.ps1'
+        Invoke-SkillMarkerExample $script:syntheticRepo | Should -BeNullOrEmpty
+    }
+    It 'SK33 fallback asks the operator for an explicit root and reuses marker validation' {
+        $script:plain | Should -Match 'workspace is not a Git repo.{0,200}ask the operator to explicitly provide an absolute CRA repository root'
+        $script:plain | Should -Match 'operator-supplied path.{0,100}same marker validation'
+        $script:plain | Should -Match 'validation fails, STOP / BLOCKED.{0,50}do not guess'
+    }
+    It 'SK34 a byte-identical deployed copy resolves <source> independently of the installation layout' -ForEach @(
+        @{source='workspace'}, @{source='operator'}
+    ) {
+        # X:/repo and Y:/user are conceptual volumes under TestDrive. No user
+        # skill directory, real Git repository or live collector is touched.
+        New-SkillResolutionFixture $script:syntheticRepo
+        $deployedFile = Join-Path $script:scenario 'Y/user/.codex/skills/cra-incident/SKILL.md'
+        $null = New-Item -ItemType Directory -Path (Split-Path $deployedFile) -Force
+        Copy-Item -LiteralPath $script:skillPath -Destination $deployedFile
+        (Get-FileHash $deployedFile).Hash | Should -BeExactly (Get-FileHash $script:skillPath).Hash
+        $deployedText = Get-Content -LiteralPath $deployedFile -Raw
+        $block = @([regex]::Matches($deployedText, '(?ms)^```powershell\s*\r?\n(.*?)^```\s*$') | Where-Object { $_.Groups[1].Value -match '\$CraMarkers\s*=' })
+        $block.Count | Should -Be 1
+        $tokens = $null; $errors = $null
+        $deployedExample = [pscustomobject]@{Ast=[Management.Automation.Language.Parser]::ParseInput($block[0].Groups[1].Value,[ref]$tokens,[ref]$errors)}
+        $errors.Count | Should -Be 0
+        $candidate = $script:syntheticRepo
+        if ($source -eq 'workspace') { $candidate = Invoke-SkillWorkspaceExample -GitRoots @($candidate) }
+        $resolved = Invoke-SkillMarkerExample -CandidateRepoRoot $candidate -Example $deployedExample
+        $resolved | Should -BeExactly (Invoke-SkillMarkerExample $candidate)
+        $resolved | Should -BeExactly ([IO.Path]::GetFullPath($script:syntheticRepo))
+        $installedParent = [IO.Path]::GetFullPath((Join-Path (Split-Path $deployedFile) '../..'))
+        $resolved | Should -Not -Be $installedParent
+        Invoke-SkillMarkerExample -CandidateRepoRoot $null -Example $deployedExample | Should -BeNullOrEmpty
+        Join-Path $resolved 'scripts/Invoke-CraAiBridge.ps1' | Should -BeExactly (Join-Path $script:syntheticRepo 'scripts/Invoke-CraAiBridge.ps1')
+    }
+    It 'SK35 even an installation tree containing every marker is not used as an implicit fallback' {
+        $installRoot = Join-Path $script:scenario 'C/Users/TestUser/.codex'
+        New-SkillResolutionFixture $installRoot
+        # A real candidate must be supplied: nearby files cannot create one.
+        Invoke-SkillMarkerExample $null | Should -BeNullOrEmpty
+        $script:markerExample[0].Ast.Extent.Text | Should -Not -Match '\$PSScriptRoot|\.codex|TestUser|Get-Location|Split-Path'
+    }
+    It 'SK36 repository discovery has no scan, artifact source, hard-coded home or persistent configuration' {
+        $script:skill | Should -Not -Match 'C:[\\/]Dev[\\/]codex-resource-audit-public|C:[\\/]Users[\\/]Robin'
+        $script:plain | Should -Match 'Never use recursive filesystem search'
+        $script:plain | Should -Match 'Never obtain repository paths from candidate/review/final_result artifacts or terminal transcripts'
+        $script:plain | Should -Match 'Do not clone, download or auto-change the working directory'
+        $script:plain | Should -Match 'newest repository.{0,30}latest-path cache'
+        $script:plain | Should -Match 'add no persistent config'
+        foreach ($example in @($script:workspaceExample) + @($script:markerExample)) {
+            foreach ($call in $example.Commands) { $call.GetCommandName() | Should -BeIn @('git','Get-Item','Test-Path','Join-Path') }
+            $example.Ast.Extent.Text | Should -Not -Match '\$craDirectory|\$candidate\.|\$review\.|\$final\.|-Recurse|Set-Location|\bclone\b'
+        }
+    }
+    It 'SK37 repository location validation grants no process or executable trust' {
+        $script:plain | Should -Match 'only a CRA repository location, not a VERIFIED_ROOT process, process identity, Session root, ownership or trusted Windows executable'
+        $script:plain | Should -Match 'Do not execute marker files'
+        $script:plain | Should -Match 'hash equality is checked during T17.3D deployment acceptance'
+    }
+    It 'SK38 the bridge and reader module paths are formed only from validated RepoRoot' {
+        @($script:commands | Where-Object { Test-SkillBridgeCall $_ }).Count | Should -Be 1
+        $joins = @($script:commands | Where-Object { $_.GetCommandName() -eq 'Join-Path' })
+        $joins.Count | Should -Be 2
+        foreach ($join in $joins) { $join.CommandElements[1].Extent.Text | Should -BeExactly '$RepoRoot' }
+        @($joins | ForEach-Object { $_.CommandElements[2].Value }) | Should -Contain 'src/CraAiHandoff.psm1'
+        $script:plain | Should -Match 'Proceed only when \$RepoRoot is non-null after all markers pass'
+    }
 }
 
 Describe 'T17.3C repository Skill format and canonical dependencies' {
@@ -72,25 +255,23 @@ Describe 'T17.3C repository Skill format and canonical dependencies' {
         $description | Should -Match 'Incident'
         $description | Should -Match 'artifact'
     }
-    It 'SK03 links to canonical <relative> and resolves it inside this checkout' -ForEach @(
+    It 'SK03 identifies canonical <relative> relative to the validated repository' -ForEach @(
         @{relative='docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md'},
         @{relative='docs/T17_2_POWERSHELL_RESULT_API_SPEC.md'},
         @{relative='docs/T17_3_LOCAL_AI_INTEGRATION_SPEC.md'},
         @{relative='scripts/Invoke-CraAiBridge.ps1'},
         @{relative='src/CraAiHandoff.psm1'}
     ) {
-        $links = @([regex]::Matches($script:skill, '\]\(([^)]+)\)') | ForEach-Object {
-            [IO.Path]::GetFullPath((Join-Path (Split-Path $script:skillPath) $_.Groups[1].Value))
-        })
+        $script:resourceRows.Key | Should -Contain $relative
         $expected = [IO.Path]::GetFullPath((Join-Path $script:skillRoot $relative))
-        $links | Should -Contain $expected
         Test-Path -LiteralPath $expected -PathType Leaf | Should -BeTrue
     }
-    It 'SK04 every local Markdown link resolves without escaping the repository' {
-        $links = @([regex]::Matches($script:skill, '\]\(([^)]+)\)'))
-        $links.Count | Should -BeGreaterOrEqual 5
-        foreach ($link in $links) {
-            $path = [IO.Path]::GetFullPath((Join-Path (Split-Path $script:skillPath) $link.Groups[1].Value))
+    It 'SK04 every resource reference resolves inside the repository without Skill-relative traversal' {
+        $script:resourceRows.Count | Should -BeGreaterOrEqual 5
+        $script:skill | Should -Not -Match '\]\([^)]*\.\.[\\/]'
+        foreach ($row in $script:resourceRows) {
+            $row.Key | Should -Not -Match '^[/\\]|:|\.\.'
+            $path = [IO.Path]::GetFullPath((Join-Path $script:skillRoot $row.Key))
             $path.StartsWith($script:skillRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) | Should -BeTrue
             Test-Path -LiteralPath $path -PathType Leaf | Should -BeTrue
         }
@@ -155,22 +336,22 @@ Describe 'T17.3C human gates and bounded capabilities' {
 Describe 'T17.3C command examples are parsed only, never executed' {
     It 'SK12 examples parse and allow only the fixed operator wrapper or safe reader setup' {
         $script:examples.Count | Should -BeGreaterOrEqual 4
-        foreach ($example in $script:examples) {
+        foreach ($example in $script:operationalExamples) {
             $example.Errors.Count | Should -Be 0
             # Block hidden method execution, redirection, dynamic command dispatch,
             # process control aliases and generic shell proxies in runnable examples.
             @($example.Ast.FindAll({param($n) $n -is [Management.Automation.Language.InvokeMemberExpressionAst]}, $true)).Count | Should -Be 0
             foreach ($command in $example.Commands) {
                 $command.Redirections.Count | Should -Be 0
+                if (Test-SkillBridgeCall $command) { continue }
                 $name = $command.GetCommandName()
                 $name | Should -Not -BeNullOrEmpty
-                if ($name -match '[\\/]Invoke-CraAiBridge\.ps1$') { continue }
                 $name | Should -BeIn @('Import-Module','Join-Path','CraAiHandoff\Read-CraAiArtifact')
             }
         }
     }
     It 'SK13 operator example exposes only the actual wrapper OutputDirectory parameter' {
-        $calls = @($script:commands | Where-Object { $_.GetCommandName() -match '[\\/]Invoke-CraAiBridge\.ps1$' })
+        $calls = @($script:commands | Where-Object { Test-SkillBridgeCall $_ })
         $calls.Count | Should -Be 1
         $parameters = @($calls[0].CommandElements | Where-Object {$_ -is [Management.Automation.Language.CommandParameterAst]} | ForEach-Object ParameterName)
         $parameters | Should -Be @('OutputDirectory')

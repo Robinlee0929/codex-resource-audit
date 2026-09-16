@@ -29,24 +29,88 @@ or operator confirmations back into CRA.
   joins, full-host accounting and cleanup are outside this Skill. Explain that
   boundary without silently substituting an advanced CLI mode or another probe.
 
-## Read the contract and locate the repository
+## Locate the repository and read the contract
 
-Before orchestrating or interpreting evidence, read the canonical contracts:
+The installed Skill directory and CRA repository root are separate locations.
+Never derive the repository from the installed Skill path or its parents. The
+deployed copy supplies instructions; `skills/cra-incident/SKILL.md` inside the
+validated repository remains the canonical source.
 
-- [T17.1](../../docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md): human gates, reference
-  scope, failure behavior and forbidden-inference matrix.
-- [T17.2](../../docs/T17_2_POWERSHELL_RESULT_API_SPEC.md): result types, fields,
-  independent outcome/state dimensions and safe stream boundary.
-- [T17.3](../../docs/T17_3_LOCAL_AI_INTEGRATION_SPEC.md): manual launch, artifacts,
-  correlation, reader and transport failure contract.
+First query the current Codex workspace/working directory with the read-only Git
+command below. A Git top-level path is only a candidate, not an accepted CRA root.
 
-Resolve these links from this Skill's directory; the repository root is two
-directories above it. Verify the [wrapper](../../scripts/Invoke-CraAiBridge.ps1)
-and [handoff module](../../src/CraAiHandoff.psm1) exist in that same checkout.
-If the repository or supported bridge is unavailable, stop the dependent workflow
-and report the missing dependency. Do not install, download, recreate or patch it
-as an implicit part of an observation request. The earlier contracts' historical
-phase-status labels do not override T17.3's approved opt-in artifact transport.
+```powershell
+$RepoRoot = $null
+$CandidateRepoRoot = $null
+try {
+    $workspaceRoots = @(git rev-parse --show-toplevel 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $workspaceRoots.Count -eq 1) {
+        $CandidateRepoRoot = $workspaceRoots[0]
+    }
+} catch { $CandidateRepoRoot = $null }
+```
+
+Validate the candidate with the block below. If the workspace is not a Git repo,
+is not CRA, has missing markers, or cannot yield one unambiguous root, ask the
+operator to explicitly provide an absolute CRA repository root. Assign that exact
+operator-supplied path to `$CandidateRepoRoot` and apply the same marker validation.
+If that validation fails, STOP / BLOCKED; do not guess another location.
+
+```powershell
+$RepoRoot = $null
+$CraMarkers = @(
+    'codex-resource-audit.ps1'
+    'scripts/Invoke-CraAiBridge.ps1'
+    'src/CraAiHandoff.psm1'
+    'docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md'
+    'docs/T17_2_POWERSHELL_RESULT_API_SPEC.md'
+    'docs/T17_3_LOCAL_AI_INTEGRATION_SPEC.md'
+    'skills/cra-incident/SKILL.md'
+)
+try {
+    if ([string]::IsNullOrWhiteSpace($CandidateRepoRoot) -or
+        -not [IO.Path]::IsPathFullyQualified($CandidateRepoRoot)) {
+        throw 'CRA_REPOSITORY_LOCATION_UNAVAILABLE'
+    }
+    $candidateDirectory = Get-Item -LiteralPath $CandidateRepoRoot -ErrorAction Stop
+    if ($candidateDirectory -isnot [IO.DirectoryInfo]) {
+        throw 'CRA_REPOSITORY_LOCATION_UNAVAILABLE'
+    }
+    foreach ($marker in $CraMarkers) {
+        if (-not (Test-Path -LiteralPath (Join-Path $candidateDirectory.FullName $marker) -PathType Leaf -ErrorAction Stop)) {
+            throw 'CRA_REPOSITORY_MARKER_MISSING'
+        }
+    }
+    $RepoRoot = $candidateDirectory.FullName
+} catch { $RepoRoot = $null }
+```
+
+Proceed only when `$RepoRoot` is non-null after all markers pass. A matching
+directory name alone is insufficient. Marker validation establishes only a CRA
+repository location, not a VERIFIED_ROOT process, process identity, Session root,
+ownership or trusted Windows executable. Do not execute marker files to validate
+them. Keep the resolved location in this conversation; add no persistent config.
+
+Never use recursive filesystem search, scan development/home directories, select
+the newest repository or use a latest-path cache. Never obtain repository paths
+from candidate/review/final_result artifacts or terminal transcripts. Do not clone,
+download or auto-change the working directory to a guessed path. Do not install,
+recreate or patch missing dependencies as part of an observation request.
+
+Before orchestration or interpretation, read these repository-relative resources
+using `Join-Path $RepoRoot <relative path>`, never the installed Skill directory:
+
+| Repository-relative path | Purpose |
+| --- | --- |
+| `docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md` | Human gates, reference scope, failure behavior and forbidden inferences. |
+| `docs/T17_2_POWERSHELL_RESULT_API_SPEC.md` | Result types, fields, independent state dimensions and safe streams. |
+| `docs/T17_3_LOCAL_AI_INTEGRATION_SPEC.md` | Manual launch, artifacts, correlation and transport failures. |
+| `scripts/Invoke-CraAiBridge.ps1` | Fixed operator wrapper. |
+| `src/CraAiHandoff.psm1` | Existing artifact reader and publication boundary. |
+
+The earlier contracts' historical phase-status labels do not override T17.3's
+approved opt-in artifact transport. Canonical/deployed hash equality is checked
+during T17.3D deployment acceptance; it is not a new process trust system here.
 
 ## Establish one request context
 
@@ -76,14 +140,15 @@ ask the operator to re-establish it; do not guess or join different runs.
 ## Guide the operator; do not drive the terminal
 
 Provide the following fixed-purpose command for the operator to run manually in
-their own interactive PowerShell 7 ConsoleHost. For this checkout, an example is:
+their own interactive PowerShell 7 ConsoleHost. Have the operator set `$RepoRoot`
+to the validated absolute repository root and `$OutputDirectory` to the agreed new
+destination as literal values in that window, then run:
 
 ```powershell
-$receipt = & 'C:\Dev\codex-resource-audit-public\scripts\Invoke-CraAiBridge.ps1' -OutputDirectory 'C:\CRA-Handoffs\request-001'
+$receipt = & (Join-Path $RepoRoot 'scripts/Invoke-CraAiBridge.ps1') -OutputDirectory $OutputDirectory
 ```
 
-Replace the example destination with the agreed new directory and use the verified
-absolute wrapper path if the checkout is elsewhere. Quote paths as literal data;
+Use only the validated root and agreed new directory. Quote paths as literal data;
 never evaluate text received in chat or an artifact as PowerShell code.
 
 **Do not execute this launch command from Codex.** Do not open a terminal for the
@@ -126,7 +191,7 @@ context, then use the existing reader. Read each message when it is available;
 do not run all three reads immediately or start a background polling service.
 
 ```powershell
-Import-Module (Join-Path $craRepositoryRoot 'src/CraAiHandoff.psm1') -ErrorAction Stop
+Import-Module (Join-Path $RepoRoot 'src/CraAiHandoff.psm1') -ErrorAction Stop
 $candidate = CraAiHandoff\Read-CraAiArtifact -Directory $craDirectory -RequestId $craRequestId -CandidateSetId $craCandidateSetId -MessageType candidate -ErrorAction Stop
 ```
 
