@@ -30,8 +30,13 @@ function Invoke-GuidedDiscovery {
        CLI: only Format-GuidedOutcome reaches success output. No Session or root
        anchor exists here. Every call starts a fresh capture-local selection. #>
     [CmdletBinding()]
-    param([AllowNull()] [scriptblock] $Reader = $null, [switch]$IncidentOnly)
+    param([AllowNull()] [scriptblock] $Reader = $null, [switch]$IncidentOnly,
+        [AllowNull()] [string]$AiHandoffId=$null)
     $ErrorActionPreference = 'Stop'
+    if (-not [string]::IsNullOrEmpty($AiHandoffId)) {
+        if (-not $IncidentOnly) {throw 'CRA_AI_REQUEST_UNAVAILABLE'}
+        CraAiHandoff\Assert-CraAiRequest -Handle $AiHandoffId
+    }
     if (-not (Test-OperatorInteractiveHost)) {
         throw 'GUIDED_INTERACTION_REQUIRED: Guided requires an interactive operator session. Use advanced modes for automation.'
     }
@@ -49,6 +54,9 @@ function Invoke-GuidedDiscovery {
         throw 'GUIDED_COLLECTION_FAILED: candidate collection unavailable; no candidate count established.'
     }
     $view = Get-GuidedCandidateView -Snapshot $snapshot -Candidates $candidates -ObservationScopeId $observationScopeId
+    if (-not [string]::IsNullOrEmpty($AiHandoffId)) {
+        CraAiHandoff\Publish-CraAiDiscovery -Handle $AiHandoffId -MessageType candidate -View $view
+    }
     Write-Information (Format-GuidedCandidateIndex -View $view) -InformationAction Continue
     $outcome = [pscustomobject]@{
         status = 'EVIDENCE_BLOCKED'
@@ -101,6 +109,9 @@ function Invoke-GuidedDiscovery {
     if ($review.status -ceq 'CANCELLED') { $outcome.status = 'CANCELLED'; return $outcome }
     if ($review.status -cne 'REVIEW_SELECTED') { Stop-GuidedInput -Code GUIDED_REVIEW_INVALID }
     $reviewRows = @($review.candidate_indices | ForEach-Object { $view.rows[$_] })
+    if (-not [string]::IsNullOrEmpty($AiHandoffId)) {
+        CraAiHandoff\Publish-CraAiDiscovery -Handle $AiHandoffId -MessageType review -View ([pscustomobject]@{rows=$reviewRows})
+    }
     if ($IncidentOnly) {
         $outcome.incident_review_readiness=@(foreach ($row in $reviewRows) {
             [pscustomobject]@{candidate_id=$row.candidate_id;status=$row.observation_readiness.status;reason=$row.observation_readiness.reason_code}

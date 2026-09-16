@@ -39,6 +39,9 @@ Describe 'Stage 0 CLI module wiring' {
         $passThruAddition = '    [switch] $PassThru,'
         ([regex]::Matches($legacyParameters, [regex]::Escape($passThruAddition))).Count | Should -Be 1
         $legacyParameters = $legacyParameters.Replace($passThruAddition + "`n", '')
+        $bridgeAddition = '    [Parameter(DontShow)] [AllowNull()] [string] $AiHandoffId = $null,'
+        ([regex]::Matches($legacyParameters, [regex]::Escape($bridgeAddition))).Count | Should -Be 1
+        $legacyParameters = $legacyParameters.Replace($bridgeAddition + "`n", '')
         $exportAddition = @'
     [switch] $ExportIssueEvidence,
     [AllowNull()] [AllowEmptyString()] [string] $IssueEvidenceOutputDirectory,

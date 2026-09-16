@@ -12,6 +12,7 @@ param(
     [switch] $IncludeSessionTemplate,
     [switch] $IncludeCandidateGroups,
     [switch] $PassThru,
+    [Parameter(DontShow)] [AllowNull()] [string] $AiHandoffId = $null,
     [switch] $ExportIssueEvidence,
     [AllowNull()] [AllowEmptyString()] [string] $IssueEvidenceOutputDirectory,
     # Internal presentation transport used by Guided; no input or evidence policy.
@@ -20,6 +21,10 @@ param(
 
 Set-StrictMode -Version Latest
 $projectRoot = $PSScriptRoot
+if ($PSBoundParameters.ContainsKey('AiHandoffId')) {
+    if ($Mode -ne 'Guided' -or -not $PassThru -or [string]::IsNullOrWhiteSpace($AiHandoffId)) {throw 'CRA_AI_REQUEST_UNAVAILABLE'}
+    CraAiHandoff\Assert-CraAiRequest -Handle $AiHandoffId -Claim
+}
 if ($PassThru) {
     . (Join-Path $projectRoot 'src\New-IncidentResult.ps1')
     # Reject unsupported combinations before collection, export setup or prompts.
@@ -178,7 +183,7 @@ switch ($Mode) {
         # Summary and recognized input errors stay on stream 6. Only explicit
         # DETAILS emits the retained canonical report on the success stream.
         try {
-            $guidedResult = Invoke-GuidedDiscovery -IncidentOnly:$PassThru
+            $guidedResult = Invoke-GuidedDiscovery -IncidentOnly:$PassThru -AiHandoffId $AiHandoffId
             if ($guidedResult.status -ceq 'INCIDENT_ACTION_SELECTED') {
                 $incidentResult=Invoke-IncidentObservation -GuidedOutcome $guidedResult -ExportIssueEvidence:$ExportIssueEvidence
                 Write-Information (Format-IncidentObservation $incidentResult) -InformationAction Continue
