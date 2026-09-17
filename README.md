@@ -39,7 +39,7 @@ cd codex-resource-audit
 ### Prepare Codex
 
 1. Open/work in the CRA checkout in local Codex, or explicitly provide its absolute repository root.
-2. Ask Codex to deploy the repository Skill:
+2. **Setup request** — ask Codex to deploy the repository Skill (this does not start an observation):
 
    > Install this checkout's skills/cra-incident/SKILL.md into your configured local user-Skill root. Use a normal copy, verify SHA-256 matches, and stop if an existing destination has different content. Do not modify global configuration.
 
@@ -49,7 +49,7 @@ The [repository Skill](skills/cra-incident/SKILL.md) is canonical; the installed
 
 ## Use with Codex
 
-Ask:
+**Observation request** — after Skill recognition succeeds, ask separately:
 
 > Use cra-incident to help me inspect Codex-related process activity while I reproduce my task.
 
@@ -110,7 +110,7 @@ These are Incident semantic boundaries. Candidate C labels belong only to one di
 
 ## After CRA — what next?
 
-Use the result to choose a **possible next read-only diagnostic direction**, not an automatic diagnosis:
+Use the result to choose a **possible next read-only diagnostic direction**, not an automatic diagnosis. Start with the [beginner decision table](docs/FIRST_RUN.md#after-cra--what-next) for symptom-to-next-step guidance:
 
 - **No meaningful transition recorded:** process lifecycle may not be the most useful first hypothesis, but short-lived activity could have been missed. Depending on the symptom, inspect CPU activity, I/O, application logs, network behavior or handles with separate tools.
 - **An identity first appears late:** consider a separate repeat or later observation before drawing persistence conclusions; do not extend or alter the current run's schedule.

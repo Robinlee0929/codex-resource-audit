@@ -6,6 +6,10 @@ This guide covers setup and recovery; it does not add runtime capabilities.
 
 ## Skill deployment and recognition
 
+**SETUP REQUEST:** ask Codex to install/deploy and recognize `cra-incident`, using
+the [README setup prompt](../README.md#prepare-codex). This prepares the Skill;
+the setup request does not start an observation.
+
 The canonical source is [skills/cra-incident/SKILL.md](../skills/cra-incident/SKILL.md)
 in your checkout. Its local Codex copy is deployment, not another source of truth.
 
@@ -32,6 +36,10 @@ not process trust.
 
 ## Prepare one observation
 
+**OBSERVATION REQUEST:** after Skill recognition succeeds, make a separate request:
+
+> Use cra-incident to help me inspect Codex-related process activity while I reproduce my task.
+
 Tell Codex what activity you can reproduce. It supplies a complete command with
 your validated checkout and agreed output directory; see the
 [bridge example](../README.md#use-with-codex). You manually launch it in your own
@@ -46,6 +54,19 @@ directory with Codex, not the process table or a private terminal transcript.
 You personally review candidates, select one target, choose Observe, enter O1
 while the activity runs, and enter ACTIVITY_END only after O1 returns and the
 activity finishes. Codex cannot drive these prompts or confirm for you.
+
+## First-run mini glossary
+
+| Term | What it means here |
+| --- | --- |
+| O0 | Baseline identity-continuity capture before you start or continue the intended activity. Only `MATCHED` allows later captures. |
+| O1 | Capture you request while the intended activity is running. |
+| O2 | Automatic capture after your `ACTIVITY_END` declaration. |
+| O3 | Automatic delayed follow-up capture, after the 30-second wait following O2. |
+| ACTIVITY_END | Your declaration that the intended activity has finished, entered after O1 returns; not proof of process exit or cleanup. |
+| request_id | Correlation identifier linking artifacts to one bridge request. |
+| candidate_set_id | Identifier for that request's candidate set. |
+| fresh attempt | A new request with fresh discovery, IDs and output directory, and new human choices; not continuation of a failed or cancelled request. |
 
 ## Safe artifact reading
 
@@ -76,5 +97,24 @@ fresh discovery and all human selections/timing confirmations again. Never reuse
 or overwrite an earlier request directory, even after interruption. Missing evidence
 does not authorize cleanup, process control, automatic retry or extra captures.
 
-For choosing the next investigation after a usable result, return to
-[After CRA — what next?](../README.md#after-cra--what-next).
+## After CRA — what next?
+
+Choose a possible **read-only** next step from the recorded result. CRA does not
+collect CPU, I/O, log, network or handle signals, or continuous memory trends;
+those directions require separate tools. A repeat or delayed follow-up means a
+separate fresh attempt, not extra captures or a timing change in the current run.
+
+| What CRA recorded | What it means | Possible next read-only direction |
+| --- | --- | --- |
+| No meaningful process transition | No qualifying process transition was captured in this bounded observation; short-lived activity may have been missed. | Depending on the symptom: slow/busy work → CPU or I/O; errors → logs; waiting on remote work → network; handle concern → handles; memory concern → memory trend. |
+| Identity first observed late | First observed late in this Incident history, not proven creation. | A fresh repeat observation or a separate delayed follow-up observation. |
+| Identity `PRESENT` at O3 | Observed at O3; `PRESENT` does not mean residue, leak or orphan, or continuous presence between captures. | If persistence matters, a follow-up observation and other telemetry. |
+| Many helpers already present at O0 | Already part of the baseline context. If this reproduction began after O0, this weakens “this activity created all these helpers”; it does not prove irrelevance. | Focus on changes during activity and other telemetry. |
+| Working set increased | A later point-in-time measurement was higher; working-set change is not task cost or proof of a memory leak. | Repeated or continuous memory measurements with separate tools. |
+| O0 continuity failure | The selected identity could not establish a valid observation baseline. | Stop this attempt. If trying again, use fresh discovery and a new attempt with all human choices. Never silently retarget. |
+
+Incident-derived ownership remains `UNKNOWN`; Incident lifecycle remains
+`NOT_APPLICABLE`. Parent-child does not establish ownership, `NO_LONGER_OBSERVED`
+does not prove exit, and `COMPLETED` does not mean the problem is solved.
+See the [README evidence limits](../README.md#what-the-evidence-means--and-does-not-prove)
+and [issue-report guidance](../README.md#after-cra--what-next).
