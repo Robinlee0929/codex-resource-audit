@@ -4,6 +4,28 @@ BeforeAll {
     $script:skillPath = Join-Path $script:skillRoot 'skills/cra-incident/SKILL.md'
     $script:skill = Get-Content -LiteralPath $script:skillPath -Raw
 
+    function Assert-SkillFrontmatter([string]$Text) {
+        # Validate this repository's plain-scalar form, not general YAML.
+        $match = [regex]::Match($Text, '\A---\r?\n(.*?)\r?\n---(?:\r?\n|\z)', 'Singleline')
+        $match.Success | Should -BeTrue
+        $front = $match.Groups[1].Value
+        # Multiline $ matches before LF, but does not consume a preceding CR.
+        $normalizedFront = $front -replace "`r`n", "`n" -replace "`r", "`n"
+        $normalizedFront | Should -Not -Match '\t|[<>]'
+        $names = [regex]::Matches($normalizedFront, '(?m)^name:\s*([^\r\n]+)$')
+        $descriptions = [regex]::Matches($normalizedFront, '(?m)^description:\s*([^\r\n]+)$')
+        $names.Count | Should -Be 1
+        $descriptions.Count | Should -Be 1
+        $name = $names[0].Groups[1].Value.Trim()
+        $name | Should -BeExactly 'cra-incident'
+        $name.Length | Should -BeLessOrEqual 64
+        $description = $descriptions[0].Groups[1].Value.Trim()
+        $description.Length | Should -BeGreaterThan 20
+        $description.Length | Should -BeLessOrEqual 1024
+        $description | Should -Match 'Incident'
+        $description | Should -Match 'artifact'
+    }
+
     # These checks guard documented safety requirements, not arbitrary English.
     # Normalize Markdown emphasis/wrapping; inspect table roles separately so a
     # forbidden conclusion cannot pass just by appearing somewhere in the file.
@@ -237,23 +259,34 @@ Describe 'T17.3C repository Skill format and canonical dependencies' {
         Test-Path -LiteralPath $script:skillPath -PathType Leaf | Should -BeTrue
     }
     It 'SK02 required plain-scalar frontmatter is bounded and describes the trigger' {
-        # Validate the frontmatter form this repository uses without installing YAML.
-        $match = [regex]::Match($script:skill, '\A---\r?\n(.*?)\r?\n---(?:\r?\n|\z)', 'Singleline')
-        $match.Success | Should -BeTrue
-        $front = $match.Groups[1].Value
-        $front | Should -Not -Match '\t|[<>]'
-        $names = [regex]::Matches($front, '(?m)^name:\s*([^\r\n]+)$')
-        $descriptions = [regex]::Matches($front, '(?m)^description:\s*([^\r\n]+)$')
-        $names.Count | Should -Be 1
-        $descriptions.Count | Should -Be 1
-        $name = $names[0].Groups[1].Value.Trim()
-        $name | Should -BeExactly 'cra-incident'
-        $name.Length | Should -BeLessOrEqual 64
-        $description = $descriptions[0].Groups[1].Value.Trim()
-        $description.Length | Should -BeGreaterThan 20
-        $description.Length | Should -BeLessOrEqual 1024
-        $description | Should -Match 'Incident'
-        $description | Should -Match 'artifact'
+        Assert-SkillFrontmatter $script:skill
+    }
+    It 'SK39 accepts valid <ending> frontmatter through the canonical validator' -ForEach @(
+        @{ending='LF';newline="`n"}, @{ending='CRLF';newline="`r`n"}
+    ) {
+        $text = @('---', 'name: cra-incident', 'description: Guide Incident observation and safe artifact interpretation.', '---') -join $newline
+        Assert-SkillFrontmatter $text
+    }
+    It 'SK40 rejects <case> with <ending> frontmatter' -ForEach @(
+        foreach ($ending in 'LF','CRLF') {
+            foreach ($case in 'duplicate name','missing name','duplicate description','missing description','missing opening delimiter','missing closing delimiter','tab in scalar') {
+                @{case=$case;ending=$ending;newline=$(if ($ending -eq 'LF') {"`n"} else {"`r`n"})}
+            }
+        }
+    ) {
+        $name = 'name: cra-incident'
+        $description = 'description: Guide Incident observation and safe artifact interpretation.'
+        $lines = @('---', $name, $description, '---')
+        switch ($case) {
+            'duplicate name' {$lines = @('---', $name, $name, $description, '---')}
+            'missing name' {$lines = @('---', $description, '---')}
+            'duplicate description' {$lines = @('---', $name, $description, $description, '---')}
+            'missing description' {$lines = @('---', $name, '---')}
+            'missing opening delimiter' {$lines = @($name, $description, '---')}
+            'missing closing delimiter' {$lines = @('---', $name, $description)}
+            'tab in scalar' {$lines = @('---', $name, ($description + "`tinvalid"), '---')}
+        }
+        { Assert-SkillFrontmatter ($lines -join $newline) } | Should -Throw
     }
     It 'SK03 identifies canonical <relative> relative to the validated repository' -ForEach @(
         @{relative='docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md'},
