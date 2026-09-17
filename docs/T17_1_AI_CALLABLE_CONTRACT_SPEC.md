@@ -1,6 +1,15 @@
 # T17.1 — AI-callable Contract specification
 
-Status: **CONTRACT DEFINED — T17.2 implementation not provided.**
+Status: **CONTRACT DEFINED.**
+
+**Historical phase boundary:** at the T17.1 checkpoint, T17.2 was not yet
+implemented. Throughout this document, "CURRENTLY IMPLEMENTED", "future T17.2"
+and task/implementation-status statements refer to that checkpoint, not today's
+repository capabilities. The normative semantic requirements remain binding.
+T17.2 and T17.3 are now implemented on public main; see the
+[current status and first-run instructions](../README.md#quick-start),
+[result API](T17_2_POWERSHELL_RESULT_API_SPEC.md) and
+[local integration](T17_3_LOCAL_AI_INTEGRATION_SPEC.md).
 
 Inspected production baseline: `71f51fd7424d177741a00128802342f3cb91b686`
 on clean `main`, before this documentation change.
@@ -610,8 +619,9 @@ These are T17.2 handoff requirements, not newly executed tests:
 
 ## L. Verification boundary for this specification
 
-This task changes only this Markdown contract. Its checks are whitespace/diff
-review, local source-link and document-structure validation, and verification that
+At the historical T17.1 checkpoint, the task changed only this Markdown contract.
+Its checks were whitespace/diff review, local source-link and document-structure
+validation, and verification that
 no runtime, test, collector, schema or interface implementation changed. The
 repository has an [offline Pester runner](../scripts/Test-Stage0.ps1); that is a
 runtime regression suite, not a dedicated Markdown/static-document validator.
@@ -619,5 +629,6 @@ No dedicated tracked Markdown validation command was found at the baseline.
 
 Do not interpret document checks as runtime tests or new live validation. The
 Owner-supplied T17 completion remains separately attributed in section A. T17.1
-completion means this contract is ready to guide separately authorized T17.2 work;
-it does not mean a callable interface is available or that T17.2 was executed.
+completion meant this contract was ready to guide separately authorized T17.2 work;
+that checkpoint alone did not establish a callable interface or execute T17.2.
+For subsequent implementation and validation status, use the README links above.

@@ -1,8 +1,11 @@
 # T17.3 — Local AI Bridge and Safe Artifacts v1
 
-Status: complete in the current checkout, including the local Codex Skill and
+Status: complete on public main, including the local Codex Skill and
 Owner-accepted Windows operator integration acceptance. An automatic launcher is
 not provided. This status does not assert inclusion in a published release tag.
+See [README](../README.md#quick-start) for acquisition, the validated baseline
+and current distribution status. Earlier phase-status wording in T17.1/T17.2
+describes those historical checkpoints, not the absence of this integration.
 
 Semantic authority remains the [T17.1 contract](T17_1_AI_CALLABLE_CONTRACT_SPEC.md)
 and the [T17.2 in-process result API](T17_2_POWERSHELL_RESULT_API_SPEC.md).

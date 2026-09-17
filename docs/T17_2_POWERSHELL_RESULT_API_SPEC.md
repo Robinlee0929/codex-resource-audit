@@ -1,6 +1,13 @@
 # T17.2 — PowerShell in-process Incident result API
 
-Status: implemented for Owner review; no T17.3 integration.
+Status: **IMPLEMENTED on public main.**
+
+**Historical phase boundary:** at the T17.2 checkpoint, this API was implemented
+for Owner review and T17.3 integration was not yet included. The separate
+[T17.3 local integration](T17_3_LOCAL_AI_INTEGRATION_SPEC.md) is now implemented.
+This document still defines only the in-process result API; its shape and trust
+boundaries are unchanged. See [README](../README.md#quick-start) for current
+public-source, validation and first-run guidance.
 
 Semantic authority: [T17.1 AI-callable contract](T17_1_AI_CALLABLE_CONTRACT_SPEC.md).
 This document defines its v1 result representation, not stronger observation evidence.
@@ -21,8 +28,9 @@ $result.observed_context
 The operator still reviews current candidates, explicitly selects one reviewed
 candidate, chooses O/OBSERVE, requests O1 during the activity, and declares
 ACTIVITY_END. The existing fresh O0 gate, automatic O2, 30-second wait and O3
-are unchanged. PassThru never supplies input or a target. There is no public
-reader, snapshot input, C/P lookup, resume, refresh or retained-result service.
+are unchanged. PassThru never supplies input or a target. This in-process API
+exposes no public reader, snapshot input, C/P lookup, resume, refresh or
+retained-result service.
 
 Without PassThru (including `-PassThru:$false`), existing Guided behavior remains.
 With PassThru, F/Finder and S/Session are rejected before dispatch; an additional
@@ -189,7 +197,9 @@ limits, and all three hard time bounds as NOT_CURRENTLY_ESTABLISHED.
 The T17.1 forbidden-inference matrix applies: no creation, exit, ownership,
 causation, residue, orphan, leak, cleanup or task-cost claims are added.
 
-T17.3 must separately decide transport and operator interaction provenance. This
+At the T17.2 checkpoint, transport and operator interaction provenance were
+deferred to separately authorized T17.3 work. The implemented bridge is documented
+in the linked T17.3 contract; it does not expand this API's authority. This
 API grants no autonomous selection, AI-driven input, remote approval token, agent,
 MCP, REST/HTTP, unattended workflow, Session/Finder interface, or export authority.
 
