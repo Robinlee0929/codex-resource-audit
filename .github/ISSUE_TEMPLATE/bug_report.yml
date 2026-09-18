@@ -1,0 +1,107 @@
+name: Bug report
+description: Report a CRA problem with minimal, sanitized details.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Public issue: minimum disclosure.** Do not post credentials, tokens, cookies,
+        private paths, command lines, usernames, hostnames, real PIDs/creation times,
+        full process tables, raw process dumps, terminal transcripts, private source
+        code, sensitive screenshots, sensitive diagnostic artifacts or entire artifact directories.
+        Do not attach logs, screenshots or artifacts by default.
+        For extra diagnostics, first agree on the minimum specific field, why it is
+        needed and the appropriate channel before the data is requested.
+
+        Suspected security vulnerability? Do not use public Issues or PRs.
+        Use [GitHub Private Vulnerability Reporting](https://github.com/Robinlee0929/codex-resource-audit/security/advisories):
+        choose the private reporting action in that area (currently "Report a vulnerability").
+        Follow [SECURITY.md](https://github.com/Robinlee0929/codex-resource-audit/blob/main/SECURITY.md)
+        for reporting steps and minimum disclosure.
+        See [SUPPORT.md](https://github.com/Robinlee0929/codex-resource-audit/blob/main/SUPPORT.md)
+        for scope and privacy rules. Support is best-effort, without an SLA or
+        guaranteed response/fix time.
+  - type: input
+    id: summary
+    attributes:
+      label: "Short problem summary"
+      description: "Describe the CRA problem without private details."
+    validations:
+      required: true
+  - type: input
+    id: cra-version
+    attributes:
+      label: "CRA version, tag or commit"
+      description: "Enter the actual tested version or unknown; main alone does not identify a fixed version."
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: "Windows version/build"
+      description: "Enter it if known; otherwise enter unknown. Do not paste system information output."
+    validations:
+      required: true
+  - type: input
+    id: powershell-version
+    attributes:
+      label: "PowerShell version"
+      description: "Enter it if known; otherwise enter unknown."
+    validations:
+      required: true
+  - type: input
+    id: codex-version
+    attributes:
+      label: "Codex client/version"
+      description: "Enter it if known; otherwise enter unknown or not applicable."
+    validations:
+      required: true
+  - type: dropdown
+    id: workflow
+    attributes:
+      label: "CRA workflow used"
+      options:
+        - "Setup / Skill recognition"
+        - "AI-assisted Incident Observation (Skill + bridge)"
+        - "Manual Guided - Finder"
+        - "Manual Guided - Session"
+        - "Manual Guided - Observation"
+        - "Guided -PassThru (Incident only)"
+        - "Other documented workflow"
+        - "Unknown"
+    validations:
+      required: true
+  - type: input
+    id: stage
+    attributes:
+      label: "Stopped or failed stage"
+      description: "For example: setup, candidate review, target selection, Observe, O0, O1, ACTIVITY_END, O2/O3 or result reading. Use unknown or not applicable if needed."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected behavior"
+      description: "Describe the expected documented behavior."
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "Actual behavior"
+      description: "Describe what happened in your own words, without logs or screenshots."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "Sanitized reproduction steps"
+      description: "Use synthetic examples and generic steps, not private commands, paths or source. If not reproducible, say so."
+    validations:
+      required: true
+  - type: input
+    id: reason-code
+    attributes:
+      label: "Fixed CRA error or reason code"
+      description: "Optional: the fixed code only, not the full error message or terminal output."
+    validations:
+      required: false

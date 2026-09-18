@@ -1,0 +1,63 @@
+name: Quick feedback, question or idea
+description: Share first-run feedback, a CRA question or a small suggestion.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Public issue: minimum disclosure.** Do not post credentials, tokens, cookies,
+        private paths, command lines, usernames, hostnames, real PIDs/creation times,
+        full process tables, raw process dumps, terminal transcripts, private source
+        code, sensitive screenshots, sensitive diagnostic artifacts or entire artifact directories.
+        Do not attach logs, screenshots or artifacts by default.
+        For extra diagnostics, first agree on the minimum specific field, why it is
+        needed and the appropriate channel before the data is requested.
+
+        Suspected security vulnerability? Do not use public Issues or PRs.
+        Use [GitHub Private Vulnerability Reporting](https://github.com/Robinlee0929/codex-resource-audit/security/advisories):
+        choose the private reporting action in that area (currently "Report a vulnerability").
+        Follow [SECURITY.md](https://github.com/Robinlee0929/codex-resource-audit/blob/main/SECURITY.md)
+        for reporting steps and minimum disclosure.
+        See [SUPPORT.md](https://github.com/Robinlee0929/codex-resource-audit/blob/main/SUPPORT.md)
+        for scope and privacy rules. Support is best-effort, without an SLA or
+        guaranteed response/fix time.
+
+        A suggestion is not a roadmap commitment or a promise of implementation.
+  - type: dropdown
+    id: feedback-type
+    attributes:
+      label: "Feedback type"
+      options:
+        - "Question"
+        - "Idea"
+        - "First-run feedback"
+        - "Small feature suggestion"
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: "What did you try?"
+      description: "A short description of the CRA workflow or intended use is enough."
+    validations:
+      required: true
+  - type: textarea
+    id: confusion
+    attributes:
+      label: "Where did you become confused or stuck?"
+      description: "Describe the point in your own words. Enter not applicable if you were not stuck."
+    validations:
+      required: true
+  - type: textarea
+    id: improvement
+    attributes:
+      label: "Expected improvement"
+      description: "What would help? Enter no suggestion if you only have a question or observation."
+    validations:
+      required: true
+  - type: input
+    id: cra-version
+    attributes:
+      label: "CRA version or commit"
+      description: "Optional; enter unknown if you do not know."
+    validations:
+      required: false

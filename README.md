@@ -1,10 +1,25 @@
 # Codex Resource Audit
 
+**Product maturity: EXPERIMENTAL.** Public and usable within the documented scope;
+behavior and contracts may evolve. CRA is not production-ready and carries no
+stable support guarantee. External testing is welcome within that scope; organized
+Community Beta promotion remains subject to the [beta gate](docs/RELEASE_POLICY.md#community-beta-gate-and-owner-actions).
+CRA is an independent project, not officially supported or endorsed by OpenAI.
+
+**Maintenance: ACTIVE - BEST EFFORT.** Issues and reviews are handled as maintainer
+time permits, with no SLA or guaranteed response/fix time. Maturity and maintenance
+status are separate from test/CI results. Public availability is not stable status,
+a CI pass is not production readiness, and T17 availability is not a support guarantee.
+
+[Support](SUPPORT.md) | [Security reporting](SECURITY.md) |
+[Contributing](CONTRIBUTING.md) | [Compatibility](docs/COMPATIBILITY.md) |
+[Version policy](docs/RELEASE_POLICY.md)
+
 Codex Resource Audit (CRA) is a **Windows-first, read-only evidence tool for observing Codex-related process activity, with safe local AI-assisted interpretation**.
 
 When Codex feels stuck or process behavior looks unusual, CRA captures bounded process evidence around an activity. It gives you evidence before conclusions: what was observed, what remains unknown, and what to investigate next. You retain control of target selection and every timing confirmation.
 
-**Available now:** T17 is implemented on public `main`. Use the repository source below for the AI-assisted workflow. No new T17 release/tag has been authorized; historical releases have their own scope.
+**Available now:** T17 is implemented on public `main`. Use the repository source below for the AI-assisted workflow. The first community beta, `v0.2.0-beta.1`, is planned but not yet released; historical releases have their own scope.
 
 ## When to use CRA
 
@@ -32,7 +47,7 @@ git clone --branch main https://github.com/Robinlee0929/codex-resource-audit.git
 cd codex-resource-audit
 ```
 
-**Source policy:** use public repository `main` for current T17 functionality, including the Skill and bridge from that same checkout. Do not assume an older release archive contains them.
+**Source policy:** public `main` is moving development/latest source for current T17 functionality, not a fixed Community Beta version. Use the Skill and bridge from that same checkout and report the actual commit when possible. Community beta will use a tagged GitHub prerelease; the planned first tag is `v0.2.0-beta.1`, with its exact target commit to be verified before release. Do not assume an older release archive contains current T17 functionality. See the [version policy](docs/RELEASE_POLICY.md).
 
 **Validation provenance at this documentation update:** `f3c7a25707f66849d0b681d4763ad6f48db92abf` passed local and [Hosted Windows CI](https://github.com/Robinlee0929/codex-resource-audit/actions/runs/35171425008), **1384/1384** tests. This records the verified baseline; it is not a release tag or a guarantee about future commits on `main`.
 
@@ -121,7 +136,7 @@ Use the result to choose a **possible next read-only diagnostic direction**, not
 
 CRA does not itself provide CPU/I/O/handle/network monitoring or continuous memory profiling. These are optional external investigation directions.
 
-For an issue report, pair a reproducible activity with the bounded observation timeline, safe evidence and explicit unknowns. This can make a maintainer or OpenAI investigation request more useful. Review/redact it before sharing; CRA does not confirm a Codex bug or imply OpenAI endorsement.
+For a CRA issue, share only the version/commit, environment versions (or `unknown`), workflow/stage, fixed reason/error code if available, sanitized reproduction steps and expected versus actual behavior. Follow [Support and minimum disclosure](SUPPORT.md#minimum-disclosure-reporting); logs, screenshots and artifacts are not required. Suspected vulnerabilities use GitHub Private Vulnerability Reporting via [Security reporting](SECURITY.md), not public Issues or PRs. CRA does not confirm a Codex bug or imply OpenAI endorsement.
 
 ## First-run troubleshooting
 
@@ -172,7 +187,7 @@ Read `result_type` first: `GUIDED_INCIDENT_REQUEST` means no Incident run was pr
 
 ## Privacy and limitations
 
-Windows collection can retain private metadata in memory, and local human recognition displays can contain identity details. AI-assisted use exposes only safe projections. Plain Guided/PassThru does not automatically persist artifacts; the bridge writes to the explicit request directory. CRA does not automatically upload them. Shell redirection and external logging are separate. Never publish raw command lines, credentials, private paths, account data or unrelated process details.
+Windows collection can retain private metadata in memory, and local human recognition displays can contain identity details. AI-assisted use exposes only safe projections. Plain Guided/PassThru does not automatically persist artifacts; the bridge writes to the explicit request directory. CRA does not automatically upload them. Shell redirection and external logging are separate. Never publish command lines, credentials/tokens/cookies, usernames/hostnames, private paths, real PIDs/creation times, full process tables, raw process dumps, terminal transcripts, private source code, sensitive screenshots, sensitive diagnostic artifacts or entire artifact directories. Do not attach logs, screenshots or artifacts by default. Additional data requires prior explicit agreement on the minimum specific field, purpose and appropriate channel; see [minimum-disclosure reporting](SUPPORT.md#minimum-disclosure-reporting). CRA not automatically uploading artifacts does not establish offline Codex processing or that all data stays on the machine.
 
 Live collection is Windows-only. Missing or denied metadata stays unavailable; CRA never elevates privileges or changes host configuration. There is no autonomous AI selection/confirmation, automatic terminal launch, native stdout JSON, AI-callable Finder/Session, cleanup/kill/remediation, MCP server, public/remote endpoint or ChatGPT cloud direct control of a local PC. CRA is not a definitive ownership, residue or leak detector, full-host accounting tool or continuous profiler.
 
