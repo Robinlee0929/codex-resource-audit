@@ -8,15 +8,17 @@ availability, test results, maturity and support commitments are separate.
 | Channel | Policy |
 | --- | --- |
 | `main` | Moving development/latest public source. Reports should include the actual commit when possible, or `unknown`. It is not a fixed Community Beta version. |
-| Community beta | Owner-selected strategy: `TAGGED_PRERELEASE`. A tagged GitHub prerelease is the preferred distribution. Planned first beta: `v0.2.0-beta.1`. |
+| Community beta | Owner-selected strategy: `TAGGED_PRERELEASE`. The current published Community Beta prerelease is `v0.2.0-beta.1`, whose tag targets `dd865498af7ae0c6aef79338df1c642b63ec5a5b`. |
 | Stable release | A separate future Owner decision requiring explicit scope, validation, compatibility limitations and release notes. No stable or production-ready status is established here. |
 
-The beta strategy and planned tag name are decided; the eventual target commit
-still needs verification. `v0.2.0-beta.1` is planned, not an existing release.
-This maintenance finalization does not create a tag or release. Do not use the
-OSR-02 preparation baseline as the beta commit by default: the maintenance
-checkpoint and its verification must come first. Use the selected beta's Skill,
-bridge and runtime together and record the immutable target commit.
+[`v0.2.0-beta.1`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.1)
+is a fixed, published prerelease baseline. Public `main` continues to move and may
+contain later specifications, plans or implementations that are not part of that
+beta. Use the selected beta's Skill, bridge and runtime together and record its
+exact target commit. Prerelease status does not establish production readiness,
+stable support or universal compatibility. A future prerelease may supersede the
+current beta only after its own Owner selection, exact-commit review, validation
+and truthful release notes.
 
 For a beta or stable release, record the exact commit and its validation results,
 including exact-commit Hosted CI and any applicable operator validation. State
@@ -39,50 +41,45 @@ or retirement decisions should be stated explicitly with the release notes and
 
 ## Beta capability boundary
 
-The planned `v0.2.0-beta.1` may describe only runtime capabilities actually
-implemented at its eventual target commit. The current Community Beta user flow
-remains the existing T17-capable CRA workflow, with operator-run Incident
-Observation for the AI-assisted path and every human gate retained.
+The published `v0.2.0-beta.1` may describe only runtime capabilities actually
+implemented at its target commit, `dd865498af7ae0c6aef79338df1c642b63ec5a5b`.
+Its Community Beta user flow is the existing T17-capable CRA workflow, with
+operator-run Incident Observation for the AI-assisted path and every human gate
+retained.
 
-T18 specification files are not runtime capabilities. At the OSR-02 baseline,
-T18 automatic triage runtime, the T18 CPU collector, a memory trend collector and
-automatic diagnostic execution are not available. Do not advertise them as beta
-features merely because specifications exist. Any later implementation needs its
-own review and validation at the selected commit before capabilities are described.
+T18 specification and planning files are not runtime capabilities. The current
+beta does not provide T18 automatic triage runtime, the T18 CPU collector, a
+memory trend collector or automatic diagnostic execution. Later T18 documents on
+`main` do not add those capabilities to the fixed beta. Any later implementation
+needs its own review and validation at the selected commit before capabilities
+are described.
 
 ## Community Beta gate and Owner actions
 
-**CB-W1: PAUSED_PENDING_OSR02_CHECKPOINT.** Local finalization does not publish the
-package or authorize promotion. Community Beta must still wait for:
+Each Community Beta release requires an Owner-selected exact commit, successful
+applicable validation for that commit, truthful capability and compatibility
+notes, and verification of its tag and published prerelease. Any subsequent
+candidate commit requires its own applicable review and validation. A confirmed
+Gate 2 false positive remains NO-GO.
 
-1. OSR-02 maintenance checkpoint/push, including the maturity statement and all
-   eight reviewed policy/form files. Exclude unrelated T18 implementation planning.
-2. Successful Hosted CI for the exact candidate commit. Any subsequent candidate
-   commit needs its own applicable validation.
-3. Public GitHub recognition of [SECURITY.md](../SECURITY.md).
-4. Public verification of both Issue Forms, including the ordinary question path,
-   privacy warnings and private-security routing after they reach the default branch.
-5. Reconfirmation that GitHub Private Vulnerability Reporting remains enabled
-   and its reporting entry point remains available.
-6. Creation and verification of the `v0.2.0-beta.1` GitHub prerelease, with its tag
-   pointing to the reviewed, validated immutable commit and truthful capability notes.
-7. CB-W1 materials updated to that immutable beta baseline and the documented
-   [compatibility limitations](COMPATIBILITY.md).
-
-A separate Owner publication decision is still required after those gates.
-A confirmed Gate 2 false positive remains NO-GO even if maintenance prerequisites
-are met. Formal H01/H02 completion is not a prerequisite for continued open-source
-development or this Community Beta gate. Beta feedback can inform usability
-validation; stable-release claims should have corresponding human validation.
-No arbitrary tester count is imposed.
+Release readiness and promotion timing are separate Owner-controlled decisions.
+A prerelease may remain published while the Owner delays or limits an organized
+testing or promotion wave. CB-W1 materials, tester recruitment and promotion are
+Launch activities, not requirements that determine whether the current GitHub
+prerelease exists or is valid. No arbitrary tester count is imposed. Formal
+H01/H02 completion is not a prerequisite for continued open-source development
+or Community Beta availability. Beta feedback can inform usability validation;
+stable-release claims should have corresponding human validation.
 
 On 2026-09-18, final review verified private vulnerability reporting enabled and
 the public reporting entry point present. Security-alert subscription is
 Owner-reported enabled, not independently verified notification delivery.
 
 OSR-02 preparation baseline: `91243a5a0844fa9737d7bc6d63bcb3165c8bb540`
-(2026-09-18, after the T18.2A specification checkpoint). This identifies the
-documentation starting point, not a new runtime/CI result or a beta version.
+(2026-09-18, after the T18.2A specification checkpoint). This historical record
+identifies the documentation starting point. It is not a runtime/CI result or the
+Community Beta target; `v0.2.0-beta.1` targets
+`dd865498af7ae0c6aef79338df1c642b63ec5a5b`.
 
 ## Deferred optional work
 

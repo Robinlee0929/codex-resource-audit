@@ -19,7 +19,12 @@ Codex Resource Audit (CRA) is a **Windows-first, read-only evidence tool for obs
 
 When Codex feels stuck or process behavior looks unusual, CRA captures bounded process evidence around an activity. It gives you evidence before conclusions: what was observed, what remains unknown, and what to investigate next. You retain control of target selection and every timing confirmation.
 
-**Available now:** T17 is implemented on public `main`. Use the repository source below for the AI-assisted workflow. The first community beta, `v0.2.0-beta.1`, is planned but not yet released; historical releases have their own scope.
+**Available now:** T17 is implemented on public `main` and in the published
+Community Beta prerelease [`v0.2.0-beta.1`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.1),
+whose tag targets commit `dd865498af7ae0c6aef79338df1c642b63ec5a5b`.
+The prerelease is a fixed beta baseline; `main` is moving development/latest
+source and may contain later specifications or plans. A prerelease is not
+production readiness, and historical releases retain their documented scope.
 
 ## When to use CRA
 
@@ -40,14 +45,21 @@ The AI-assisted path supports **Incident Observation only**. Finder and Session 
 
 ### Get the public source
 
-In your own terminal, choose a parent directory and run:
+For the fixed Community Beta baseline, choose a parent directory in your own
+terminal and run:
 
 ```powershell
-git clone --branch main https://github.com/Robinlee0929/codex-resource-audit.git
+git clone --branch v0.2.0-beta.1 https://github.com/Robinlee0929/codex-resource-audit.git
 cd codex-resource-audit
 ```
 
-**Source policy:** public `main` is moving development/latest source for current T17 functionality, not a fixed Community Beta version. Use the Skill and bridge from that same checkout and report the actual commit when possible. Community beta will use a tagged GitHub prerelease; the planned first tag is `v0.2.0-beta.1`, with its exact target commit to be verified before release. Do not assume an older release archive contains current T17 functionality. See the [version policy](docs/RELEASE_POLICY.md).
+For moving development/latest source, use `--branch main` instead and report the
+actual commit when possible. Use the Skill, bridge and runtime from the same
+checkout. The published Community Beta `v0.2.0-beta.1` is fixed at
+`dd865498af7ae0c6aef79338df1c642b63ec5a5b`; later work on `main` is not part of
+that beta unless a future prerelease explicitly includes it. Do not assume an
+older release archive contains current T17 functionality. See the
+[version policy](docs/RELEASE_POLICY.md).
 
 **Validation provenance at this documentation update:** `f3c7a25707f66849d0b681d4763ad6f48db92abf` passed local and [Hosted Windows CI](https://github.com/Robinlee0929/codex-resource-audit/actions/runs/35171425008), **1384/1384** tests. This records the verified baseline; it is not a release tag or a guarantee about future commits on `main`.
 
