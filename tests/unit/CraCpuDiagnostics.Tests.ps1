@@ -4,16 +4,19 @@ $script:CpuExecutableCoverage = [ordered]@{
         P02 = @('T182A-P02-zero-delta', 'T182A-P02-summary-zero')
         P03 = @('T182A-P03-two-core-equivalents')
         P04 = @('T182A-P04-partial-gap-summary', 'T182A-P04-attempted-reading-ledger')
+        P07 = @('T182A-P07-gate-a-compound', 'T182A-P07-cancel-during-gate-a', 'T182A-P07-cancel-during-gate-a-bound', 'T182A-P07-cancel-after-gate-a')
         P09 = @('T182A-P09-weighted-mean')
         P10 = @('T182A-P10-one-native-tick', 'T182A-P10-tiny-positive-summary')
         P11 = @('T182A-P11-above-2pow53')
         P16 = @('T182A-P16-actual-800ms-denominator', 'T182A-P16-actual-900ms-denominator')
         P17 = @('T182A-P17-valid-1400ms')
         P18 = @('T182A-P18-one-and-half-cores')
+        P20 = @('T182A-P20-gate-b-at-60-seconds')
         P21 = @('T182A-P21-750ms-inclusive', 'T182A-P21-1250ms-inclusive', 'T182A-P21-749ms-outside', 'T182A-P21-1251ms-outside')
         P22 = @('T182A-P22-extreme-timing-summary')
     }
     Negative = [ordered]@{
+        N01 = @('T182A-N01-recommendation', 'T182A-N01-observe-consent', 'T182A-N01-target-selection', 'T182A-N01-incident-run', 'T182A-N01-cpu-result', 'T182A-N01-authorization-boolean', 'T182A-N01-old-run-id', 'T182A-N01-ai-message', 'T182A-N01-old-pid-name', 'T182A-N01-evidence-label')
         N11 = @('T182A-N11-missing-earlier', 'T182A-N11-missing-later')
         N12 = @('T182A-N12-nonadjacent-interval', 'T182A-N12-duplicate-interval-index', 'T182A-N12-reading-ledger-shape', 'T182A-N12-right-not-attempted')
         N13 = @('T182A-N13-kernel-regressed', 'T182A-N13-user-regressed', 'T182A-N13-negative-counter', 'T182A-N13-string-counter', 'T182A-N13-fractional-counter', 'T182A-N13-boolean-counter', 'T182A-N13-nan-counter', 'T182A-N13-positive-infinity-counter', 'T182A-N13-negative-infinity-counter', 'T182A-N13-floating-counter', 'T182A-N13-above-uint64')
@@ -21,6 +24,10 @@ $script:CpuExecutableCoverage = [ordered]@{
         N16 = @('T182A-N16-zero-valid-intervals')
         N17 = @('T182A-N17-inconsistent-rate')
         N23 = @('T182A-N23-too-many-intervals', 'T182A-N23-projected-delta-overflow', 'T182A-N23-valid-elapsed-overflow', 'T182A-N23-rational-component-overflow', 'T182A-N23-rational-component-boundary')
+        N26 = @('T182A-N26-replayed-authorization')
+        N28 = @('T182A-N28-plan-change', 'T182A-N28-review-expiry', 'T182A-N28-changed-gate-b-plan-token', 'T182A-N28-changed-gate-b-duration', 'T182A-N28-changed-gate-b-retention', 'T182A-N28-changed-gate-b-metric')
+        N33 = @('T182A-N33-gate-a-without-gate-b')
+        N34 = @('T182A-N34-gate-b-after-60-seconds', 'T182A-N34-invalid-freshness-missing', 'T182A-N34-invalid-freshness-negative', 'T182A-N34-invalid-freshness-regressed', 'T182A-N34-invalid-freshness-missing-frequency')
         N36 = @('T182A-N36-valid-deviation', 'T182A-N36-extreme-200ms', 'T182A-N36-250ms-inclusive', 'T182A-N36-249ms-outside', 'T182A-N36-2000ms-inclusive', 'T182A-N36-2001ms-outside', 'T182A-N36-exact-tick-250ms-inclusive', 'T182A-N36-exact-tick-one-tick-below-250ms', 'T182A-N36-exact-tick-2000ms-inclusive', 'T182A-N36-exact-tick-one-tick-above-2000ms')
         N37 = @('T182A-N37-exact-rational', 'T182A-N37-format-ordinary', 'T182A-N37-format-zero', 'T182A-N37-format-tie-even-down', 'T182A-N37-format-tie-even-up', 'T182A-N37-format-above-100', 'T182A-N37-noncanonical-rational')
     }
@@ -28,6 +35,7 @@ $script:CpuExecutableCoverage = [ordered]@{
 
 BeforeAll {
     $script:cpuRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+    . (Join-Path $script:cpuRoot 'tests/fixtures/CpuDiagnostics.Source.ps1')
     Import-Module (Join-Path $script:cpuRoot 'src/CraCpuDiagnostics.psm1') -Force
 
     function New-CpuTestReading {
@@ -651,5 +659,704 @@ Describe 'T18.2A I2b pure CPU summary and presentation primitives' {
         $result.summary.attempted_reading_count | Should -Be 2
         $result.summary.uncovered_interval_count | Should -Be 2
         $result.summary.finding_code | Should -BeExactly 'CPU_TIME_ADVANCED'
+    }
+}
+
+Describe 'T18.2A I3 pure authorization, schedule, and terminal reducer' {
+    BeforeAll {
+        function New-CpuI3TestState {
+            param([string] $PlanToken = 'PLAN-A', [long] $DurationSeconds = 5L)
+            (New-CraCpuState -PlanToken $PlanToken -DurationSeconds $DurationSeconds).state
+        }
+
+        function Invoke-CpuI3Transition {
+            param([object] $State, [object] $Event)
+            Update-CraCpuState -State $State -Event $Event
+        }
+
+        function Get-CpuI3ReviewedState {
+            param(
+                [long] $GateATick = 0L,
+                [long] $FrequencyHz = 10000000L,
+                [string] $PlanToken = 'PLAN-A'
+            )
+
+            $state = New-CpuI3TestState $PlanToken
+            $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent BIND_PERMISSION @{
+                plan_token = $PlanToken
+                permission_source = 'EXPLICIT_HUMAN'
+                selection_source = 'FRESH_HUMAN_SELECTION'
+            })).state
+            $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent BINDING_ACQUIRED)).state
+            $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent BINDING_LIVENESS_CONFIRMED @{
+                liveness = 'LIVE'
+            })).state
+            (Invoke-CpuI3Transition $state (New-CpuTestStateEvent TARGET_REVIEW_CONFIRMED @{
+                plan_token = $PlanToken
+                confirmation_source = 'EXPLICIT_HUMAN'
+                success_tick = $GateATick
+                clock_frequency_hz = $FrequencyHz
+            })).state
+        }
+
+        function Get-CpuI3StartedState {
+            param(
+                [long] $GateATick = 0L,
+                [long] $GateBTick = 10000000L,
+                [long] $FrequencyHz = 10000000L,
+                [string] $PlanToken = 'PLAN-A'
+            )
+
+            $state = Get-CpuI3ReviewedState $GateATick $FrequencyHz $PlanToken
+            (Invoke-CpuI3Transition $state (New-CpuTestStateEvent GATE_B_CONFIRMED @{
+                plan_token = $PlanToken
+                confirmation_source = 'EXPLICIT_HUMAN'
+                confirmation_tick = $GateBTick
+                clock_frequency_hz = $FrequencyHz
+                metric = 'CPU_TIME'
+                duration_seconds = 5L
+                planned_interval_ms = 1000L
+                interval_tolerance_ms = 250L
+                final_endpoint_tail_ms = 250L
+                retention = 'IN_MEMORY_ONLY'
+                read_only = $true
+            })).state
+        }
+
+        function Get-CpuI3RunningState {
+            param(
+                [long] $OriginTick = 20000000L,
+                [long] $FrequencyHz = 10000000L
+            )
+
+            $state = Get-CpuI3StartedState 0L 10000000L $FrequencyHz
+            (Invoke-CpuI3Transition $state (New-CpuTestStateEvent BEGIN_RUN @{
+                plan_token = 'PLAN-A'
+                origin_tick = $OriginTick
+                clock_frequency_hz = $FrequencyHz
+            })).state
+        }
+    }
+
+    It 'I3-contract exports the five existing primitives plus the two pure state functions' {
+        $exports = @((Get-Module CraCpuDiagnostics).ExportedFunctions.Keys | Sort-Object)
+        $exports | Should -Be @(
+            'Format-CraCpuRate'
+            'Get-CraCpuInterval'
+            'Get-CraCpuSummary'
+            'Get-CraCpuTimingQuality'
+            'New-CraCpuState'
+            'Test-CraCpuReading'
+            'Update-CraCpuState'
+        )
+    }
+
+    It 'T182A-P14-state-determinism returns distinct equivalent states without mutating the input' {
+        $original = New-CpuI3TestState
+        $snapshot = Get-CpuTestRecordSignature $original
+        $event = New-CpuTestStateEvent BIND_PERMISSION @{
+            plan_token = 'PLAN-A'
+            permission_source = 'EXPLICIT_HUMAN'
+            selection_source = 'FRESH_HUMAN_SELECTION'
+        }
+
+        $first = Invoke-CpuI3Transition $original $event
+        $second = Invoke-CpuI3Transition $original $event
+
+        (Get-CpuTestRecordSignature $original) | Should -BeExactly $snapshot
+        [object]::ReferenceEquals($original, $first.state) | Should -BeFalse
+        [object]::ReferenceEquals($first.state, $second.state) | Should -BeFalse
+        (Get-CpuTestRecordSignature $first.state) | Should -BeExactly (Get-CpuTestRecordSignature $second.state)
+        (Get-CpuTestRecordSignature $first.effects[0]) | Should -BeExactly (Get-CpuTestRecordSignature $second.effects[0])
+    }
+
+    It 'T182A-N01-<CaseId> keeps non-authorization context from starting or acquiring a target' -ForEach @(
+        @{ CaseId = 'recommendation'; ContextKind = 'CPU_RECOMMENDATION' }
+        @{ CaseId = 'observe-consent'; ContextKind = 'PRIOR_OBSERVE_CONSENT' }
+        @{ CaseId = 'target-selection'; ContextKind = 'PRIOR_TARGET_SELECTION' }
+        @{ CaseId = 'incident-run'; ContextKind = 'PRIOR_INCIDENT_RUN' }
+        @{ CaseId = 'cpu-result'; ContextKind = 'PRIOR_CPU_RESULT' }
+        @{ CaseId = 'authorization-boolean'; ContextKind = 'REPLAYED_AUTHORIZATION_BOOLEAN' }
+        @{ CaseId = 'old-run-id'; ContextKind = 'OLD_RUN_ID' }
+        @{ CaseId = 'ai-message'; ContextKind = 'AI_MESSAGE' }
+        @{ CaseId = 'old-pid-name'; ContextKind = 'OLD_PID_OR_NAME' }
+        @{ CaseId = 'evidence-label'; ContextKind = 'EVIDENCE_LABEL' }
+    ) {
+        $state = New-CpuI3TestState
+        $contextResult = Invoke-CpuI3Transition $state (New-CpuTestStateEvent NON_AUTHORIZATION_CONTEXT @{
+            context_kind = $ContextKind
+        })
+        $attemptResult = Invoke-CpuI3Transition $contextResult.state (New-CpuTestStateEvent EXECUTION_ATTEMPT)
+
+        $contextResult.state.phase | Should -BeExactly 'NOT_REVIEWED'
+        $contextResult.effects.Count | Should -Be 0
+        $attemptResult.state.phase | Should -BeExactly 'FAILED'
+        $attemptResult.state.reason_code | Should -BeExactly 'CPU_AUTHORIZATION_REQUIRED'
+        @($attemptResult.effects | Where-Object effect_type -CEQ 'QUERY_CPU_TIME').Count | Should -Be 0
+    }
+
+    It 'T182A-N26-replayed-authorization cannot become Start even with an old run ID and true flag' {
+        $state = New-CpuI3TestState
+        foreach ($kind in @('REPLAYED_AUTHORIZATION_BOOLEAN', 'OLD_RUN_ID', 'PRIOR_CPU_RESULT')) {
+            $result = Invoke-CpuI3Transition $state (New-CpuTestStateEvent NON_AUTHORIZATION_CONTEXT @{
+                context_kind = $kind
+            })
+            $result.state.phase | Should -BeExactly 'NOT_REVIEWED'
+            $result.effects.Count | Should -Be 0
+            $state = $result.state
+        }
+
+        $attempt = Invoke-CpuI3Transition $state (New-CpuTestStateEvent EXECUTION_ATTEMPT)
+
+        $attempt.state.phase | Should -BeExactly 'FAILED'
+        $attempt.state.reason_code | Should -BeExactly 'CPU_AUTHORIZATION_REQUIRED'
+        @($attempt.effects | Where-Object effect_type -CEQ 'QUERY_CPU_TIME').Count | Should -Be 0
+    }
+
+    It 'T182A-P07-gate-a-compound requires permission, acquisition, liveness, and exact review confirmation' {
+        $state0 = New-CpuI3TestState
+        $permission = Invoke-CpuI3Transition $state0 (New-CpuTestStateEvent BIND_PERMISSION @{
+            plan_token = 'PLAN-A'
+            permission_source = 'EXPLICIT_HUMAN'
+            selection_source = 'FRESH_HUMAN_SELECTION'
+        })
+        $acquired = Invoke-CpuI3Transition $permission.state (New-CpuTestStateEvent BINDING_ACQUIRED)
+        $live = Invoke-CpuI3Transition $acquired.state (New-CpuTestStateEvent BINDING_LIVENESS_CONFIRMED @{ liveness = 'LIVE' })
+        $reviewed = Invoke-CpuI3Transition $live.state (New-CpuTestStateEvent TARGET_REVIEW_CONFIRMED @{
+            plan_token = 'PLAN-A'
+            confirmation_source = 'EXPLICIT_HUMAN'
+            success_tick = 25L
+            clock_frequency_hz = 10000000L
+        })
+
+        $permission.state.phase | Should -BeExactly 'BINDING_PENDING'
+        $permission.effects.effect_type | Should -BeExactly 'ACQUIRE_AUTHORIZED_TARGET'
+        $acquired.state.phase | Should -BeExactly 'BINDING_ACQUIRED'
+        $acquired.effects.effect_type | Should -BeExactly 'CHECK_IDENTITY_LIVENESS'
+        $live.state.phase | Should -BeExactly 'TARGET_BOUND'
+        $live.effects.Count | Should -Be 0
+        $reviewed.state.phase | Should -BeExactly 'TARGET_REVIEWED'
+        $reviewed.state.gate_a_success_tick | Should -Be 25L
+        @($permission.effects + $acquired.effects + $live.effects + $reviewed.effects |
+            Where-Object effect_type -CEQ 'QUERY_CPU_TIME').Count | Should -Be 0
+    }
+
+    It 'T182A-P20-gate-b-at-60-seconds is fresh but does not itself query CPU' {
+        $clock = New-CpuFakeClock 10000000L @(0L, 600000000L)
+        $reviewed = Get-CpuI3ReviewedState (Read-CpuFakeClock $clock) $clock.frequency_hz
+        $input = New-CpuFakeInput @(
+            (New-CpuTestStateEvent GATE_B_CONFIRMED @{
+                plan_token = 'PLAN-A'
+                confirmation_source = 'EXPLICIT_HUMAN'
+                confirmation_tick = (Read-CpuFakeClock $clock)
+                clock_frequency_hz = 10000000L
+                metric = 'CPU_TIME'
+                duration_seconds = 5L
+                planned_interval_ms = 1000L
+                interval_tolerance_ms = 250L
+                final_endpoint_tail_ms = 250L
+                retention = 'IN_MEMORY_ONLY'
+                read_only = $true
+            })
+        )
+
+        $result = Invoke-CpuI3Transition $reviewed (Read-CpuFakeInput $input)
+
+        $result.state.phase | Should -BeExactly 'START_CONFIRMED'
+        $result.state.gate_a_to_b_elapsed_ticks | Should -Be 600000000L
+        $result.effects.Count | Should -Be 0
+        $clock.read_count | Should -Be 2
+        $input.read_count | Should -Be 1
+    }
+
+    It 'T182A-N34-gate-b-after-60-seconds expires and disposes without a CPU query' {
+        $reviewed = Get-CpuI3ReviewedState
+        $result = Invoke-CpuI3Transition $reviewed (New-CpuTestStateEvent GATE_B_CONFIRMED @{
+            plan_token = 'PLAN-A'
+            confirmation_source = 'EXPLICIT_HUMAN'
+            confirmation_tick = 600010000L
+            clock_frequency_hz = 10000000L
+            metric = 'CPU_TIME'
+            duration_seconds = 5L
+            planned_interval_ms = 1000L
+            interval_tolerance_ms = 250L
+            final_endpoint_tail_ms = 250L
+            retention = 'IN_MEMORY_ONLY'
+            read_only = $true
+        })
+
+        $result.state.phase | Should -BeExactly 'FAILED'
+        $result.state.reason_code | Should -BeExactly 'CPU_REVIEW_EXPIRED'
+        $result.effects.effect_type | Should -BeExactly 'DISPOSE_TARGET'
+        @($result.effects | Where-Object effect_type -CEQ 'QUERY_CPU_TIME').Count | Should -Be 0
+    }
+
+    It 'T182A-N34-invalid-freshness-<CaseId> fails closed without a wall-clock fallback' -ForEach @(
+        @{ CaseId = 'missing'; GateATick = 0L; ConfirmationTick = $null; Frequency = 10000000L }
+        @{ CaseId = 'negative'; GateATick = 0L; ConfirmationTick = -1L; Frequency = 10000000L }
+        @{ CaseId = 'regressed'; GateATick = 100L; ConfirmationTick = 99L; Frequency = 10000000L }
+        @{ CaseId = 'missing-frequency'; GateATick = 0L; ConfirmationTick = 1L; Frequency = $null }
+    ) {
+        $reviewed = Get-CpuI3ReviewedState $GateATick
+        $result = Invoke-CpuI3Transition $reviewed (New-CpuTestStateEvent GATE_B_CONFIRMED @{
+            plan_token = 'PLAN-A'
+            confirmation_source = 'EXPLICIT_HUMAN'
+            confirmation_tick = $ConfirmationTick
+            clock_frequency_hz = $Frequency
+            metric = 'CPU_TIME'
+            duration_seconds = 5L
+            planned_interval_ms = 1000L
+            interval_tolerance_ms = 250L
+            final_endpoint_tail_ms = 250L
+            retention = 'IN_MEMORY_ONLY'
+            read_only = $true
+        })
+
+        $result.state.phase | Should -BeExactly 'FAILED'
+        $result.state.reason_code | Should -BeExactly 'CPU_TIMING_INVALID'
+        @($result.effects | Where-Object effect_type -CEQ 'QUERY_CPU_TIME').Count | Should -Be 0
+    }
+
+    It 'T182A-N28-plan-change invalidates review and requires a fresh authorization attempt' {
+        $reviewed = Get-CpuI3ReviewedState
+        $result = Invoke-CpuI3Transition $reviewed (New-CpuTestStateEvent PLAN_CHANGED @{
+            new_plan_token = 'PLAN-B'
+        })
+
+        $result.state.phase | Should -BeExactly 'FAILED'
+        $result.state.reason_code | Should -BeExactly 'CPU_AUTHORIZATION_REQUIRED'
+        $result.effects.effect_type | Should -BeExactly 'DISPOSE_TARGET'
+        @($result.effects | Where-Object effect_type -CEQ 'ACQUIRE_AUTHORIZED_TARGET').Count | Should -Be 0
+    }
+
+    It 'T182A-N28-review-expiry requires fresh Gate A and never silently refreshes the review' {
+        $reviewed = Get-CpuI3ReviewedState
+        $result = Invoke-CpuI3Transition $reviewed (New-CpuTestStateEvent GATE_B_CONFIRMED @{
+            plan_token = 'PLAN-A'
+            confirmation_source = 'EXPLICIT_HUMAN'
+            confirmation_tick = 600010000L
+            clock_frequency_hz = 10000000L
+            metric = 'CPU_TIME'
+            duration_seconds = 5L
+            planned_interval_ms = 1000L
+            interval_tolerance_ms = 250L
+            final_endpoint_tail_ms = 250L
+            retention = 'IN_MEMORY_ONLY'
+            read_only = $true
+        })
+        $late = Invoke-CpuI3Transition $result.state (New-CpuTestStateEvent GATE_B_CONFIRMED @{
+            plan_token = 'PLAN-A'
+            confirmation_source = 'EXPLICIT_HUMAN'
+            confirmation_tick = 600010001L
+            clock_frequency_hz = 10000000L
+            metric = 'CPU_TIME'
+            duration_seconds = 5L
+            planned_interval_ms = 1000L
+            interval_tolerance_ms = 250L
+            final_endpoint_tail_ms = 250L
+            retention = 'IN_MEMORY_ONLY'
+            read_only = $true
+        })
+
+        $result.state.phase | Should -BeExactly 'FAILED'
+        $result.state.reason_code | Should -BeExactly 'CPU_REVIEW_EXPIRED'
+        $late.state.reason_code | Should -BeExactly 'CPU_REVIEW_EXPIRED'
+        $late.effects.Count | Should -Be 0
+    }
+
+    It 'T182A-N33-gate-a-without-gate-b cannot execute and disposes its binding' {
+        $reviewed = Get-CpuI3ReviewedState
+        $result = Invoke-CpuI3Transition $reviewed (New-CpuTestStateEvent EXECUTION_ATTEMPT)
+
+        $result.state.phase | Should -BeExactly 'FAILED'
+        $result.state.reason_code | Should -BeExactly 'CPU_AUTHORIZATION_REQUIRED'
+        $result.effects.effect_type | Should -BeExactly 'DISPOSE_TARGET'
+        @($result.effects | Where-Object effect_type -CEQ 'QUERY_CPU_TIME').Count | Should -Be 0
+    }
+
+    It 'T182A-P07-cancel-<CaseId> returns CANCELLED with no CPU query and bounded disposal' -ForEach @(
+        @{ CaseId = 'during-gate-a'; StateFactory = 'PENDING'; ExpectedDispose = 0 }
+        @{ CaseId = 'during-gate-a-bound'; StateFactory = 'ACQUIRED'; ExpectedDispose = 1 }
+        @{ CaseId = 'after-gate-a'; StateFactory = 'REVIEWED'; ExpectedDispose = 1 }
+    ) {
+        $state = if ($StateFactory -cin @('PENDING', 'ACQUIRED')) {
+            $initial = New-CpuI3TestState
+            $pending = (Invoke-CpuI3Transition $initial (New-CpuTestStateEvent BIND_PERMISSION @{
+                plan_token = 'PLAN-A'
+                permission_source = 'EXPLICIT_HUMAN'
+                selection_source = 'FRESH_HUMAN_SELECTION'
+            })).state
+            if ($StateFactory -ceq 'ACQUIRED') {
+                (Invoke-CpuI3Transition $pending (New-CpuTestStateEvent BINDING_ACQUIRED)).state
+            }
+            else { $pending }
+        }
+        else { Get-CpuI3ReviewedState }
+
+        $result = Invoke-CpuI3Transition $state (New-CpuTestStateEvent CANCEL)
+
+        $result.state.phase | Should -BeExactly 'CANCELLED'
+        $result.state.reason_code | Should -BeExactly 'CPU_CANCELLED'
+        @($result.effects | Where-Object effect_type -CEQ 'DISPOSE_TARGET').Count | Should -Be $ExpectedDispose
+        @($result.effects | Where-Object effect_type -CEQ 'QUERY_CPU_TIME').Count | Should -Be 0
+    }
+
+    It 'T182A-P06-running-cancel preserves prior evidence and blocks later completion or queries' {
+        $running = Get-CpuI3RunningState
+        $baselinePrecheck = Invoke-CpuI3Transition $running (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{
+            slot_index = 0L
+            liveness = 'LIVE'
+        })
+        $progress = Invoke-CpuI3Transition $baselinePrecheck.state (New-CpuTestStateEvent EVIDENCE_PROGRESS @{
+            slot_index = 0L
+            attempted_reading_count = 1L
+            valid_interval_count = 0L
+        })
+        $baselinePostcheck = Invoke-CpuI3Transition $progress.state (New-CpuTestStateEvent POST_QUERY_LIVENESS @{
+            slot_index = 0L
+            liveness = 'LIVE'
+        })
+        $slotDue = Invoke-CpuI3Transition $baselinePostcheck.state (New-CpuTestStateEvent SLOT_DUE @{
+            slot_index = 1L
+            now_tick = 30000000L
+        })
+        $intervalPrecheck = Invoke-CpuI3Transition $slotDue.state (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{
+            slot_index = 1L
+            liveness = 'LIVE'
+        })
+        $progress2 = Invoke-CpuI3Transition $intervalPrecheck.state (New-CpuTestStateEvent EVIDENCE_PROGRESS @{
+            slot_index = 1L
+            attempted_reading_count = 2L
+            valid_interval_count = 1L
+        })
+        $intervalPostcheck = Invoke-CpuI3Transition $progress2.state (New-CpuTestStateEvent POST_QUERY_LIVENESS @{
+            slot_index = 1L
+            liveness = 'LIVE'
+        })
+        $cancelled = Invoke-CpuI3Transition $intervalPostcheck.state (New-CpuTestStateEvent CANCEL)
+        $lateHorizon = Invoke-CpuI3Transition $cancelled.state (New-CpuTestStateEvent NATURAL_HORIZON @{ now_tick = 70000000L })
+
+        $cancelled.state.phase | Should -BeExactly 'CANCELLED'
+        $cancelled.state.valid_interval_count | Should -Be 1L
+        $lateHorizon.state.phase | Should -BeExactly 'CANCELLED'
+        $lateHorizon.state.reason_code | Should -BeExactly 'CPU_CANCELLED'
+        $lateHorizon.effects.Count | Should -Be 0
+    }
+
+    It 'T182A-N27-terminal-<TerminalKind> latches before a later completion candidate' -ForEach @(
+        @{ TerminalKind = 'cancelled'; Phase = 'CANCELLED'; Reason = 'CPU_CANCELLED' }
+        @{ TerminalKind = 'stopped'; Phase = 'STOPPED'; Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+    ) {
+        $running = Get-CpuI3RunningState
+        $event = if ($TerminalKind -ceq 'cancelled') {
+            New-CpuTestStateEvent CANCEL
+        }
+        else {
+            New-CpuTestStateEvent TERMINAL_BOUNDARY @{
+                cancellation = $false
+                timing_status = 'VALID'
+                pre_query_status = 'EXITED'
+                counter_status = 'AVAILABLE'
+                post_query_status = 'LIVE'
+            }
+        }
+        $terminal = Invoke-CpuI3Transition $running $event
+        $late = Invoke-CpuI3Transition $terminal.state (New-CpuTestStateEvent NATURAL_HORIZON @{ now_tick = 70000000L })
+
+        $terminal.state.phase | Should -BeExactly $Phase
+        $terminal.state.reason_code | Should -BeExactly $Reason
+        $late.state.phase | Should -BeExactly $Phase
+        $late.state.reason_code | Should -BeExactly $Reason
+        $late.effects.Count | Should -Be 0
+    }
+
+    It 'I3-terminal-precedence-<CaseId> selects the first authoritative condition at one boundary' -ForEach @(
+        @{ CaseId = 'cancellation'; Cancellation = $true; Timing = 'INVALID'; Pre = 'EXITED'; Counter = 'REGRESSED'; Post = 'UNAVAILABLE'; Phase = 'CANCELLED'; Reason = 'CPU_CANCELLED' }
+        @{ CaseId = 'timing'; Cancellation = $false; Timing = 'INVALID'; Pre = 'EXITED'; Counter = 'REGRESSED'; Post = 'UNAVAILABLE'; Phase = 'STOPPED'; Reason = 'CPU_TIMING_INVALID' }
+        @{ CaseId = 'pre-query'; Cancellation = $false; Timing = 'VALID'; Pre = 'EXITED'; Counter = 'REGRESSED'; Post = 'UNAVAILABLE'; Phase = 'STOPPED'; Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+        @{ CaseId = 'counter'; Cancellation = $false; Timing = 'VALID'; Pre = 'LIVE'; Counter = 'REGRESSED'; Post = 'UNAVAILABLE'; Phase = 'STOPPED'; Reason = 'CPU_COUNTER_REGRESSED' }
+        @{ CaseId = 'post-query'; Cancellation = $false; Timing = 'VALID'; Pre = 'LIVE'; Counter = 'AVAILABLE'; Post = 'UNAVAILABLE'; Phase = 'STOPPED'; Reason = 'CPU_IDENTITY_UNAVAILABLE' }
+    ) {
+        $running = Get-CpuI3RunningState
+        $result = Invoke-CpuI3Transition $running (New-CpuTestStateEvent TERMINAL_BOUNDARY @{
+            cancellation = $Cancellation
+            timing_status = $Timing
+            pre_query_status = $Pre
+            counter_status = $Counter
+            post_query_status = $Post
+        })
+
+        $result.state.phase | Should -BeExactly $Phase
+        $result.state.reason_code | Should -BeExactly $Reason
+    }
+
+    It 'I3-natural-horizon-<CaseId> classifies coverage only when no terminal event is latched' -ForEach @(
+        @{ CaseId = 'complete'; Valid = 5L; Phase = 'COMPLETED'; Reason = 'CPU_WINDOW_COMPLETE' }
+        @{ CaseId = 'partial'; Valid = 2L; Phase = 'PARTIAL'; Reason = 'CPU_INTERVALS_UNAVAILABLE' }
+        @{ CaseId = 'no-valid'; Valid = 0L; Phase = 'FAILED'; Reason = 'CPU_NO_VALID_INTERVALS' }
+    ) {
+        $running = Get-CpuI3RunningState
+        $running.valid_interval_count = $Valid
+        $running.attempted_reading_count = 6L
+        $running.next_slot_index = 6L
+        $running.slot_stage = 'NONE'
+        $result = Invoke-CpuI3Transition $running (New-CpuTestStateEvent NATURAL_HORIZON @{ now_tick = 70000000L })
+
+        $result.state.phase | Should -BeExactly $Phase
+        $result.state.reason_code | Should -BeExactly $Reason
+        $result.effects.effect_type | Should -BeExactly 'DISPOSE_TARGET'
+    }
+
+    It 'T182A-N03-N04-no-retarget-<Liveness> stops on A1 and never requests replacement acquisition' -ForEach @(
+        @{ Liveness = 'EXITED'; Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+        @{ Liveness = 'UNAVAILABLE'; Reason = 'CPU_IDENTITY_UNAVAILABLE' }
+        @{ Liveness = 'ACCESS_DENIED'; Reason = 'CPU_ACCESS_DENIED' }
+    ) {
+        $running = Get-CpuI3RunningState
+        $result = Invoke-CpuI3Transition $running (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{
+            slot_index = 0L
+            liveness = $Liveness
+        })
+        $late = Invoke-CpuI3Transition $result.state (New-CpuTestStateEvent BINDING_ACQUIRED)
+
+        $result.state.phase | Should -BeExactly 'STOPPED'
+        $result.state.reason_code | Should -BeExactly $Reason
+        @($result.effects | Where-Object effect_type -CEQ 'ACQUIRE_AUTHORIZED_TARGET').Count | Should -Be 0
+        $late.effects.Count | Should -Be 0
+        $late.state.phase | Should -BeExactly 'STOPPED'
+    }
+
+    It 'T182A-N35-fake-ledger proves zero CPU query before Gate B' {
+        $adapter = New-CpuFakeAdapter @('AcquireAuthorizedTarget', 'CheckIdentityLiveness', 'Dispose')
+        $state = New-CpuI3TestState
+        $permission = Invoke-CpuI3Transition $state (New-CpuTestStateEvent BIND_PERMISSION @{
+            plan_token = 'PLAN-A'
+            permission_source = 'EXPLICIT_HUMAN'
+            selection_source = 'FRESH_HUMAN_SELECTION'
+        })
+        Invoke-CpuFakeEffects $adapter $permission.effects
+        $acquired = Invoke-CpuI3Transition $permission.state (New-CpuTestStateEvent BINDING_ACQUIRED)
+        Invoke-CpuFakeEffects $adapter $acquired.effects
+        $live = Invoke-CpuI3Transition $acquired.state (New-CpuTestStateEvent BINDING_LIVENESS_CONFIRMED @{ liveness = 'LIVE' })
+        $reviewed = Invoke-CpuI3Transition $live.state (New-CpuTestStateEvent TARGET_REVIEW_CONFIRMED @{
+            plan_token = 'PLAN-A'; confirmation_source = 'EXPLICIT_HUMAN'; success_tick = 0L; clock_frequency_hz = 10000000L
+        })
+        $attempt = Invoke-CpuI3Transition $reviewed.state (New-CpuTestStateEvent EXECUTION_ATTEMPT)
+        Invoke-CpuFakeEffects $adapter $attempt.effects
+        Assert-CpuFakeAdapterComplete $adapter
+
+        @($adapter.calls | Where-Object { $_ -ceq 'QueryCpuTime' }).Count | Should -Be 0
+        $adapter.calls | Should -Be @('AcquireAuthorizedTarget', 'CheckIdentityLiveness', 'Dispose')
+    }
+
+    It 'I3-begin-and-schedule emits query only after Gate B, begin, and pre-query liveness' {
+        $started = Get-CpuI3StartedState
+        $begin = Invoke-CpuI3Transition $started (New-CpuTestStateEvent BEGIN_RUN @{
+            plan_token = 'PLAN-A'
+            origin_tick = 20000000L
+            clock_frequency_hz = 10000000L
+        })
+        $pre = Invoke-CpuI3Transition $begin.state (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{
+            slot_index = 0L
+            liveness = 'LIVE'
+        })
+        $progress = Invoke-CpuI3Transition $pre.state (New-CpuTestStateEvent EVIDENCE_PROGRESS @{
+            slot_index = 0L
+            attempted_reading_count = 1L
+            valid_interval_count = 0L
+        })
+        $post = Invoke-CpuI3Transition $progress.state (New-CpuTestStateEvent POST_QUERY_LIVENESS @{
+            slot_index = 0L
+            liveness = 'LIVE'
+        })
+        $early = Invoke-CpuI3Transition $post.state (New-CpuTestStateEvent SLOT_DUE @{
+            slot_index = 1L
+            now_tick = 25000000L
+        })
+        $due = Invoke-CpuI3Transition $post.state (New-CpuTestStateEvent SLOT_DUE @{
+            slot_index = 1L
+            now_tick = 30000000L
+        })
+
+        $begin.state.phase | Should -BeExactly 'RUNNING'
+        $begin.effects.effect_type | Should -BeExactly 'CHECK_IDENTITY_LIVENESS'
+        $pre.effects.effect_type | Should -BeExactly 'QUERY_CPU_TIME'
+        $progress.effects.effect_type | Should -BeExactly 'CHECK_IDENTITY_LIVENESS'
+        $progress.effects.check_phase | Should -BeExactly 'POST_QUERY'
+        $post.effects.effect_type | Should -BeExactly 'WAIT_UNTIL_SLOT'
+        $post.effects.due_tick | Should -Be 30000000L
+        $early.effects.effect_type | Should -BeExactly 'WAIT_UNTIL_SLOT'
+        $due.effects.effect_type | Should -BeExactly 'CHECK_IDENTITY_LIVENESS'
+    }
+
+    It 'I3-gate-a-intermediate-<Phase> cannot substitute for the completed target review' -ForEach @(
+        @{ Phase = 'BINDING_PENDING'; ExpectedDispose = 0 }
+        @{ Phase = 'BINDING_ACQUIRED'; ExpectedDispose = 1 }
+        @{ Phase = 'TARGET_BOUND'; ExpectedDispose = 1 }
+    ) {
+        $state = New-CpuI3TestState
+        $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent BIND_PERMISSION @{
+            plan_token = 'PLAN-A'; permission_source = 'EXPLICIT_HUMAN'; selection_source = 'FRESH_HUMAN_SELECTION'
+        })).state
+        if ($Phase -cin @('BINDING_ACQUIRED', 'TARGET_BOUND')) {
+            $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent BINDING_ACQUIRED)).state
+        }
+        if ($Phase -ceq 'TARGET_BOUND') {
+            $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent BINDING_LIVENESS_CONFIRMED @{ liveness = 'LIVE' })).state
+        }
+
+        $result = Invoke-CpuI3Transition $state (New-CpuTestStateEvent EXECUTION_ATTEMPT)
+
+        $result.state.phase | Should -BeExactly 'FAILED'
+        $result.state.reason_code | Should -BeExactly 'CPU_AUTHORIZATION_REQUIRED'
+        @($result.effects | Where-Object effect_type -CEQ 'DISPOSE_TARGET').Count | Should -Be $ExpectedDispose
+        @($result.effects | Where-Object effect_type -CEQ 'QUERY_CPU_TIME').Count | Should -Be 0
+    }
+
+    It 'T182A-N28-changed-gate-b-<CaseId> cannot reuse Gate A for a different reviewed plan' -ForEach @(
+        @{ CaseId = 'plan-token'; Field = 'plan_token'; Value = 'PLAN-B' }
+        @{ CaseId = 'duration'; Field = 'duration_seconds'; Value = 6L }
+        @{ CaseId = 'retention'; Field = 'retention'; Value = 'FILE' }
+        @{ CaseId = 'metric'; Field = 'metric'; Value = 'MEMORY' }
+    ) {
+        $reviewed = Get-CpuI3ReviewedState
+        $fields = @{
+            plan_token = 'PLAN-A'
+            confirmation_source = 'EXPLICIT_HUMAN'
+            confirmation_tick = 10000000L
+            clock_frequency_hz = 10000000L
+            metric = 'CPU_TIME'
+            duration_seconds = 5L
+            planned_interval_ms = 1000L
+            interval_tolerance_ms = 250L
+            final_endpoint_tail_ms = 250L
+            retention = 'IN_MEMORY_ONLY'
+            read_only = $true
+        }
+        $fields[$Field] = $Value
+
+        $result = Invoke-CpuI3Transition $reviewed (New-CpuTestStateEvent GATE_B_CONFIRMED $fields)
+
+        $result.state.phase | Should -BeExactly 'FAILED'
+        $result.state.reason_code | Should -BeExactly 'CPU_AUTHORIZATION_REQUIRED'
+        @($result.effects | Where-Object effect_type -CEQ 'QUERY_CPU_TIME').Count | Should -Be 0
+    }
+
+    It 'I3-terminal-code-<CaseId> latches every approved running terminal reason' -ForEach @(
+        @{ CaseId = 'exit'; Timing = 'VALID'; Pre = 'EXITED'; Counter = 'AVAILABLE'; Post = 'LIVE'; Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+        @{ CaseId = 'identity'; Timing = 'VALID'; Pre = 'UNAVAILABLE'; Counter = 'AVAILABLE'; Post = 'LIVE'; Reason = 'CPU_IDENTITY_UNAVAILABLE' }
+        @{ CaseId = 'access'; Timing = 'VALID'; Pre = 'LIVE'; Counter = 'ACCESS_DENIED'; Post = 'LIVE'; Reason = 'CPU_ACCESS_DENIED' }
+        @{ CaseId = 'regressed'; Timing = 'VALID'; Pre = 'LIVE'; Counter = 'REGRESSED'; Post = 'LIVE'; Reason = 'CPU_COUNTER_REGRESSED' }
+        @{ CaseId = 'invalid-counter'; Timing = 'VALID'; Pre = 'LIVE'; Counter = 'INVALID'; Post = 'LIVE'; Reason = 'CPU_COUNTER_INVALID' }
+        @{ CaseId = 'invalid-timing'; Timing = 'INVALID'; Pre = 'LIVE'; Counter = 'AVAILABLE'; Post = 'LIVE'; Reason = 'CPU_TIMING_INVALID' }
+    ) {
+        $running = Get-CpuI3RunningState
+        $running.valid_interval_count = 2L
+        $result = Invoke-CpuI3Transition $running (New-CpuTestStateEvent TERMINAL_BOUNDARY @{
+            cancellation = $false
+            timing_status = $Timing
+            pre_query_status = $Pre
+            counter_status = $Counter
+            post_query_status = $Post
+        })
+
+        $result.state.phase | Should -BeExactly 'STOPPED'
+        $result.state.reason_code | Should -BeExactly $Reason
+        $result.state.valid_interval_count | Should -Be 2L
+        $result.effects.effect_type | Should -BeExactly 'DISPOSE_TARGET'
+    }
+
+    It 'T182A-N29-post-query identity loss discards pending evidence and stops without reacquisition' {
+        $running = Get-CpuI3RunningState
+        $pre = Invoke-CpuI3Transition $running (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{
+            slot_index = 0L; liveness = 'LIVE'
+        })
+        $queried = Invoke-CpuI3Transition $pre.state (New-CpuTestStateEvent EVIDENCE_PROGRESS @{
+            slot_index = 0L; attempted_reading_count = 1L; valid_interval_count = 0L
+        })
+        $post = Invoke-CpuI3Transition $queried.state (New-CpuTestStateEvent POST_QUERY_LIVENESS @{
+            slot_index = 0L; liveness = 'EXITED'
+        })
+
+        $queried.effects.effect_type | Should -BeExactly 'CHECK_IDENTITY_LIVENESS'
+        $queried.effects.check_phase | Should -BeExactly 'POST_QUERY'
+        $post.state.phase | Should -BeExactly 'STOPPED'
+        $post.state.reason_code | Should -BeExactly 'CPU_PROCESS_EXIT_OBSERVED'
+        $post.state.attempted_reading_count | Should -Be 1L
+        $post.state.valid_interval_count | Should -Be 0L
+        @($post.effects | Where-Object effect_type -CEQ 'ACQUIRE_AUTHORIZED_TARGET').Count | Should -Be 0
+    }
+
+    It 'I3-natural-horizon rejects a supplied time before the planned horizon' {
+        $running = Get-CpuI3RunningState
+        $running.valid_interval_count = 5L
+        $running.attempted_reading_count = 6L
+        $running.next_slot_index = 6L
+        $running.slot_stage = 'NONE'
+
+        $result = Invoke-CpuI3Transition $running (New-CpuTestStateEvent NATURAL_HORIZON @{ now_tick = 69999999L })
+
+        $result.state.phase | Should -BeExactly 'STOPPED'
+        $result.state.reason_code | Should -BeExactly 'CPU_TIMING_INVALID'
+    }
+
+    It 'T182A-P08-schedule-policy skips a missed slot without a catch-up query or shifted deadline' {
+        $running = Get-CpuI3RunningState
+        $pre = Invoke-CpuI3Transition $running (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{
+            slot_index = 0L; liveness = 'LIVE'
+        })
+        $queried = Invoke-CpuI3Transition $pre.state (New-CpuTestStateEvent EVIDENCE_PROGRESS @{
+            slot_index = 0L; attempted_reading_count = 1L; valid_interval_count = 0L
+        })
+        $post = Invoke-CpuI3Transition $queried.state (New-CpuTestStateEvent POST_QUERY_LIVENESS @{
+            slot_index = 0L; liveness = 'LIVE'
+        })
+
+        $missed = Invoke-CpuI3Transition $post.state (New-CpuTestStateEvent SLOT_DUE @{
+            slot_index = 1L; now_tick = 40000000L
+        })
+        $next = Invoke-CpuI3Transition $missed.state (New-CpuTestStateEvent SLOT_DUE @{
+            slot_index = 2L; now_tick = 40000000L
+        })
+
+        $missed.state.next_slot_index | Should -Be 2L
+        $missed.effects.effect_type | Should -BeExactly 'WAIT_UNTIL_SLOT'
+        $missed.effects.due_tick | Should -Be 40000000L
+        @($missed.effects | Where-Object effect_type -CEQ 'QUERY_CPU_TIME').Count | Should -Be 0
+        $next.effects.effect_type | Should -BeExactly 'CHECK_IDENTITY_LIVENESS'
+        $next.effects.due_tick | Should -Be 40000000L
+    }
+
+    It 'I3-fake-adapter fails an unexpected call instead of falling back to a real API' {
+        $adapter = New-CpuFakeAdapter @()
+        $effect = [pscustomobject][ordered]@{ effect_type = 'QUERY_CPU_TIME' }
+
+        { Invoke-CpuFakeEffect $adapter $effect } | Should -Throw '*Unexpected fake adapter call*'
+        $adapter.calls.Count | Should -Be 0
+    }
+
+    It 'I3-fake-input rejects an arbitrary string as an authorization event' {
+        $state = New-CpuI3TestState
+        $input = New-CpuFakeInput @('yes')
+
+        $result = Invoke-CpuI3Transition $state (Read-CpuFakeInput $input)
+
+        $result.disposition | Should -BeExactly 'INVALID'
+        $result.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $result.state.phase | Should -BeExactly 'NOT_REVIEWED'
+        $result.effects.Count | Should -Be 0
+    }
+
+    It 'I3-state-and-effect-shapes keep private process and lifetime values out of the contract' {
+        $state = New-CpuI3TestState
+        $result = Invoke-CpuI3Transition $state (New-CpuTestStateEvent BIND_PERMISSION @{
+            plan_token = 'PLAN-A'
+            permission_source = 'EXPLICIT_HUMAN'
+            selection_source = 'FRESH_HUMAN_SELECTION'
+        })
+        $text = (Get-CpuTestRecordSignature $result.state) + '|' + (Get-CpuTestRecordSignature $result.effects[0])
+
+        $text | Should -Not -Match 'ExecutablePath|CommandLine|UserName|Environment|Arguments|RawProcess|native_handle|creation_timestamp|lifetime_cpu|PID'
+        $result.effects[0].PSObject.Properties.Name | Should -Be @('effect_type', 'slot_index', 'due_tick', 'check_phase')
     }
 }
