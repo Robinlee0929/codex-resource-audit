@@ -203,6 +203,22 @@ expected_reading_count, attempted_reading_count, valid_elapsed_ticks and
 uncovered_interval_count. Valid + unavailable + not attempted = N; expected readings
 = N+1. Attempted readings count actual query calls, not binding checks or skipped slots.
 
+For started invocation result construction, O supplies a separate, private
+`TrustedQueryAttempts` input to `New-CraCpuResult` (and to `Test-CraCpuResult`
+when independently validating that result). It is one closed, data-only
+`query_attempted_by_slot` boolean array with exactly N+1 entries. O sets each
+entry from the actual `QueryCpuTime` call boundary, never by reconstructing it
+from the candidate result, endpoint shape or summary. A malformed entry, wrong
+length, extra field or an exact count mismatch fails `CPU_RESULT_INVALID`; an
+attempted slot must also be structurally possible, and a structurally proven
+query cannot be marked unattempted. No slot can count twice. Without the trusted
+input, public projection validation retains its bounded structural checks but
+cannot authenticate a terminal with omitted query timestamps. This private
+ledger remains IN_MEMORY_ONLY and is never part of the safe result, minimal
+rejection, formatter, stream or publication surface. I5B supplies it after the
+tracked contract repair is checkpointed; the preserved partial I5B driver is
+not altered by this clarification.
+
 Deviation count includes every known positive out-of-tolerance elapsed, even when
 CPU is unavailable or extreme timing invalidates the metric. It is orthogonal to
 validity. Uncovered count is N-valid. Sum only valid elapsed and CPU deltas.

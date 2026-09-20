@@ -2164,21 +2164,43 @@ function Get-CraCpuResultValidation {
     }
     $endpoints = [System.Collections.Generic.List[object]]::new()
     $readingStates = [System.Collections.Generic.List[object]]::new()
-    $ambiguousDeadlineAttempts = 0L
+    $ambiguousAttempts = 0L
     $baselineFailure = $Result.status -ceq 'FAILED' -and $Result.reason_code -ceq 'CPU_BASELINE_UNAVAILABLE'
     for ($i = 0; $i -le $intervalCount; $i++) {
         $endpointValidation = Get-CraCpuEndpointContractValidation $Result.endpoints[$i] $i $durationMs 250 $frequency
         if ($endpointValidation.disposition -ceq 'INVALID') { return $endpointValidation }
         $endpoint = $endpointValidation.value
         $endpoints.Add($endpoint)
-        $queryAttempted = $endpoint.availability -cne 'NOT_ATTEMPTED'
-        if ($endpoint.reason_code -ceq 'CPU_DEADLINE_MISSED') {
-            if ($i -eq 0) {
-                $queryAttempted = $baselineFailure -and $null -ne $endpoint.read_end_offset_ticks
+        # Count issued CPU queries, not merely endpoints that were reached.
+        # A retained bracket proves a query. A typed pre-query terminal has no
+        # bracket or CPU counter; a deadline projection can omit the bracket
+        # even after a query, so its public ledger is bounded instead.
+        $queryAttempted = $false
+        if ($endpoint.availability -ceq 'AVAILABLE' -or
+            ($endpoint.availability -ceq 'UNAVAILABLE' -and $null -ne $endpoint.read_end_offset_ticks)) {
+            $queryAttempted = $true
+        }
+        elseif ($endpoint.availability -ceq 'UNAVAILABLE') {
+            if ($endpoint.reason_code -ceq 'CPU_DEADLINE_MISSED') {
+                if ($i -gt 0 -or ($baselineFailure -and
+                    ([System.Numerics.BigInteger]$Result.sampling_window.end_offset_ticks * 1000) -gt
+                        ([System.Numerics.BigInteger]($durationMs + 250) * $frequency))) {
+                    $ambiguousAttempts++
+                }
+            }
+            elseif ($endpoint.reason_code -cin @('CPU_PROCESS_EXIT_OBSERVED', 'CPU_IDENTITY_UNAVAILABLE',
+                'CPU_ACCESS_DENIED', 'CPU_TIMING_INVALID')) {
+                # Omitted timing cannot prove whether this terminal happened
+                # before or after QueryCpuTime at any endpoint. The private
+                # invocation ledger, when supplied, resolves that ambiguity.
+                if ($Result.status -ceq 'STOPPED' -and $Result.reason_code -ceq $endpoint.reason_code) {
+                    $ambiguousAttempts++
+                }
             }
             else {
-                $queryAttempted = $null -ne $endpoint.read_end_offset_ticks
-                if (-not $queryAttempted) { $ambiguousDeadlineAttempts++ }
+                # Counter/read-span failures and post-query counter terminals
+                # occur only after QueryCpuTime, even without admitted CPU.
+                $queryAttempted = $true
             }
         }
         $readingStates.Add([pscustomobject][ordered]@{
@@ -2194,6 +2216,18 @@ function Get-CraCpuResultValidation {
         if ($endpoints[$i].availability -cne 'NOT_ATTEMPTED') {
             $lastObserved = $endpoints[$i]
             break
+        }
+    }
+    # A typed terminal is a single end-of-run event, never an intermediate
+    # endpoint that can be followed by another CPU query or a different stop.
+    for ($i = 0; $i -le $intervalCount; $i++) {
+        $endpoint = $endpoints[$i]
+        if ($endpoint.availability -ceq 'UNAVAILABLE' -and
+            $endpoint.reason_code -cin @('CPU_PROCESS_EXIT_OBSERVED', 'CPU_IDENTITY_UNAVAILABLE',
+                'CPU_ACCESS_DENIED', 'CPU_COUNTER_REGRESSED', 'CPU_COUNTER_INVALID', 'CPU_TIMING_INVALID') -and
+            ($Result.status -cne 'STOPPED' -or $Result.reason_code -cne $endpoint.reason_code -or
+                $null -eq $lastObserved -or $lastObserved.index -ne $i)) {
+            return New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
         }
     }
     $lateFinalizationWithOmittedDeadline = $null -ne $lastObserved -and
@@ -2234,53 +2268,20 @@ function Get-CraCpuResultValidation {
         }
         $samples.Add((Copy-CraCpuSampleContract $sample))
     }
-    # A deadline-missed endpoint with no returnable bracket may have been
-    # skipped or queried too late to project timestamps. The public count must
-    # lie within one attempt per such slot; all other summary fields stay exact.
-    if ($ambiguousDeadlineAttempts -gt 0 -and
+    # Each ambiguous slot contributes at most one attempt. The other summary
+    # fields remain exact, and no combination of guesses is enumerated.
+    if ($ambiguousAttempts -gt 0 -and
         $Result.sample_summary -is [pscustomobject] -and
         $null -ne $Result.sample_summary.PSObject.Properties['attempted_reading_count'] -and
         (Test-CraCpuContractInteger $Result.sample_summary.attempted_reading_count)) {
         $reportedAttempts = [System.Numerics.BigInteger]$Result.sample_summary.attempted_reading_count
         $minimumAttempts = [System.Numerics.BigInteger]$summaryValidation.summary.attempted_reading_count
         if ($reportedAttempts -ge $minimumAttempts -and
-            $reportedAttempts -le ($minimumAttempts + $ambiguousDeadlineAttempts)) {
+            $reportedAttempts -le ($minimumAttempts + $ambiguousAttempts)) {
             $summaryValidation.summary.attempted_reading_count = [long]$reportedAttempts
         }
     }
     $publicSummaryValidation = Get-CraCpuSummaryContractValidation $Result.sample_summary $summaryValidation.summary
-    if ($publicSummaryValidation.disposition -ceq 'INVALID' -and $baselineFailure -and
-        $endpoints[0].availability -ceq 'UNAVAILABLE' -and $endpoints[0].reason_code -ceq 'CPU_DEADLINE_MISSED' -and
-        $null -eq $endpoints[0].read_end_offset_ticks -and
-        ([System.Numerics.BigInteger]$Result.sampling_window.end_offset_ticks * 1000) -gt
-            ([System.Numerics.BigInteger]($durationMs + 250) * $frequency)) {
-        # Beyond the admission horizon, query timestamps must be omitted. The
-        # closed summary may report either no query (validated above) or one
-        # late E0 query. Check that second bounded ledger without inventing times.
-        $readingStates[0].query_attempted = $true
-        $summaryValidation = Get-CraCpuSummary $intervalCount $readingStates.ToArray() @($Result.samples) $frequency
-        if ($summaryValidation.disposition -ceq 'INVALID') {
-            return New-CraCpuValidationResult INVALID $summaryValidation.reason_code $null
-        }
-        $publicSummaryValidation = Get-CraCpuSummaryContractValidation $Result.sample_summary $summaryValidation.summary
-    }
-    if ($publicSummaryValidation.disposition -ceq 'INVALID' -and
-        $Result.status -ceq 'STOPPED' -and
-        $endpoints[0].availability -ceq 'UNAVAILABLE' -and
-        $endpoints[0].reason_code -cin @('CPU_PROCESS_EXIT_OBSERVED', 'CPU_IDENTITY_UNAVAILABLE',
-            'CPU_ACCESS_DENIED', 'CPU_TIMING_INVALID') -and
-        $Result.reason_code -ceq $endpoints[0].reason_code -and
-        $null -eq $endpoints[0].read_start_offset_ticks -and
-        $null -eq $endpoints[0].read_end_offset_ticks) {
-        # An E0 pre-query check can terminate the run without calling the CPU
-        # counter. The closed summary must then validate with zero query calls.
-        $readingStates[0].query_attempted = $false
-        $summaryValidation = Get-CraCpuSummary $intervalCount $readingStates.ToArray() @($Result.samples) $frequency
-        if ($summaryValidation.disposition -ceq 'INVALID') {
-            return New-CraCpuValidationResult INVALID $summaryValidation.reason_code $null
-        }
-        $publicSummaryValidation = Get-CraCpuSummaryContractValidation $Result.sample_summary $summaryValidation.summary
-    }
     if ($publicSummaryValidation.disposition -ceq 'INVALID') { return $publicSummaryValidation }
     if ($Result.availability -isnot [string] -or $Result.availability -cne $summaryValidation.summary.availability -or
         $Result.finding_code -isnot [string] -or $Result.finding_code -cne $summaryValidation.summary.finding_code) {
@@ -2363,15 +2364,63 @@ function Get-CraCpuResultValidation {
     New-CraCpuValidationResult VALID NONE $copy
 }
 
+function Test-CraCpuTrustedQueryAttempts {
+    param(
+        [AllowNull()][object] $Ledger,
+        [Parameter(Mandatory)][object] $Result
+    )
+
+    # This separately supplied invocation record is never copied into the
+    # safe result. A projected endpoint cannot authenticate an omitted query.
+    if (-not (Test-CraCpuPlainRecord $Ledger @('query_attempted_by_slot')) -or
+        $null -eq $Result.sample_summary -or
+        $Result.endpoints -isnot [System.Array]) {
+        return $false
+    }
+    $slots = $Ledger.query_attempted_by_slot
+    if ($null -eq $slots -or $slots -isnot [System.Array] -or
+        ($slots.GetType() -ne [object[]] -and $slots.GetType() -ne [bool[]]) -or
+        $slots.Rank -ne 1 -or
+        $slots.Length -ne $Result.sample_summary.expected_reading_count -or
+        $slots.Length -ne $Result.endpoints.Count -or
+        @($slots.PSObject.Properties | Where-Object {
+            $_.MemberType -in @('NoteProperty', 'ScriptProperty', 'AliasProperty', 'CodeProperty')
+        }).Count -ne 0) {
+        return $false
+    }
+
+    $attempted = 0L
+    for ($i = 0; $i -lt $slots.Length; $i++) {
+        if ($slots[$i] -isnot [bool]) { return $false }
+        $endpoint = $Result.endpoints[$i]
+        if ($slots[$i]) {
+            if ($endpoint.availability -ceq 'NOT_ATTEMPTED') { return $false }
+            $attempted++
+        }
+        elseif ($endpoint.availability -ceq 'AVAILABLE' -or
+            $null -ne $endpoint.read_end_offset_ticks -or
+            $endpoint.reason_code -cin @('CPU_COUNTER_UNAVAILABLE', 'CPU_READ_SPAN_EXCEEDED',
+                'CPU_COUNTER_REGRESSED', 'CPU_COUNTER_INVALID')) {
+            return $false
+        }
+    }
+    return $Result.sample_summary.attempted_reading_count -eq $attempted
+}
+
 function Test-CraCpuResult {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][AllowNull()][object] $Result,
-        [AllowNull()][object] $TrustedMetadata = $null
+        [AllowNull()][object] $TrustedMetadata = $null,
+        [AllowNull()][object] $TrustedQueryAttempts = $null
     )
 
     $validation = Get-CraCpuResultValidation $Result
     if ($validation.disposition -ceq 'VALID') {
+        if ($null -ne $TrustedQueryAttempts -and
+            -not (Test-CraCpuTrustedQueryAttempts $TrustedQueryAttempts $validation.value)) {
+            return New-CraCpuContractDisposition INVALID CPU_RESULT_INVALID
+        }
         if ($null -ne $TrustedMetadata) {
             $trusted = New-CraCpuSafeFailureResult $validation.value.run_id CPU_RESULT_INVALID $TrustedMetadata -StrictTrusted
             if ($null -eq $trusted -or -not (Test-CraCpuResultMatchesTrusted $validation.value $trusted)) {
@@ -2492,7 +2541,8 @@ function New-CraCpuResult {
     param(
         [Parameter(Mandatory)][AllowNull()][object] $Candidate,
         [Parameter(Mandatory)][AllowNull()][object] $RunId,
-        [AllowNull()][object] $TrustedMetadata = $null
+        [AllowNull()][object] $TrustedMetadata = $null,
+        [AllowNull()][object] $TrustedQueryAttempts = $null
     )
 
     if (-not (Test-CraCpuContractGuid $RunId)) {
@@ -2517,6 +2567,10 @@ function New-CraCpuResult {
             ($null -eq $trusted -and $null -ne $validation.value.prior_terminal)) {
             $validation = New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
         }
+    }
+    if ($validation.disposition -ceq 'VALID' -and $null -ne $TrustedQueryAttempts -and
+        -not (Test-CraCpuTrustedQueryAttempts $TrustedQueryAttempts $validation.value)) {
+        $validation = New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
     }
     if ($validation.disposition -ceq 'INVALID') {
         $reason = if ($validation.reason_code -ceq 'CPU_OUTPUT_BOUND_EXCEEDED') { 'CPU_OUTPUT_BOUND_EXCEEDED' } else { 'CPU_RESULT_INVALID' }

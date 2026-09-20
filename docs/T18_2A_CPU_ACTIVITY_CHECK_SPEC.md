@@ -331,6 +331,12 @@ Offsets outside the authorized horizon are omitted with a fixed deadline reason;
 actual finalization may still appear as END. A counter-only failure may retain
 trustworthy read timestamps for assessing elapsed time, but not CPU values.
 
+The safe endpoint projection does not authenticate the execution history of a
+terminal whose query timestamps were omitted: a pre-query terminal and a
+post-query terminal can have the same projected fields. A standalone result
+validator enforces only the structural bounds that those fields prove; consumers
+must not infer an exact per-slot query history from missing timestamps.
+
 Endpoint reasons: NONE, CPU_COUNTER_UNAVAILABLE, CPU_DEADLINE_MISSED,
 CPU_READ_SPAN_EXCEEDED, CPU_PROCESS_EXIT_OBSERVED, CPU_IDENTITY_UNAVAILABLE,
 CPU_ACCESS_DENIED, CPU_COUNTER_REGRESSED, CPU_COUNTER_INVALID, CPU_TIMING_INVALID, CPU_CANCELLED,
@@ -381,6 +387,19 @@ min_cpu_core_equivalents, max_cpu_core_equivalents, mean_cpu_core_equivalents,
 and their corresponding min/max/mean_cpu_percent_one_core_relative fields.
 Attempted readings exclude skipped/future slots; at most N+1. They count native
 counter queries, not interval computations or binding checks.
+
+`attempted_reading_count` is an execution-ledger fact. For a started invocation,
+the orchestrator records one private boolean per E0..EN slot at the point it
+issues `QueryCpuTime`; it never derives this ledger from candidate endpoints or
+the candidate summary. Result construction and trusted result validation require
+the public attempted count to equal the number of true entries exactly, while
+also rejecting entries that contradict structurally proven no-query/query slots.
+The ledger is a closed, data-only, IN_MEMORY_ONLY input to validation. It has no
+PID, handle, path, timestamp, Process object or exception. It is never copied
+into `CPU_DIAGNOSTIC_RESULT`, its rejection form, formatter text, emitted streams
+or any file, JSON, artifact, reader or upload. Omitting this independently
+trusted invocation input leaves only bounded structural validation, not proof
+of the original query history.
 
 Min/max use valid interval exact rates only. Mean is explicitly duration-weighted:
 mean_cpu_core_equivalents = sum(valid CPU seconds) / sum(valid elapsed seconds);

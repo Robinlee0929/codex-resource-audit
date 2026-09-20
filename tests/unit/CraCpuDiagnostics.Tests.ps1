@@ -392,6 +392,325 @@ Describe 'T18.2A I5A closed result, configuration, and privacy contract' {
             $result.availability = 'SOME_INTERVALS'
             $result
         }
+
+        function New-CpuB2TerminalResult {
+            param(
+                [long] $TerminalIndex = 3L,
+                [string] $Reason = 'CPU_PROCESS_EXIT_OBSERVED',
+                [switch] $PostQuery,
+                [switch] $AmbiguousE2
+            )
+            $result = New-CpuI5Result
+            $result.status = 'STOPPED'
+            $result.reason_code = $Reason
+            $result.sampling_window.end_offset_ticks = $TerminalIndex * 10000000L
+            $result.endpoints[$TerminalIndex] = New-CpuI5Endpoint $TerminalIndex UNAVAILABLE $Reason $null
+            if (-not $PostQuery) {
+                $result.endpoints[$TerminalIndex].read_start_offset_ticks = $null
+                $result.endpoints[$TerminalIndex].read_end_offset_ticks = $null
+            }
+            if ($AmbiguousE2) {
+                $result.endpoints[2] = New-CpuI5Endpoint 2 UNAVAILABLE CPU_DEADLINE_MISSED $null
+                $result.endpoints[2].read_start_offset_ticks = $null
+                $result.endpoints[2].read_end_offset_ticks = $null
+            }
+            for ($i = $TerminalIndex + 1; $i -le 5; $i++) {
+                $result.endpoints[$i] = New-CpuI5Endpoint $i NOT_ATTEMPTED CPU_NOT_REACHED $null
+            }
+            $readings = @(0..5 | ForEach-Object {
+                $i = $_
+                New-CpuTestReadingState $i ($i -lt $TerminalIndex -and (-not $AmbiguousE2 -or $i -ne 2) -or
+                    ($i -eq $TerminalIndex -and [bool]$PostQuery)) $result.endpoints[$i].availability
+            })
+            for ($i = 1; $i -le 5; $i++) {
+                $left = $result.endpoints[$i - 1]
+                $right = $result.endpoints[$i]
+                if ($right.availability -ceq 'NOT_ATTEMPTED') {
+                    $result.samples[$i - 1] = New-CpuTestSample $i NOT_ATTEMPTED CPU_NOT_REACHED $null TIMING_UNAVAILABLE $null $null $null $null $null
+                }
+                elseif ($left.availability -cne 'AVAILABLE' -or $right.availability -cne 'AVAILABLE') {
+                    $elapsed = if ($null -ne $left.read_end_offset_ticks -and $null -ne $right.read_end_offset_ticks) {
+                        $right.read_end_offset_ticks - $left.read_end_offset_ticks
+                    } else { $null }
+                    $quality = if ($null -eq $elapsed) { 'TIMING_UNAVAILABLE' } else { 'TIMING_WITHIN_TOLERANCE' }
+                    $result.samples[$i - 1] = New-CpuTestSample $i UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE $elapsed $quality $null $null $null $null $null
+                }
+            }
+            $summary = Get-CraCpuSummary 5 $readings $result.samples 10000000L
+            if ($summary.disposition -cne 'VALID') { throw 'Invalid B2 test fixture.' }
+            $result.sample_summary = New-CpuI5PublicSummary $summary.summary
+            $result.availability = $summary.summary.availability
+            $result.finding_code = $summary.summary.finding_code
+            $result
+        }
+
+        function New-CpuB2RTrustedLedger {
+            param([object[]] $Slots)
+            [pscustomobject][ordered]@{ query_attempted_by_slot = $Slots }
+        }
+    }
+
+    It 'I5B-B2 pre-query <Reason> at E<Index> contributes zero attempts at the terminal slot' -ForEach @(
+        @{ Reason = 'CPU_PROCESS_EXIT_OBSERVED'; Index = 3L }
+        @{ Reason = 'CPU_PROCESS_EXIT_OBSERVED'; Index = 4L }
+        @{ Reason = 'CPU_IDENTITY_UNAVAILABLE'; Index = 3L }
+        @{ Reason = 'CPU_ACCESS_DENIED'; Index = 3L }
+        @{ Reason = 'CPU_TIMING_INVALID'; Index = 3L }
+    ) {
+        $candidate = New-CpuB2TerminalResult -TerminalIndex $Index -Reason $Reason
+        $candidate.sample_summary.attempted_reading_count | Should -Be $Index
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.disposition | Should -BeExactly 'VALID'
+        $built.result.sample_summary.attempted_reading_count | Should -Be $Index
+        $built.result.endpoints[$Index].cpu_since_baseline_100ns | Should -BeNullOrEmpty
+    }
+
+    It 'I5B-B2 post-query <Reason> at E3 counts the query without salvaging CPU evidence' -ForEach @(
+        @{ Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+        @{ Reason = 'CPU_IDENTITY_UNAVAILABLE' }
+        @{ Reason = 'CPU_ACCESS_DENIED' }
+    ) {
+        $candidate = New-CpuB2TerminalResult -Reason $Reason -PostQuery
+        $candidate.sample_summary.attempted_reading_count | Should -Be 4L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.disposition | Should -BeExactly 'VALID'
+        $built.result.sample_summary.attempted_reading_count | Should -Be 4L
+        $built.result.samples[2].availability | Should -BeExactly 'UNAVAILABLE'
+        $built.result.endpoints[3].cpu_since_baseline_100ns | Should -BeNullOrEmpty
+    }
+
+    It 'I5B-B2 rejects impossible <Case> attempted counts for a pre-query E3 terminal' -ForEach @(
+        @{ Case = 'low'; Attempts = 2L }
+        @{ Case = 'high'; Attempts = 5L }
+    ) {
+        $candidate = New-CpuB2TerminalResult
+        $candidate.sample_summary.attempted_reading_count = $Attempts
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'I5B-B2 retained post-query terminal timing cannot be relabeled as fewer attempts' {
+        $candidate = New-CpuB2TerminalResult -PostQuery
+        $candidate.sample_summary.attempted_reading_count = 3L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'I5B-B2 rejects a terminal reason that is followed by another query' {
+        $candidate = New-CpuB2TerminalResult
+        $candidate.endpoints[4] = New-CpuI5Endpoint 4 UNAVAILABLE CPU_COUNTER_UNAVAILABLE $null
+        $candidate.samples[3] = New-CpuTestSample 4 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE $null TIMING_UNAVAILABLE $null $null $null $null $null
+        $candidate.sample_summary.attempted_reading_count = 4L
+        $candidate.sample_summary.unavailable_interval_count = 2L
+        $candidate.sample_summary.not_attempted_interval_count = 1L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'I5B-B2 rejects a mismatched public terminal reason' {
+        $candidate = New-CpuB2TerminalResult
+        $candidate.reason_code = 'CPU_IDENTITY_UNAVAILABLE'
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'I5B-B2 rejects CPU evidence salvaged from a post-query terminal' {
+        $candidate = New-CpuB2TerminalResult -PostQuery
+        $candidate.samples[2] = New-CpuTestSample 3 AVAILABLE NONE 10000000L TIMING_WITHIN_TOLERANCE 2000000L 1 5 20 1
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'I5B-B2 accepts only bounded <Attempts> with definite query, no-query, and deadline ambiguity' -ForEach @(
+        @{ Attempts = 2L; Valid = $true }
+        @{ Attempts = 3L; Valid = $true }
+        @{ Attempts = 1L; Valid = $false }
+        @{ Attempts = 4L; Valid = $true }
+        @{ Attempts = 5L; Valid = $false }
+    ) {
+        $candidate = New-CpuB2TerminalResult -AmbiguousE2
+        $candidate.sample_summary.attempted_reading_count = $Attempts
+        $expected = if ($Valid) { 'VALID' } else { 'INVALID' }
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly $expected
+    }
+
+    It 'I5B-B2R does not mistake omitted terminal timing for proof of no query' {
+        $candidate = New-CpuB2TerminalResult
+        $candidate.sample_summary.attempted_reading_count = 4L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $preQueryLedger = New-CpuB2RTrustedLedger @($true, $true, $true, $false, $false, $false)
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $preQueryLedger).disposition |
+            Should -BeExactly 'INVALID'
+        $postQueryLedger = New-CpuB2RTrustedLedger @($true, $true, $true, $true, $false, $false)
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $postQueryLedger).disposition |
+            Should -BeExactly 'VALID'
+    }
+
+    It 'I5B-B2R Owner attack rejects underreported post-query <Reason> using independent execution provenance' -ForEach @(
+        @{ Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+        @{ Reason = 'CPU_IDENTITY_UNAVAILABLE' }
+        @{ Reason = 'CPU_ACCESS_DENIED' }
+    ) {
+        $candidate = New-CpuB2TerminalResult -Reason $Reason -PostQuery
+        $ledger = New-CpuB2RTrustedLedger @($true, $true, $true, $true, $false, $false)
+        $candidate.endpoints[3].read_start_offset_ticks = $null
+        $candidate.endpoints[3].read_end_offset_ticks = $null
+        $candidate.samples[2].elapsed_ticks = $null
+        $candidate.samples[2].timing_quality = 'TIMING_UNAVAILABLE'
+        $candidate.sample_summary.attempted_reading_count = 3L
+        # The public projection alone cannot distinguish this from pre-query.
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $checked = Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $ledger
+        $checked.disposition | Should -BeExactly 'INVALID'
+        $checked.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $rejected = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedQueryAttempts $ledger
+        $rejected.disposition | Should -BeExactly 'INVALID'
+        $rejected.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $rejected.result.status | Should -BeExactly 'FAILED'
+        $rejected.result.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $rejected.result.endpoints.Count | Should -Be 0
+        $rejected.result.samples.Count | Should -Be 0
+        $rejected.result.sample_summary | Should -BeNullOrEmpty
+        $rejected.result.PSObject.Properties.Name | Should -Not -Contain 'query_attempted_by_slot'
+        (Format-CraCpuSummary $rejected.result).formatted_value | Should -Not -Match 'query_attempted_by_slot'
+    }
+
+    It 'I5B-B2R accepts genuine pre-query <Reason> with a false terminal ledger slot' -ForEach @(
+        @{ Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+        @{ Reason = 'CPU_IDENTITY_UNAVAILABLE' }
+        @{ Reason = 'CPU_ACCESS_DENIED' }
+        @{ Reason = 'CPU_TIMING_INVALID' }
+    ) {
+        $candidate = New-CpuB2TerminalResult -Reason $Reason
+        $ledger = New-CpuB2RTrustedLedger @($true, $true, $true, $false, $false, $false)
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $ledger).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedQueryAttempts $ledger
+        $built.disposition | Should -BeExactly 'VALID'
+        $built.result.sample_summary.attempted_reading_count | Should -Be 3L
+        $built.result.PSObject.Properties.Name | Should -Not -Contain 'query_attempted_by_slot'
+    }
+
+    It 'I5B-B2R accepts post-query <Reason> with a true terminal ledger slot' -ForEach @(
+        @{ Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+        @{ Reason = 'CPU_IDENTITY_UNAVAILABLE' }
+        @{ Reason = 'CPU_ACCESS_DENIED' }
+    ) {
+        $candidate = New-CpuB2TerminalResult -Reason $Reason -PostQuery
+        $ledger = New-CpuB2RTrustedLedger @($true, $true, $true, $true, $false, $false)
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $ledger).disposition | Should -BeExactly 'VALID'
+        (New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedQueryAttempts $ledger).disposition |
+            Should -BeExactly 'VALID'
+    }
+
+    It 'I5B-B2R uses the trusted ledger for an omitted interior deadline query' {
+        $queried = New-CpuB1InteriorDeadlineResult -CountAmbiguousQuery
+        $queriedLedger = New-CpuB2RTrustedLedger @($true, $true, $true, $true, $true, $true)
+        (Test-CraCpuResult -Result $queried -TrustedQueryAttempts $queriedLedger).disposition | Should -BeExactly 'VALID'
+        $skipped = New-CpuB1InteriorDeadlineResult
+        $skippedLedger = New-CpuB2RTrustedLedger @($true, $true, $false, $true, $true, $true)
+        (Test-CraCpuResult -Result $skipped -TrustedQueryAttempts $skippedLedger).disposition | Should -BeExactly 'VALID'
+        $falseCount = New-CpuB2RTrustedLedger @($true, $true, $false, $true, $true, $true)
+        (Test-CraCpuResult -Result $queried -TrustedQueryAttempts $falseCount).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'I5B-B2R counts a final late N15 query even when projected times are omitted' {
+        $candidate = New-CpuB1FinalDeadlineResult -LateQuery
+        $ledger = New-CpuB2RTrustedLedger @($true, $true, $true, $true, $true, $true)
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $ledger).disposition | Should -BeExactly 'VALID'
+        (New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedQueryAttempts $ledger).disposition |
+            Should -BeExactly 'VALID'
+    }
+
+    It 'I5B-B2R counts an E0 <Case> native query without claiming admitted CPU' -ForEach @(
+        @{ Case = 'span' }; @{ Case = 'counter' }
+    ) {
+        $candidate = New-CpuB0BaselineResult $Case
+        $ledger = New-CpuB2RTrustedLedger @($true, $false, $false, $false, $false, $false)
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $ledger).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'I5B-B2R requires a query for post-query counter <Reason>' -ForEach @(
+        @{ Reason = 'CPU_COUNTER_INVALID' }
+        @{ Reason = 'CPU_COUNTER_REGRESSED' }
+    ) {
+        $candidate = New-CpuB0R3PreQueryStoppedResult $Reason
+        $candidate.sample_summary.attempted_reading_count = 1L
+        $queried = New-CpuB2RTrustedLedger @($true, $false, $false, $false, $false, $false)
+        $unqueried = New-CpuB2RTrustedLedger @($false, $false, $false, $false, $false, $false)
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $queried).disposition | Should -BeExactly 'VALID'
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $unqueried).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'I5B-B2R accepts zero queries after cancellation before E0' {
+        $candidate = New-CpuB0R4NoValidResult 'prequery-cancelled'
+        $ledger = New-CpuB2RTrustedLedger @($false, $false, $false, $false, $false, $false)
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $ledger).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'I5B-B2R keeps E0 <Case> terminal history separate despite omitted timestamps' -ForEach @(
+        @{ Case = 'pre'; Attempt = $false; Count = 0L }
+        @{ Case = 'post'; Attempt = $true; Count = 1L }
+    ) {
+        $candidate = New-CpuB0R3PreQueryStoppedResult 'CPU_PROCESS_EXIT_OBSERVED'
+        $candidate.sample_summary.attempted_reading_count = $Count
+        $ledger = New-CpuB2RTrustedLedger @($Attempt, $false, $false, $false, $false, $false)
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $ledger).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'I5B-B2R rejects a malformed private ledger <Case>' -ForEach @(
+        @{ Case = 'short' }; @{ Case = 'long' }; @{ Case = 'nonboolean' }
+        @{ Case = 'missing-entry' }; @{ Case = 'unknown-field' }; @{ Case = 'unsafe-entry' }
+        @{ Case = 'not-array' }
+    ) {
+        $candidate = New-CpuB2TerminalResult -PostQuery
+        $slots = [object[]]@($true, $true, $true, $true, $false, $false)
+        switch ($Case) {
+            'short' { $slots = [object[]]@($true, $true, $true, $true, $false) }
+            'long' { $slots = [object[]]@($true, $true, $true, $true, $false, $false, $false) }
+            'nonboolean' { $slots[3] = 1 }
+            'missing-entry' { $slots[3] = $null }
+            'unsafe-entry' { $slots[3] = [pscustomobject]@{ query = $true; private_path = 'PRIVATE_SENTINEL' } }
+            'not-array' { $slots = $true }
+        }
+        $ledger = [pscustomobject][ordered]@{ query_attempted_by_slot = $slots }
+        if ($Case -ceq 'unknown-field') { $ledger | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL' }
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $ledger).disposition | Should -BeExactly 'INVALID'
+        $rejected = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedQueryAttempts $ledger
+        $rejected.disposition | Should -BeExactly 'INVALID'
+        $rejected.result.PSObject.Properties.Name | Should -Not -Contain 'query_attempted_by_slot'
+        ($rejected | ConvertTo-Json -Depth 20) | Should -Not -Match 'PRIVATE_SENTINEL|query_attempted_by_slot'
+    }
+
+    It 'I5B-B2R rejects an execution ledger that omits a structurally proven query' {
+        $candidate = New-CpuB2TerminalResult -PostQuery
+        $ledger = New-CpuB2RTrustedLedger @($true, $true, $true, $false, $true, $false)
+        (Test-CraCpuResult -Result $candidate -TrustedQueryAttempts $ledger).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'I5B-B2R keeps execution provenance out of trusted safe rejection metadata' {
+        $candidate = New-CpuB2TerminalResult -PostQuery
+        $trusted = New-CpuI5TrustedMetadata $candidate
+        $candidate.sample_summary.attempted_reading_count = 3L
+        $ledger = New-CpuB2RTrustedLedger @($true, $true, $true, $true, $false, $false)
+        $rejected = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id `
+            -TrustedMetadata $trusted -TrustedQueryAttempts $ledger
+        $rejected.disposition | Should -BeExactly 'INVALID'
+        $rejected.result.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $rejected.result.scope.kind | Should -BeExactly 'SINGLE_PROCESS'
+        $rejected.result.prior_terminal | Should -BeNullOrEmpty
+        $rejected.result.PSObject.Properties.Name | Should -Not -Contain 'query_attempted_by_slot'
+        (Test-CraCpuResult -Result $rejected.result -TrustedMetadata $trusted).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'I5B-B2R does not emit a malformed private ledger into any PowerShell stream' {
+        $candidate = New-CpuB2TerminalResult -PostQuery
+        $ledger = [pscustomobject]@{
+            query_attempted_by_slot = [object[]]@($true, $true, $true, $true, $false, $false)
+            private_path = 'PRIVATE_SENTINEL'
+        }
+        $emitted = @(& {
+            New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedQueryAttempts $ledger -Verbose -Debug
+        } *>&1)
+        $emitted.Count | Should -Be 1
+        $emitted[0].disposition | Should -BeExactly 'INVALID'
+        ($emitted | ConvertTo-Json -Depth 20) | Should -Not -Match 'PRIVATE_SENTINEL|query_attempted_by_slot'
     }
 
     It 'T182A-N10-B0-result-<Case> preserves early baseline failure and actual query count' -ForEach @(
