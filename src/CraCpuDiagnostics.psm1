@@ -1313,6 +1313,44 @@ function Update-CraCpuState {
             return New-CraCpuStateResult VALID NONE $current
         }
 
+        'BASELINE_UNAVAILABLE' {
+            # E0 only. A queried E0 completes its pending post-check here, without
+            # advancing to E1 or emitting the normal next-slot wait intent.
+            if (-not (Test-CraCpuEventRecord $Event @(
+                'event_type', 'slot_index', 'reason_code', 'now_tick', 'post_query_status'
+            )) -or $current.phase -cne 'RUNNING' -or $current.next_slot_index -ne 0 -or
+                $current.valid_interval_count -ne 0 -or
+                $Event.reason_code -isnot [string] -or
+                $Event.reason_code -cnotin @('CPU_COUNTER_UNAVAILABLE', 'CPU_DEADLINE_MISSED', 'CPU_READ_SPAN_EXCEEDED') -or
+                $Event.post_query_status -isnot [string]) {
+                return New-CraCpuStateResult INVALID CPU_RESULT_INVALID $current
+            }
+            $slot = ConvertTo-CraCpuExactInteger $Event.slot_index ([System.Numerics.BigInteger]0) ([System.Numerics.BigInteger]0) CPU_RESULT_INVALID
+            # A query intent may exist after the pre-check; it is not an attempt
+            # until EVIDENCE_PROGRESS acknowledges the call. Drop an expired intent.
+            $unqueried = $current.slot_stage -cin @('CHECK_REQUESTED', 'QUERY_REQUESTED') -and $current.attempted_reading_count -eq 0
+            $queried = $current.slot_stage -ceq 'POST_CHECK_REQUESTED' -and
+                $current.attempted_reading_count -eq 1 -and $current.pending_valid_interval_count -eq 0
+            if ($slot.disposition -ceq 'INVALID' -or (-not $unqueried -and -not $queried) -or
+                ($unqueried -and ($Event.reason_code -cne 'CPU_DEADLINE_MISSED' -or $Event.post_query_status -cne 'NOT_ATTEMPTED')) -or
+                ($queried -and $Event.post_query_status -cnotin @('LIVE', 'EXITED', 'UNAVAILABLE', 'ACCESS_DENIED'))) {
+                return New-CraCpuStateResult INVALID CPU_RESULT_INVALID $current
+            }
+            $now = ConvertTo-CraCpuExactInteger $Event.now_tick ([System.Numerics.BigInteger]0) $script:CpuInt64Maximum CPU_TIMING_INVALID
+            if ($now.disposition -ceq 'INVALID' -or $now.value -lt $current.run_origin_tick) {
+                return Complete-CraCpuState $current STOPPED CPU_TIMING_INVALID
+            }
+            if ($queried -and $Event.post_query_status -cne 'LIVE') {
+                return Complete-CraCpuState $current STOPPED (Get-CraCpuLivenessFailureCode $Event.post_query_status)
+            }
+            $elapsed = $now.value - [System.Numerics.BigInteger]$current.run_origin_tick
+            if ($Event.reason_code -cin @('CPU_DEADLINE_MISSED', 'CPU_READ_SPAN_EXCEEDED') -and
+                ($elapsed * 1000) -le ([System.Numerics.BigInteger]$current.clock_frequency_hz * 250)) {
+                return New-CraCpuStateResult INVALID CPU_RESULT_INVALID $current
+            }
+            return Complete-CraCpuState $current FAILED CPU_BASELINE_UNAVAILABLE
+        }
+
         'NATURAL_HORIZON' {
             if (-not (Test-CraCpuEventRecord $Event @('event_type', 'now_tick')) -or
                 $current.phase -cne 'RUNNING') {
@@ -1532,6 +1570,63 @@ function Get-CraCpuEndpointContractValidation {
         reason_code = $Endpoint.reason_code
         cpu_since_baseline_100ns = $counter
     })
+}
+
+function Test-CraCpuE0ResultConsistency {
+    param(
+        [Parameter(Mandatory)][object[]] $Endpoints,
+        [Parameter(Mandatory)][object[]] $Samples,
+        [Parameter(Mandatory)][string] $Status,
+        [Parameter(Mandatory)][string] $ReasonCode,
+        [Parameter(Mandatory)][string] $Availability,
+        [Parameter(Mandatory)][string] $FindingCode,
+        [Parameter(Mandatory)][long] $AttemptedReadingCount,
+        [Parameter(Mandatory)][long] $FrequencyHz
+    )
+
+    # Called for every ordinary started result, after closed endpoint/sample and
+    # summary validation. AVAILABLE already requires real times, NONE and R[0]=0;
+    # E0 must also finish within START+250 ms before later evidence is admissible.
+    $e0 = $Endpoints[0]
+    if ($e0.availability -ceq 'AVAILABLE') {
+        if ($ReasonCode -ceq 'CPU_BASELINE_UNAVAILABLE') { return $false }
+        return ([System.Numerics.BigInteger]$e0.read_end_offset_ticks * 1000) -le
+            ([System.Numerics.BigInteger]$FrequencyHz * 250)
+    }
+
+    $baselineFailed = $e0.availability -ceq 'UNAVAILABLE' -and
+        $e0.reason_code -cin @('CPU_COUNTER_UNAVAILABLE', 'CPU_DEADLINE_MISSED', 'CPU_READ_SPAN_EXCEEDED') -and
+        $Status -ceq 'FAILED' -and $ReasonCode -ceq 'CPU_BASELINE_UNAVAILABLE'
+    $stoppedBeforeBaseline = $e0.availability -ceq 'UNAVAILABLE' -and
+        $e0.reason_code -cin @('CPU_PROCESS_EXIT_OBSERVED', 'CPU_IDENTITY_UNAVAILABLE', 'CPU_ACCESS_DENIED',
+            'CPU_COUNTER_REGRESSED', 'CPU_COUNTER_INVALID', 'CPU_TIMING_INVALID') -and
+        $Status -ceq 'STOPPED' -and $ReasonCode -ceq $e0.reason_code -and
+        ($AttemptedReadingCount -eq 1 -or
+            ($AttemptedReadingCount -eq 0 -and
+                $e0.reason_code -cin @('CPU_PROCESS_EXIT_OBSERVED', 'CPU_IDENTITY_UNAVAILABLE',
+                    'CPU_ACCESS_DENIED', 'CPU_TIMING_INVALID') -and
+                $null -eq $e0.read_start_offset_ticks -and $null -eq $e0.read_end_offset_ticks))
+    $cancelledBeforeBaseline = $e0.availability -ceq 'NOT_ATTEMPTED' -and
+        $e0.reason_code -cin @('CPU_NOT_REACHED', 'CPU_CANCELLED') -and
+        $Status -ceq 'CANCELLED' -and $ReasonCode -ceq 'CPU_CANCELLED'
+    if ((-not $baselineFailed -and -not $stoppedBeforeBaseline -and -not $cancelledBeforeBaseline) -or
+        $Availability -cne 'NO_INTERVALS' -or $FindingCode -cne 'NONE') {
+        return $false
+    }
+
+    # No baseline: no later query, replacement chain, or interval, irrespective
+    # of the claimed top-level status. Common validators enforce null metrics.
+    for ($i = 1; $i -lt $Endpoints.Count; $i++) {
+        $endpoint = $Endpoints[$i]
+        $sample = $Samples[$i - 1]
+        $futureReasonValid = $endpoint.reason_code -ceq 'CPU_NOT_REACHED' -or
+            ($cancelledBeforeBaseline -and $endpoint.reason_code -ceq 'CPU_CANCELLED')
+        if ($endpoint.availability -cne 'NOT_ATTEMPTED' -or -not $futureReasonValid -or
+            $sample.availability -cne 'NOT_ATTEMPTED' -or $sample.reason_code -cne 'CPU_NOT_REACHED') {
+            return $false
+        }
+    }
+    return $true
 }
 
 function Copy-CraCpuSampleContract {
@@ -2052,6 +2147,7 @@ function Get-CraCpuResultValidation {
     }
     $endpoints = [System.Collections.Generic.List[object]]::new()
     $readingStates = [System.Collections.Generic.List[object]]::new()
+    $baselineFailure = $Result.status -ceq 'FAILED' -and $Result.reason_code -ceq 'CPU_BASELINE_UNAVAILABLE'
     for ($i = 0; $i -le $intervalCount; $i++) {
         $endpointValidation = Get-CraCpuEndpointContractValidation $Result.endpoints[$i] $i $durationMs 250 $frequency
         if ($endpointValidation.disposition -ceq 'INVALID') { return $endpointValidation }
@@ -2059,15 +2155,18 @@ function Get-CraCpuResultValidation {
         $endpoints.Add($endpoint)
         $readingStates.Add([pscustomobject][ordered]@{
             index = [long]$i
-            query_attempted = $endpoint.availability -cne 'NOT_ATTEMPTED' -and $endpoint.reason_code -cne 'CPU_DEADLINE_MISSED'
+            query_attempted = $endpoint.availability -cne 'NOT_ATTEMPTED' -and
+                ($endpoint.reason_code -cne 'CPU_DEADLINE_MISSED' -or
+                    ($baselineFailure -and $i -eq 0 -and $null -ne $endpoint.read_end_offset_ticks))
             availability = $endpoint.availability
         })
     }
     $lastReadEnd = @($endpoints | Where-Object { $null -ne $_.read_end_offset_ticks } |
             ForEach-Object read_end_offset_ticks | Measure-Object -Maximum).Maximum
     if (($null -ne $lastReadEnd -and $Result.sampling_window.end_offset_ticks -lt $lastReadEnd) -or
-        ([System.Numerics.BigInteger]$Result.sampling_window.end_offset_ticks * 1000) -gt
-            ([System.Numerics.BigInteger]($durationMs + 250) * $frequency)) {
+        (-not $baselineFailure -and
+            ([System.Numerics.BigInteger]$Result.sampling_window.end_offset_ticks * 1000) -gt
+                ([System.Numerics.BigInteger]($durationMs + 250) * $frequency))) {
         return New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
     }
 
@@ -2099,10 +2198,61 @@ function Get-CraCpuResultValidation {
         $samples.Add((Copy-CraCpuSampleContract $sample))
     }
     $publicSummaryValidation = Get-CraCpuSummaryContractValidation $Result.sample_summary $summaryValidation.summary
+    if ($publicSummaryValidation.disposition -ceq 'INVALID' -and $baselineFailure -and
+        $endpoints[0].availability -ceq 'UNAVAILABLE' -and $endpoints[0].reason_code -ceq 'CPU_DEADLINE_MISSED' -and
+        $null -eq $endpoints[0].read_end_offset_ticks -and
+        ([System.Numerics.BigInteger]$Result.sampling_window.end_offset_ticks * 1000) -gt
+            ([System.Numerics.BigInteger]($durationMs + 250) * $frequency)) {
+        # Beyond the admission horizon, query timestamps must be omitted. The
+        # closed summary may report either no query (validated above) or one
+        # late E0 query. Check that second bounded ledger without inventing times.
+        $readingStates[0].query_attempted = $true
+        $summaryValidation = Get-CraCpuSummary $intervalCount $readingStates.ToArray() @($Result.samples) $frequency
+        if ($summaryValidation.disposition -ceq 'INVALID') {
+            return New-CraCpuValidationResult INVALID $summaryValidation.reason_code $null
+        }
+        $publicSummaryValidation = Get-CraCpuSummaryContractValidation $Result.sample_summary $summaryValidation.summary
+    }
+    if ($publicSummaryValidation.disposition -ceq 'INVALID' -and
+        $Result.status -ceq 'STOPPED' -and
+        $endpoints[0].availability -ceq 'UNAVAILABLE' -and
+        $endpoints[0].reason_code -cin @('CPU_PROCESS_EXIT_OBSERVED', 'CPU_IDENTITY_UNAVAILABLE',
+            'CPU_ACCESS_DENIED', 'CPU_TIMING_INVALID') -and
+        $Result.reason_code -ceq $endpoints[0].reason_code -and
+        $null -eq $endpoints[0].read_start_offset_ticks -and
+        $null -eq $endpoints[0].read_end_offset_ticks) {
+        # An E0 pre-query check can terminate the run without calling the CPU
+        # counter. The closed summary must then validate with zero query calls.
+        $readingStates[0].query_attempted = $false
+        $summaryValidation = Get-CraCpuSummary $intervalCount $readingStates.ToArray() @($Result.samples) $frequency
+        if ($summaryValidation.disposition -ceq 'INVALID') {
+            return New-CraCpuValidationResult INVALID $summaryValidation.reason_code $null
+        }
+        $publicSummaryValidation = Get-CraCpuSummaryContractValidation $Result.sample_summary $summaryValidation.summary
+    }
     if ($publicSummaryValidation.disposition -ceq 'INVALID') { return $publicSummaryValidation }
     if ($Result.availability -isnot [string] -or $Result.availability -cne $summaryValidation.summary.availability -or
         $Result.finding_code -isnot [string] -or $Result.finding_code -cne $summaryValidation.summary.finding_code) {
         return New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
+    }
+
+    if (-not (Test-CraCpuE0ResultConsistency $endpoints.ToArray() $samples.ToArray() $Result.status $Result.reason_code $Result.availability $Result.finding_code $summaryValidation.summary.attempted_reading_count $frequency)) {
+        return New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
+    }
+    if ($baselineFailure) {
+        $e0 = $endpoints[0]
+        $deadline = [System.Numerics.BigInteger]$frequency * 250
+        if (($e0.reason_code -ceq 'CPU_COUNTER_UNAVAILABLE' -and $null -ne $e0.read_end_offset_ticks -and
+                ([System.Numerics.BigInteger]$e0.read_end_offset_ticks * 1000) -gt $deadline) -or
+            ($e0.reason_code -ceq 'CPU_DEADLINE_MISSED' -and
+                (([System.Numerics.BigInteger]$Result.sampling_window.end_offset_ticks * 1000) -le $deadline -or
+                    ($null -ne $e0.read_end_offset_ticks -and
+                        ([System.Numerics.BigInteger]$e0.read_end_offset_ticks * 1000) -le $deadline))) -or
+            ($e0.reason_code -ceq 'CPU_READ_SPAN_EXCEEDED' -and
+                ($null -eq $e0.read_end_offset_ticks -or
+                    (([System.Numerics.BigInteger]$e0.read_end_offset_ticks - $e0.read_start_offset_ticks) * 1000) -le $deadline))) {
+            return New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
+        }
     }
 
     $statusValid = switch ($Result.status) {
@@ -2110,13 +2260,13 @@ function Get-CraCpuResultValidation {
         'PARTIAL' { $Result.reason_code -ceq 'CPU_INTERVALS_UNAVAILABLE' -and $Result.availability -ceq 'SOME_INTERVALS' }
         'STOPPED' { $Result.reason_code -cin @('CPU_PROCESS_EXIT_OBSERVED', 'CPU_IDENTITY_UNAVAILABLE', 'CPU_ACCESS_DENIED', 'CPU_COUNTER_REGRESSED', 'CPU_COUNTER_INVALID', 'CPU_TIMING_INVALID') }
         'CANCELLED' { $Result.reason_code -ceq 'CPU_CANCELLED' }
-        'FAILED' { $Result.reason_code -ceq 'CPU_NO_VALID_INTERVALS' -and $Result.availability -ceq 'NO_INTERVALS' }
+        'FAILED' { ($baselineFailure -or $Result.reason_code -ceq 'CPU_NO_VALID_INTERVALS') -and $Result.availability -ceq 'NO_INTERVALS' }
         default { $false }
     }
     if (-not $statusValid) {
         return New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
     }
-    if ($Result.status -cin @('COMPLETED', 'PARTIAL', 'FAILED') -and
+    if (-not $baselineFailure -and $Result.status -cin @('COMPLETED', 'PARTIAL', 'FAILED') -and
         ([System.Numerics.BigInteger]$Result.sampling_window.end_offset_ticks * 1000) -lt
             ([System.Numerics.BigInteger]$durationMs * $frequency)) {
         return New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
@@ -2381,16 +2531,6 @@ function Format-CraCpuSummary {
     }
 
     $summary = $safe.sample_summary
-    $totalDelta = [System.Numerics.BigInteger]0
-    foreach ($sample in $safe.samples) {
-        if ($sample.availability -ceq 'AVAILABLE') { $totalDelta += $sample.cpu_delta_100ns }
-    }
-    $cpuMilliseconds = if (($totalDelta % 10000) -eq 0) {
-        ($totalDelta / 10000).ToString([System.Globalization.CultureInfo]::InvariantCulture)
-    }
-    else {
-        (Format-CraCpuRate (New-CraCpuRational $totalDelta 10000)).formatted_value
-    }
     $coverageNumerator = [System.Numerics.BigInteger]$summary.valid_elapsed_ticks * 1000
     $coverageMilliseconds = if (($coverageNumerator % $safe.sampling_window.clock_frequency_hz) -eq 0) {
         ($coverageNumerator / $safe.sampling_window.clock_frequency_hz).ToString([System.Globalization.CultureInfo]::InvariantCulture)
@@ -2400,7 +2540,25 @@ function Format-CraCpuSummary {
     }
     $parts = [System.Collections.Generic.List[string]]::new()
     $parts.Add("Status $($safe.status) ($($safe.reason_code)).")
-    $parts.Add("D1 accumulated $cpuMilliseconds ms of CPU time across $($summary.valid_interval_count) of $($summary.expected_interval_count) valid intervals; $($summary.unavailable_interval_count) unavailable, $($summary.not_attempted_interval_count) unattempted, $($summary.timing_deviation_count) timing deviations.")
+    if ($summary.valid_interval_count -eq 0) {
+        $parts.Add("No valid CPU intervals were available for this CPU window. 0 of $($summary.expected_interval_count) valid intervals; $($summary.unavailable_interval_count) unavailable, $($summary.not_attempted_interval_count) unattempted, $($summary.timing_deviation_count) timing deviations.")
+        if ($safe.reason_code -ceq 'CPU_BASELINE_UNAVAILABLE') {
+            $parts.Add('No CPU interval evidence is returnable; E0 did not establish an admissible baseline.')
+        }
+    }
+    else {
+        $totalDelta = [System.Numerics.BigInteger]0
+        foreach ($sample in $safe.samples) {
+            if ($sample.availability -ceq 'AVAILABLE') { $totalDelta += $sample.cpu_delta_100ns }
+        }
+        $cpuMilliseconds = if (($totalDelta % 10000) -eq 0) {
+            ($totalDelta / 10000).ToString([System.Globalization.CultureInfo]::InvariantCulture)
+        }
+        else {
+            (Format-CraCpuRate (New-CraCpuRational $totalDelta 10000)).formatted_value
+        }
+        $parts.Add("D1 accumulated $cpuMilliseconds ms of CPU time across $($summary.valid_interval_count) of $($summary.expected_interval_count) valid intervals; $($summary.unavailable_interval_count) unavailable, $($summary.not_attempted_interval_count) unattempted, $($summary.timing_deviation_count) timing deviations.")
+    }
     $parts.Add("Readings $($summary.attempted_reading_count) of $($summary.expected_reading_count) attempted.")
     $parts.Add("Authorized window $($safe.sampling_window.duration_ms) ms; actual valid coverage $coverageMilliseconds ms.")
     if ($summary.valid_interval_count -gt 0) {

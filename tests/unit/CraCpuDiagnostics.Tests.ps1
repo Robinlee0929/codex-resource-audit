@@ -224,6 +224,581 @@ Describe 'T18.2A I5A closed result, configuration, and privacy contract' {
                 prior_terminal = $null
             }
         }
+
+        function New-CpuB0R2RebasedResult {
+            $result = New-CpuI5Result
+            $result.status = 'PARTIAL'; $result.reason_code = 'CPU_INTERVALS_UNAVAILABLE'
+            $result.endpoints[0] = New-CpuI5Endpoint 0 UNAVAILABLE CPU_COUNTER_UNAVAILABLE $null
+            for ($i = 1; $i -le 5; $i++) {
+                $result.endpoints[$i].cpu_since_baseline_100ns = [long](($i - 1) * 2000000L)
+            }
+            $result.samples[0] = New-CpuTestSample 1 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE 10000000L TIMING_WITHIN_TOLERANCE $null $null $null $null $null
+            $result.sample_summary.valid_interval_count = 4L
+            $result.sample_summary.unavailable_interval_count = 1L
+            $result.sample_summary.valid_elapsed_ticks = 40000000L
+            $result.sample_summary.uncovered_interval_count = 1L
+            $result.availability = 'SOME_INTERVALS'
+            $result
+        }
+
+        function Assert-CpuB0R2Rejected {
+            param([object] $Candidate)
+            $validation = Test-CraCpuResult $Candidate
+            $validation.disposition | Should -BeExactly 'INVALID'
+            $validation.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+            $built = New-CraCpuResult $Candidate $Candidate.run_id
+            $built.disposition | Should -BeExactly 'INVALID'
+            $built.result.status | Should -BeExactly 'FAILED'
+            $built.result.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+            $built.result.endpoints.Count | Should -Be 0
+            $built.result.samples.Count | Should -Be 0
+            $built.result.sample_summary | Should -BeNullOrEmpty
+            $built.result.finding_code | Should -BeExactly 'NONE'
+            $formatted = Format-CraCpuSummary $Candidate
+            $formatted.disposition | Should -BeExactly 'INVALID'
+            $formatted.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+            $formatted.formatted_value | Should -BeNullOrEmpty
+        }
+
+        # N10 S/C coverage only; orchestration closure still belongs to I5B.
+        function New-CpuB0BaselineResult {
+            param([string] $Case = 'counter')
+            $result = New-CpuI5Result
+            $result.status = 'FAILED'
+            $result.reason_code = 'CPU_BASELINE_UNAVAILABLE'
+            $result.sampling_window.end_offset_ticks = if ($Case -ceq 'counter') { 1000000L } else { 2600000L }
+            $result.endpoints = @(0..5 | ForEach-Object {
+                New-CpuI5Endpoint $_ NOT_ATTEMPTED CPU_NOT_REACHED $null
+            })
+            $e0 = $result.endpoints[0]
+            $e0.availability = 'UNAVAILABLE'
+            $e0.reason_code = if ($Case -ceq 'counter') { 'CPU_COUNTER_UNAVAILABLE' }
+                elseif ($Case -ceq 'span') { 'CPU_READ_SPAN_EXCEEDED' } else { 'CPU_DEADLINE_MISSED' }
+            if ($Case -cne 'missed') {
+                $e0.read_start_offset_ticks = 0L
+                $e0.read_end_offset_ticks = $result.sampling_window.end_offset_ticks
+            }
+            $result.samples = @(1..5 | ForEach-Object {
+                New-CpuTestSample $_ NOT_ATTEMPTED CPU_NOT_REACHED $null TIMING_UNAVAILABLE $null $null $null $null $null
+            })
+            # Independent literals: no production summary is used as the oracle.
+            $result.sample_summary = [pscustomobject][ordered]@{
+                expected_interval_count = 5L; valid_interval_count = 0L
+                unavailable_interval_count = 0L; not_attempted_interval_count = 5L
+                timing_deviation_count = 0L; expected_reading_count = 6L
+                attempted_reading_count = if ($Case -ceq 'missed') { 0L } else { 1L }
+                valid_elapsed_ticks = 0L; uncovered_interval_count = 5L
+                min_cpu_core_equivalents = $null; max_cpu_core_equivalents = $null
+                mean_cpu_core_equivalents = $null; min_cpu_percent_one_core_relative = $null
+                max_cpu_percent_one_core_relative = $null; mean_cpu_percent_one_core_relative = $null
+            }
+            $result.availability = 'NO_INTERVALS'
+            $result.finding_code = 'NONE'
+            $result
+        }
+
+        function New-CpuB0R3PreQueryStoppedResult {
+            param([string] $Reason)
+            $result = New-CpuB0BaselineResult
+            $result.status = 'STOPPED'
+            $result.reason_code = $Reason
+            $result.endpoints[0].reason_code = $Reason
+            $result.endpoints[0].read_start_offset_ticks = $null
+            $result.endpoints[0].read_end_offset_ticks = $null
+            $result.sample_summary.attempted_reading_count = 0L
+            $result
+        }
+
+        function New-CpuB0R4NoValidResult {
+            param([string] $Case)
+            switch ($Case) {
+                'prequery-stopped' { return New-CpuB0R3PreQueryStoppedResult 'CPU_PROCESS_EXIT_OBSERVED' }
+                'postquery-stopped' {
+                    $result = New-CpuB0BaselineResult
+                    $result.status = 'STOPPED'; $result.reason_code = 'CPU_PROCESS_EXIT_OBSERVED'
+                    $result.endpoints[0].reason_code = 'CPU_PROCESS_EXIT_OBSERVED'
+                    return $result
+                }
+                'prequery-cancelled' {
+                    $result = New-CpuB0BaselineResult
+                    $result.status = 'CANCELLED'; $result.reason_code = 'CPU_CANCELLED'
+                    $result.endpoints = @(0..5 | ForEach-Object { New-CpuI5Endpoint $_ NOT_ATTEMPTED CPU_CANCELLED $null })
+                    $result.sample_summary.attempted_reading_count = 0L
+                    return $result
+                }
+                'baseline-unavailable' { return New-CpuB0BaselineResult }
+                'natural-horizon' {
+                    $result = New-CpuI5Result
+                    $result.status = 'FAILED'; $result.reason_code = 'CPU_NO_VALID_INTERVALS'
+                    for ($i = 1; $i -le 5; $i++) {
+                        $result.endpoints[$i] = New-CpuI5Endpoint $i UNAVAILABLE CPU_COUNTER_UNAVAILABLE $null
+                        $result.samples[$i - 1] = New-CpuTestSample $i UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE 10000000L TIMING_WITHIN_TOLERANCE $null $null $null $null $null
+                    }
+                    $result.sample_summary = (New-CpuB0BaselineResult).sample_summary
+                    $result.sample_summary.attempted_reading_count = 6L
+                    $result.sample_summary.unavailable_interval_count = 5L
+                    $result.sample_summary.not_attempted_interval_count = 0L
+                    $result.availability = 'NO_INTERVALS'; $result.finding_code = 'NONE'
+                    return $result
+                }
+            }
+            throw "Unknown no-valid fixture $Case"
+        }
+    }
+
+    It 'T182A-N10-B0-result-<Case> preserves early baseline failure and actual query count' -ForEach @(
+        @{ Case = 'counter'; Attempts = 1L; EndpointReason = 'CPU_COUNTER_UNAVAILABLE' }
+        @{ Case = 'missed'; Attempts = 0L; EndpointReason = 'CPU_DEADLINE_MISSED' }
+        @{ Case = 'span'; Attempts = 1L; EndpointReason = 'CPU_READ_SPAN_EXCEEDED' }
+    ) {
+        $candidate = New-CpuB0BaselineResult $Case
+        $trusted = New-CpuI5TrustedMetadata (New-CpuB0BaselineResult $Case)
+        $trusted.prior_terminal = [pscustomobject]@{ status = 'FAILED'; reason_code = 'CPU_BASELINE_UNAVAILABLE' }
+        (Test-CraCpuResult $candidate -TrustedMetadata $trusted).disposition | Should -BeExactly 'VALID'
+        $projection = New-CraCpuResult $candidate $candidate.run_id -TrustedMetadata $trusted
+        $projection.disposition | Should -BeExactly 'VALID'
+        $projection.result.status | Should -BeExactly 'FAILED'
+        $projection.result.reason_code | Should -BeExactly 'CPU_BASELINE_UNAVAILABLE'
+        $projection.result.sampling_window.started | Should -BeTrue
+        $projection.result.sampling_window.end_offset_ticks | Should -BeLessThan 50000000L
+        $projection.result.prior_terminal | Should -BeNullOrEmpty
+        $projection.result.endpoints[0].reason_code | Should -BeExactly $EndpointReason
+        $projection.result.endpoints.Count | Should -Be 6
+        @($projection.result.endpoints | Where-Object { $null -ne $_.cpu_since_baseline_100ns }).Count | Should -Be 0
+        @($projection.result.endpoints[1..5] | Where-Object reason_code -CNE 'CPU_NOT_REACHED').Count | Should -Be 0
+        $projection.result.samples.Count | Should -Be 5
+        @($projection.result.samples | Where-Object availability -CNE 'NOT_ATTEMPTED').Count | Should -Be 0
+        $projection.result.sample_summary.attempted_reading_count | Should -Be $Attempts
+        $projection.result.sample_summary.valid_interval_count | Should -Be 0L
+        $projection.result.sample_summary.not_attempted_interval_count | Should -Be 5L
+        $projection.result.availability | Should -BeExactly 'NO_INTERVALS'
+        $projection.result.finding_code | Should -BeExactly 'NONE'
+        foreach ($name in @('min_cpu_core_equivalents', 'max_cpu_core_equivalents', 'mean_cpu_core_equivalents',
+            'min_cpu_percent_one_core_relative', 'max_cpu_percent_one_core_relative', 'mean_cpu_percent_one_core_relative')) {
+            $projection.result.sample_summary.$name | Should -BeNullOrEmpty
+        }
+        $formatted = Format-CraCpuSummary $projection.result
+        $formatted.disposition | Should -BeExactly 'VALID'
+        $formatted.formatted_value | Should -Match 'CPU_BASELINE_UNAVAILABLE'
+        $formatted.formatted_value | Should -Not -Match 'Mean|maximum|No CPU time advance was observed|CPU activity was observed'
+        $formatted.formatted_value | Should -Not -Match 'accumulated 0 ms'
+        $formatted.formatted_value | Should -Match 'No CPU interval evidence is returnable'
+    }
+
+    It 'T182A-N10-B0-result rejects <Case> instead of rescuing a false baseline failure' -ForEach @(
+        @{ Case = 'pre-start' }
+        @{ Case = 'available-baseline' }
+        @{ Case = 'missing-e0' }
+        @{ Case = 'specific-terminal' }
+        @{ Case = 'future-query' }
+        @{ Case = 'future-cancelled' }
+        @{ Case = 'positive-finding' }
+        @{ Case = 'zero-finding' }
+        @{ Case = 'false-attempt-count' }
+        @{ Case = 'positive-statistic' }
+        @{ Case = 'null-summary' }
+        @{ Case = 'late-counter-without-deadline' }
+        @{ Case = 'premature-missed' }
+        @{ Case = 'short-read-span' }
+    ) {
+        $candidate = New-CpuB0BaselineResult
+        switch ($Case) {
+            'pre-start' { $candidate.sampling_window.started = $false }
+            'available-baseline' { $candidate.endpoints[0].availability = 'AVAILABLE'; $candidate.endpoints[0].reason_code = 'NONE'; $candidate.endpoints[0].cpu_since_baseline_100ns = 0L }
+            'missing-e0' { $candidate.endpoints[0] = New-CpuI5Endpoint 0 NOT_ATTEMPTED CPU_NOT_REACHED $null; $candidate.sample_summary.attempted_reading_count = 0L }
+            'specific-terminal' { $candidate.endpoints[0].reason_code = 'CPU_ACCESS_DENIED' }
+            'future-query' {
+                $candidate.endpoints[1] = New-CpuI5Endpoint 1 UNAVAILABLE CPU_COUNTER_UNAVAILABLE $null
+                $candidate.samples[0] = New-CpuTestSample 1 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE 9000000L TIMING_WITHIN_TOLERANCE $null $null $null $null $null
+                $candidate.sampling_window.end_offset_ticks = 10000000L
+                $candidate.sample_summary.attempted_reading_count = 2L
+                $candidate.sample_summary.unavailable_interval_count = 1L
+                $candidate.sample_summary.not_attempted_interval_count = 4L
+            }
+            'future-cancelled' { $candidate.endpoints[1].reason_code = 'CPU_CANCELLED' }
+            'positive-finding' { $candidate.finding_code = 'CPU_TIME_ADVANCED' }
+            'zero-finding' { $candidate.finding_code = 'NO_ADVANCE_IN_VALID_INTERVALS' }
+            'false-attempt-count' { $candidate.sample_summary.attempted_reading_count = 0L }
+            'positive-statistic' { $candidate.sample_summary.mean_cpu_core_equivalents = New-CpuTestRational 1 5 }
+            'null-summary' { $candidate.sample_summary = $null }
+            'late-counter-without-deadline' { $candidate.endpoints[0].read_end_offset_ticks = 2500001L; $candidate.sampling_window.end_offset_ticks = 2500001L }
+            'premature-missed' { $candidate = New-CpuB0BaselineResult missed; $candidate.sampling_window.end_offset_ticks = 2500000L }
+            'short-read-span' { $candidate.endpoints[0].reason_code = 'CPU_READ_SPAN_EXCEEDED' }
+        }
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $rejected = New-CraCpuResult $candidate $candidate.run_id
+        $rejected.disposition | Should -BeExactly 'INVALID'
+        $rejected.result.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $rejected.result.endpoints.Count | Should -Be 0
+    }
+
+    It 'T182A-N10-B0-result queried E0 that finishes late counts its attempt without admitting CPU' {
+        $candidate = New-CpuB0BaselineResult span
+        $candidate.endpoints[0].reason_code = 'CPU_DEADLINE_MISSED'
+        $candidate.endpoints[0].read_start_offset_ticks = 1000000L
+        # A 160 ms query bracket finishes 260 ms after START: deadline, not read span.
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.result.reason_code | Should -BeExactly 'CPU_BASELINE_UNAVAILABLE'
+        $built.result.sample_summary.attempted_reading_count | Should -Be 1L
+        $built.result.finding_code | Should -BeExactly 'NONE'
+        $candidate.sample_summary.attempted_reading_count = 0L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'T182A-N10-B0-result <Case> allows actual delayed finalization without extending evidence admission' -ForEach @(
+        @{ Case = 'counter' }; @{ Case = 'missed' }
+    ) {
+        $candidate = New-CpuB0BaselineResult $Case
+        $candidate.sampling_window.end_offset_ticks = 60000000L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.result.reason_code | Should -BeExactly 'CPU_BASELINE_UNAVAILABLE'
+        $built.result.sampling_window.end_offset_ticks | Should -Be 60000000L
+        $candidate.endpoints[0].read_start_offset_ticks = 0L
+        $candidate.endpoints[0].read_end_offset_ticks = 60000000L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'T182A-N10-B0-result preserves the specific E0 terminal <Reason>' -ForEach @(
+        @{ Reason = 'CPU_ACCESS_DENIED' }; @{ Reason = 'CPU_IDENTITY_UNAVAILABLE' }
+        @{ Reason = 'CPU_PROCESS_EXIT_OBSERVED' }; @{ Reason = 'CPU_TIMING_INVALID' }
+        @{ Reason = 'CPU_COUNTER_REGRESSED' }; @{ Reason = 'CPU_COUNTER_INVALID' }
+    ) {
+        $candidate = New-CpuB0BaselineResult
+        $candidate.status = 'STOPPED'; $candidate.reason_code = $Reason
+        $candidate.endpoints[0].reason_code = $Reason
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        (New-CraCpuResult $candidate $candidate.run_id).result.reason_code | Should -BeExactly $Reason
+        $candidate.status = 'FAILED'; $candidate.reason_code = 'CPU_BASELINE_UNAVAILABLE'
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'T182A-N10-B0-result retains a query attempt whose late timestamps must be omitted' {
+        $candidate = New-CpuB0BaselineResult missed
+        $candidate.sampling_window.end_offset_ticks = 60000000L
+        $candidate.sample_summary.attempted_reading_count = 1L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.result.reason_code | Should -BeExactly 'CPU_BASELINE_UNAVAILABLE'
+        $built.result.sample_summary.attempted_reading_count | Should -Be 1L
+        $built.result.endpoints[0].read_start_offset_ticks | Should -BeNullOrEmpty
+        $built.result.endpoints[0].read_end_offset_ticks | Should -BeNullOrEmpty
+        $built.result.finding_code | Should -BeExactly 'NONE'
+        $candidate.sample_summary.attempted_reading_count = 2L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+        $candidate.sample_summary.attempted_reading_count = 1L
+        $candidate.sampling_window.end_offset_ticks = 2600000L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'T182A-N10-B0-result rejection preserves trusted baseline terminal without evidence' {
+        $candidate = New-CpuB0BaselineResult
+        $trusted = New-CpuI5TrustedMetadata (New-CpuB0BaselineResult)
+        $trusted.prior_terminal = [pscustomobject]@{ status = 'FAILED'; reason_code = 'CPU_BASELINE_UNAVAILABLE' }
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'B0_PRIVATE_SENTINEL'
+        $rejected = New-CraCpuResult $candidate $candidate.run_id -TrustedMetadata $trusted
+        $rejected.result.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $rejected.result.prior_terminal.reason_code | Should -BeExactly 'CPU_BASELINE_UNAVAILABLE'
+        $rejected.result.sampling_window.started | Should -BeTrue
+        $rejected.result.endpoints.Count | Should -Be 0
+        $rejected.result.samples.Count | Should -Be 0
+        $rejected.result.sample_summary | Should -BeNullOrEmpty
+        (Test-CraCpuResult $rejected.result -TrustedMetadata $trusted).disposition | Should -BeExactly 'VALID'
+        (Format-CraCpuSummary $rejected.result -TrustedMetadata $trusted).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'T182A-N10-B0-result zero intervals at natural horizon remains a different failure' {
+        $candidate = New-CpuI5Result
+        $candidate.status = 'FAILED'; $candidate.reason_code = 'CPU_NO_VALID_INTERVALS'
+        for ($i = 1; $i -le 5; $i++) {
+            $candidate.endpoints[$i] = New-CpuI5Endpoint $i UNAVAILABLE CPU_COUNTER_UNAVAILABLE $null
+            $candidate.samples[$i - 1] = New-CpuTestSample $i UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE 10000000L TIMING_WITHIN_TOLERANCE $null $null $null $null $null
+        }
+        $candidate.sample_summary = (New-CpuB0BaselineResult).sample_summary
+        $candidate.sample_summary.attempted_reading_count = 6L
+        $candidate.sample_summary.unavailable_interval_count = 5L
+        $candidate.sample_summary.not_attempted_interval_count = 0L
+        $candidate.availability = 'NO_INTERVALS'; $candidate.finding_code = 'NONE'
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        (New-CraCpuResult $candidate $candidate.run_id).result.reason_code | Should -BeExactly 'CPU_NO_VALID_INTERVALS'
+        $candidate.sampling_window.end_offset_ticks = 49999999L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+        $candidate = New-CpuB0BaselineResult
+        $candidate.reason_code = 'CPU_NO_VALID_INTERVALS'
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'T182A-N10-B0-R2 rejects a missing baseline relabeled as full-horizon zero intervals' {
+        $candidate = New-CpuB0BaselineResult
+        $candidate.sampling_window.end_offset_ticks = 50000000L
+        $candidate.reason_code = 'CPU_NO_VALID_INTERVALS'
+        Assert-CpuB0R2Rejected $candidate
+    }
+
+    It 'T182A-N10-B0-R2 rejects E1 rebase with <Case> despite consistent later arithmetic' -ForEach @(
+        @{ Case = 'positive' }; @{ Case = 'zero' }; @{ Case = 'unattempted-e0' }
+        @{ Case = 'cancelled' }; @{ Case = 'stopped' }
+    ) {
+        $candidate = New-CpuB0R2RebasedResult
+        switch ($Case) {
+            'zero' {
+                foreach ($endpoint in $candidate.endpoints[1..5]) { $endpoint.cpu_since_baseline_100ns = 0L }
+                for ($i = 2; $i -le 5; $i++) {
+                    $candidate.samples[$i - 1] = New-CpuTestSample $i AVAILABLE NONE 10000000L TIMING_WITHIN_TOLERANCE 0L 0 1 0 1
+                }
+                foreach ($name in @('min_cpu_core_equivalents', 'max_cpu_core_equivalents', 'mean_cpu_core_equivalents',
+                    'min_cpu_percent_one_core_relative', 'max_cpu_percent_one_core_relative', 'mean_cpu_percent_one_core_relative')) {
+                    $candidate.sample_summary.$name = New-CpuTestRational 0 1
+                }
+                $candidate.finding_code = 'NO_ADVANCE_IN_VALID_INTERVALS'
+            }
+            { $_ -cin @('unattempted-e0', 'cancelled') } {
+                $candidate.endpoints[0] = New-CpuI5Endpoint 0 NOT_ATTEMPTED CPU_NOT_REACHED $null
+                $candidate.samples[0].elapsed_ticks = $null
+                $candidate.samples[0].timing_quality = 'TIMING_UNAVAILABLE'
+                $candidate.sample_summary.attempted_reading_count = 5L
+                if ($Case -ceq 'cancelled') {
+                    $candidate.status = 'CANCELLED'; $candidate.reason_code = 'CPU_CANCELLED'
+                    $candidate.endpoints[0].reason_code = 'CPU_CANCELLED'
+                }
+            }
+            'stopped' {
+                $candidate.status = 'STOPPED'; $candidate.reason_code = 'CPU_PROCESS_EXIT_OBSERVED'
+                $candidate.endpoints[0].reason_code = 'CPU_PROCESS_EXIT_OBSERVED'
+            }
+        }
+        Assert-CpuB0R2Rejected $candidate
+    }
+
+    It 'T182A-N10-B0-R2 rejects COMPLETED with a late E0 despite exact interval and summary arithmetic' {
+        $candidate = New-CpuI5Result
+        # E0's 160 ms bracket ends at START+260 ms. Later intervals are coherent.
+        $candidate.endpoints[0].read_start_offset_ticks = 1000000L
+        $candidate.endpoints[0].read_end_offset_ticks = 2600000L
+        $candidate.samples[0] = New-CpuTestSample 1 AVAILABLE NONE 7400000L TIMING_DEVIATION 2000000L 10 37 1000 37
+        $candidate.sample_summary.timing_deviation_count = 1L
+        $candidate.sample_summary.valid_elapsed_ticks = 47400000L
+        $candidate.sample_summary.max_cpu_core_equivalents = New-CpuTestRational 10 37
+        $candidate.sample_summary.max_cpu_percent_one_core_relative = New-CpuTestRational 1000 37
+        $candidate.sample_summary.mean_cpu_core_equivalents = New-CpuTestRational 50 237
+        $candidate.sample_summary.mean_cpu_percent_one_core_relative = New-CpuTestRational 5000 237
+        Assert-CpuB0R2Rejected $candidate
+    }
+
+    It 'T182A-N10-B0-R2 accepts an established E0 exactly at its 250 ms admission boundary' {
+        $candidate = New-CpuI5Result
+        $candidate.endpoints[0].read_start_offset_ticks = 1000000L
+        $candidate.endpoints[0].read_end_offset_ticks = 2500000L
+        $candidate.samples[0] = New-CpuTestSample 1 AVAILABLE NONE 7500000L TIMING_WITHIN_TOLERANCE 2000000L 4 15 80 3
+        $candidate.sample_summary.valid_elapsed_ticks = 47500000L
+        $candidate.sample_summary.max_cpu_core_equivalents = New-CpuTestRational 4 15
+        $candidate.sample_summary.max_cpu_percent_one_core_relative = New-CpuTestRational 80 3
+        $candidate.sample_summary.mean_cpu_core_equivalents = New-CpuTestRational 4 19
+        $candidate.sample_summary.mean_cpu_percent_one_core_relative = New-CpuTestRational 400 19
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        (New-CraCpuResult $candidate $candidate.run_id).result.status | Should -BeExactly 'COMPLETED'
+    }
+
+    It 'T182A-N10-B0-R2 rejects later <Terminal> after an E0 failure, even without valid CPU intervals' -ForEach @(
+        @{ Terminal = 'STOPPED' }; @{ Terminal = 'CANCELLED' }
+    ) {
+        $candidate = New-CpuB0BaselineResult
+        $candidate.status = $Terminal
+        $candidate.reason_code = if ($Terminal -ceq 'STOPPED') { 'CPU_PROCESS_EXIT_OBSERVED' } else { 'CPU_CANCELLED' }
+        $candidate.endpoints[1] = New-CpuI5Endpoint 1 UNAVAILABLE $(if ($Terminal -ceq 'STOPPED') { 'CPU_PROCESS_EXIT_OBSERVED' } else { 'CPU_COUNTER_UNAVAILABLE' }) $null
+        $candidate.samples[0] = New-CpuTestSample 1 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE 9000000L TIMING_WITHIN_TOLERANCE $null $null $null $null $null
+        $candidate.sampling_window.end_offset_ticks = 10000000L
+        $candidate.sample_summary.attempted_reading_count = 2L
+        $candidate.sample_summary.unavailable_interval_count = 1L
+        $candidate.sample_summary.not_attempted_interval_count = 4L
+        if ($Terminal -ceq 'CANCELLED') {
+            foreach ($endpoint in $candidate.endpoints[2..5]) { $endpoint.reason_code = 'CPU_CANCELLED' }
+        }
+        Assert-CpuB0R2Rejected $candidate
+    }
+
+    It 'T182A-N10-B0-R2 rejects relabeling baseline failure as cancellation without later queries' {
+        $candidate = New-CpuB0BaselineResult
+        $candidate.status = 'CANCELLED'; $candidate.reason_code = 'CPU_CANCELLED'
+        foreach ($endpoint in $candidate.endpoints[1..5]) { $endpoint.reason_code = 'CPU_CANCELLED' }
+        Assert-CpuB0R2Rejected $candidate
+    }
+
+    It 'T182A-N10-B0-R2 accepts actual cancellation after START before E0 query' {
+        $candidate = New-CpuB0BaselineResult
+        $candidate.status = 'CANCELLED'; $candidate.reason_code = 'CPU_CANCELLED'
+        $candidate.endpoints = @(0..5 | ForEach-Object { New-CpuI5Endpoint $_ NOT_ATTEMPTED CPU_CANCELLED $null })
+        $candidate.sample_summary.attempted_reading_count = 0L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.disposition | Should -BeExactly 'VALID'
+        $built.result.status | Should -BeExactly 'CANCELLED'
+        $built.result.sampling_window.started | Should -BeTrue
+        $built.result.sample_summary.valid_interval_count | Should -Be 0L
+        $built.result.finding_code | Should -BeExactly 'NONE'
+        $formatted = Format-CraCpuSummary $built.result
+        $formatted.disposition | Should -BeExactly 'VALID'
+        $formatted.formatted_value | Should -Match 'No valid CPU intervals were available for this CPU window'
+    }
+
+    It 'T182A-N10-B0-R2 preserves established baseline with later <Terminal> and prior evidence' -ForEach @(
+        @{ Terminal = 'STOPPED' }; @{ Terminal = 'CANCELLED' }
+    ) {
+        $candidate = New-CpuI5Result
+        $candidate.status = $Terminal
+        $candidate.reason_code = if ($Terminal -ceq 'STOPPED') { 'CPU_PROCESS_EXIT_OBSERVED' } else { 'CPU_CANCELLED' }
+        for ($i = 3; $i -le 5; $i++) {
+            $candidate.endpoints[$i] = New-CpuI5Endpoint $i NOT_ATTEMPTED $(if ($Terminal -ceq 'CANCELLED') { 'CPU_CANCELLED' } else { 'CPU_NOT_REACHED' }) $null
+            $candidate.samples[$i - 1] = New-CpuTestSample $i NOT_ATTEMPTED CPU_NOT_REACHED $null TIMING_UNAVAILABLE $null $null $null $null $null
+        }
+        $candidate.sampling_window.end_offset_ticks = 25000000L
+        $candidate.sample_summary.valid_interval_count = 2L
+        $candidate.sample_summary.not_attempted_interval_count = 3L
+        $candidate.sample_summary.attempted_reading_count = 3L
+        $candidate.sample_summary.valid_elapsed_ticks = 20000000L
+        $candidate.sample_summary.uncovered_interval_count = 3L
+        $candidate.availability = 'SOME_INTERVALS'
+        if ($Terminal -ceq 'STOPPED') {
+            $candidate.endpoints[3] = New-CpuI5Endpoint 3 UNAVAILABLE CPU_PROCESS_EXIT_OBSERVED $null
+            $candidate.samples[2] = New-CpuTestSample 3 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE 10000000L TIMING_WITHIN_TOLERANCE $null $null $null $null $null
+            $candidate.sampling_window.end_offset_ticks = 30000000L
+            $candidate.sample_summary.attempted_reading_count = 4L
+            $candidate.sample_summary.unavailable_interval_count = 1L
+            $candidate.sample_summary.not_attempted_interval_count = 2L
+        }
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.disposition | Should -BeExactly 'VALID'
+        $built.result.status | Should -BeExactly $Terminal
+        $built.result.sample_summary.valid_interval_count | Should -Be 2L
+        $built.result.finding_code | Should -BeExactly 'CPU_TIME_ADVANCED'
+        $formatted = Format-CraCpuSummary $built.result
+        $formatted.disposition | Should -BeExactly 'VALID'
+        $formatted.formatted_value | Should -Match 'D1 accumulated .* ms of CPU time across 2 of 5 valid intervals'
+        $formatted.formatted_value | Should -Match 'CPU activity was observed in measured intervals'
+    }
+
+    It 'T182A-N10-B0-R3 accepts pre-query <Reason> with zero CPU queries' -ForEach @(
+        @{ Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+        @{ Reason = 'CPU_IDENTITY_UNAVAILABLE' }
+        @{ Reason = 'CPU_ACCESS_DENIED' }
+        @{ Reason = 'CPU_TIMING_INVALID' }
+    ) {
+        $candidate = New-CpuB0R3PreQueryStoppedResult $Reason
+        $validated = Test-CraCpuResult $candidate
+        $validated.disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.disposition | Should -BeExactly 'VALID'
+        $built.result.status | Should -BeExactly 'STOPPED'
+        $built.result.reason_code | Should -BeExactly $Reason
+        $built.result.sampling_window.started | Should -BeTrue
+        $built.result.sample_summary.attempted_reading_count | Should -Be 0L
+        $built.result.sample_summary.valid_interval_count | Should -Be 0L
+        $built.result.availability | Should -BeExactly 'NO_INTERVALS'
+        $built.result.finding_code | Should -BeExactly 'NONE'
+        @($built.result.endpoints[1..5] | Where-Object availability -CNE 'NOT_ATTEMPTED').Count | Should -Be 0
+        @($built.result.samples | Where-Object availability -CNE 'NOT_ATTEMPTED').Count | Should -Be 0
+        $built.result.sample_summary.mean_cpu_core_equivalents | Should -BeNullOrEmpty
+        $formatted = Format-CraCpuSummary $built.result
+        $formatted.disposition | Should -BeExactly 'VALID'
+        $formatted.formatted_value | Should -Match 'Readings 0 of 6 attempted'
+        $formatted.formatted_value | Should -Not -Match 'No CPU time advance|CPU activity was observed'
+    }
+
+    It 'T182A-N10-B0-R3 retains one E0 query when post-query process exit discards timestamps' {
+        $candidate = New-CpuB0R3PreQueryStoppedResult 'CPU_PROCESS_EXIT_OBSERVED'
+        $candidate.sample_summary.attempted_reading_count = 1L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.disposition | Should -BeExactly 'VALID'
+        $built.result.status | Should -BeExactly 'STOPPED'
+        $built.result.sample_summary.attempted_reading_count | Should -Be 1L
+    }
+
+    It 'T182A-N10-B0-R3 rejects false pre-query <Case>' -ForEach @(
+        @{ Case = 'counter-failure-disguised' }
+        @{ Case = 'terminal-reason-mismatch' }
+        @{ Case = 'later-query' }
+    ) {
+        $candidate = New-CpuB0R3PreQueryStoppedResult 'CPU_PROCESS_EXIT_OBSERVED'
+        switch ($Case) {
+            'counter-failure-disguised' { $candidate.endpoints[0].reason_code = 'CPU_COUNTER_UNAVAILABLE' }
+            'terminal-reason-mismatch' { $candidate.reason_code = 'CPU_IDENTITY_UNAVAILABLE' }
+            'later-query' {
+                $candidate.endpoints[1] = New-CpuI5Endpoint 1 UNAVAILABLE CPU_COUNTER_UNAVAILABLE $null
+                $candidate.samples[0] = New-CpuTestSample 1 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE $null TIMING_UNAVAILABLE $null $null $null $null $null
+                $candidate.sample_summary.attempted_reading_count = 1L
+                $candidate.sample_summary.unavailable_interval_count = 1L
+                $candidate.sample_summary.not_attempted_interval_count = 4L
+                $candidate.sampling_window.end_offset_ticks = 10000000L
+            }
+        }
+        Assert-CpuB0R2Rejected $candidate
+    }
+
+    It 'T182A-N10-B0-R3 requires an E0 query for <Reason>' -ForEach @(
+        @{ Reason = 'CPU_COUNTER_INVALID' }
+        @{ Reason = 'CPU_COUNTER_REGRESSED' }
+    ) {
+        $candidate = New-CpuB0R3PreQueryStoppedResult $Reason
+        Assert-CpuB0R2Rejected $candidate
+        $candidate.sample_summary.attempted_reading_count = 1L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'T182A-N10-B0-R4 <Case> has no measured-zero CPU wording' -ForEach @(
+        @{ Case = 'prequery-stopped'; Attempts = 0L }
+        @{ Case = 'prequery-cancelled'; Attempts = 0L }
+        @{ Case = 'baseline-unavailable'; Attempts = 1L }
+        @{ Case = 'natural-horizon'; Attempts = 6L }
+        @{ Case = 'postquery-stopped'; Attempts = 1L }
+    ) {
+        $candidate = New-CpuB0R4NoValidResult $Case
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.disposition | Should -BeExactly 'VALID'
+        $built.result.sample_summary.valid_interval_count | Should -Be 0L
+        $built.result.sample_summary.attempted_reading_count | Should -Be $Attempts
+        $built.result.availability | Should -BeExactly 'NO_INTERVALS'
+        $built.result.finding_code | Should -BeExactly 'NONE'
+        $formatted = Format-CraCpuSummary $built.result
+        $formatted.disposition | Should -BeExactly 'VALID'
+        $formatted.formatted_value | Should -Match 'No valid CPU intervals were available for this CPU window'
+        $formatted.formatted_value | Should -Not -Match '(?i)(?:accumulated|used)\s+0(?:\.00)?\s+ms|0(?:\.00)?\s+ms\s+of\s+CPU\s+time|zero\s+CPU|no\s+CPU\s+time\s+advanc|no\s+CPU\s+activity(?!\s+finding)'
+        $formatted.formatted_value | Should -Not -Match '(?i)\b(?:mean|maximum|minimum)\s+0(?:\.00)?%'
+        $formatted.formatted_value | Should -Match "Readings $Attempts of 6 attempted"
+    }
+
+    It 'T182A-N10-B0-R4 retains measured zero CPU over valid intervals' {
+        $candidate = New-CpuI5Result
+        foreach ($endpoint in $candidate.endpoints) { $endpoint.cpu_since_baseline_100ns = 0L }
+        for ($i = 1; $i -le 5; $i++) {
+            $candidate.samples[$i - 1] = New-CpuTestSample $i AVAILABLE NONE 10000000L TIMING_WITHIN_TOLERANCE 0L 0 1 0 1
+        }
+        $computed = Get-CraCpuSummary 5 (0..5 | ForEach-Object { New-CpuTestReadingState $_ $true AVAILABLE }) $candidate.samples 10000000L
+        $computed.disposition | Should -BeExactly 'VALID'
+        $candidate.sample_summary = New-CpuI5PublicSummary $computed.summary
+        $candidate.finding_code = $computed.summary.finding_code
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $candidate.finding_code | Should -BeExactly 'NO_ADVANCE_IN_VALID_INTERVALS'
+        $formatted = Format-CraCpuSummary $candidate
+        $formatted.disposition | Should -BeExactly 'VALID'
+        $formatted.formatted_value | Should -Match 'D1 accumulated 0 ms of CPU time across 5 of 5 valid intervals'
+        $formatted.formatted_value | Should -Match 'No CPU time advance was observed in valid measured intervals'
+    }
+
+    It 'T182A-N10-B0-R4 retains positive and partial measured CPU wording' -ForEach @(
+        @{ Partial = $false; Intervals = 5L }
+        @{ Partial = $true; Intervals = 3L }
+    ) {
+        $candidate = New-CpuI5Result -Partial:$Partial
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $formatted = Format-CraCpuSummary $candidate
+        $formatted.disposition | Should -BeExactly 'VALID'
+        $formatted.formatted_value | Should -Match "D1 accumulated .* ms of CPU time across $Intervals of 5 valid intervals"
+        $formatted.formatted_value | Should -Match 'CPU activity was observed in measured intervals'
+        $formatted.formatted_value | Should -Not -Match 'No valid CPU intervals were available'
     }
 
     It 'T182A-P07-result accepts cancellation after Gate A without START and retains reviewed plan' {
@@ -1551,6 +2126,142 @@ Describe 'T18.2A I3 pure authorization, schedule, and terminal reducer' {
             }
             return $state
         }
+    }
+
+    It 'T182A-N10-B0-state <Case> terminates at E0 and latches without later effects' -ForEach @(
+        @{ Case = 'counter'; Queried = $true; Prechecked = $false; Reason = 'CPU_COUNTER_UNAVAILABLE'; Tick = 21000000L }
+        @{ Case = 'missed'; Queried = $false; Prechecked = $false; Reason = 'CPU_DEADLINE_MISSED'; Tick = 22600000L }
+        @{ Case = 'span'; Queried = $true; Prechecked = $false; Reason = 'CPU_READ_SPAN_EXCEEDED'; Tick = 22600000L }
+        @{ Case = 'queried-late'; Queried = $true; Prechecked = $false; Reason = 'CPU_DEADLINE_MISSED'; Tick = 22600000L }
+        @{ Case = 'missed-after-precheck'; Queried = $false; Prechecked = $true; Reason = 'CPU_DEADLINE_MISSED'; Tick = 22600000L }
+    ) {
+        $state = Get-CpuI3RunningState
+        if ($Queried -or $Prechecked) {
+            $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{
+                slot_index = 0L; liveness = 'LIVE'
+            })).state
+        }
+        if ($Queried) {
+            $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent EVIDENCE_PROGRESS @{
+                slot_index = 0L; attempted_reading_count = 1L; valid_interval_count = 0L
+            })).state
+        }
+        $before = $state | ConvertTo-Json -Depth 5 -Compress
+        $terminal = Invoke-CpuI3Transition $state (New-CpuTestStateEvent BASELINE_UNAVAILABLE @{
+            slot_index = 0L; reason_code = $Reason; now_tick = $Tick
+            post_query_status = if ($Queried) { 'LIVE' } else { 'NOT_ATTEMPTED' }
+        })
+        $terminal.disposition | Should -BeExactly 'VALID'
+        $terminal.state.phase | Should -BeExactly 'FAILED'
+        $terminal.state.reason_code | Should -BeExactly 'CPU_BASELINE_UNAVAILABLE'
+        $terminal.state.terminal_latched | Should -BeTrue
+        $terminal.state.next_slot_index | Should -Be 0L
+        $terminal.state.valid_interval_count | Should -Be 0L
+        $terminal.state.attempted_reading_count | Should -Be ([long]$Queried)
+        $terminal.state.binding_disposed | Should -BeTrue
+        @($terminal.effects).Count | Should -Be 1
+        $terminal.effects[0].effect_type | Should -BeExactly 'DISPOSE_TARGET'
+        foreach ($name in @('plan_token', 'duration_seconds', 'gate_a_success_tick', 'gate_b_success_tick',
+            'gate_a_to_b_elapsed_ticks', 'clock_frequency_hz', 'run_origin_tick')) {
+            $terminal.state.$name | Should -Be $state.$name
+        }
+        ($state | ConvertTo-Json -Depth 5 -Compress) | Should -BeExactly $before
+        foreach ($later in @(
+            (New-CpuTestStateEvent NATURAL_HORIZON @{ now_tick = 70000000L }),
+            (New-CpuTestStateEvent COMPLETION),
+            (New-CpuTestStateEvent EVIDENCE_PROGRESS @{ slot_index = 1L; attempted_reading_count = 2L; valid_interval_count = 1L }),
+            (New-CpuTestStateEvent CANCEL),
+            (New-CpuTestStateEvent SLOT_DUE @{ slot_index = 1L; now_tick = 30000000L }),
+            (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{ slot_index = 1L; liveness = 'LIVE' }),
+            (New-CpuTestStateEvent BASELINE_UNAVAILABLE @{ slot_index = 0L; reason_code = $Reason; now_tick = $Tick; post_query_status = 'LIVE' })
+        )) {
+            $latched = Invoke-CpuI3Transition $terminal.state $later
+            $latched.disposition | Should -BeExactly 'VALID'
+            $latched.state.reason_code | Should -BeExactly 'CPU_BASELINE_UNAVAILABLE'
+            ($latched.state | ConvertTo-Json -Depth 5 -Compress) | Should -BeExactly ($terminal.state | ConvertTo-Json -Depth 5 -Compress)
+            $latched.effects.Count | Should -Be 0
+        }
+    }
+
+    It 'T182A-N10-B0-state rejects <Case> without query or failure relabeling' -ForEach @(
+        @{ Case = 'pre-start' }; @{ Case = 'slot-one' }; @{ Case = 'early-missed' }
+        @{ Case = 'counter-without-query' }; @{ Case = 'specific-reason' }
+        @{ Case = 'baseline-already-accepted' }; @{ Case = 'extra-field' }
+    ) {
+        $state = Get-CpuI3RunningState
+        $event = New-CpuTestStateEvent BASELINE_UNAVAILABLE @{
+            slot_index = 0L; reason_code = 'CPU_DEADLINE_MISSED'; now_tick = 22600000L
+            post_query_status = 'NOT_ATTEMPTED'
+        }
+        switch ($Case) {
+            'pre-start' { $state = Get-CpuI3ReviewedState }
+            'slot-one' { $event.slot_index = 1L }
+            'early-missed' { $event.now_tick = 22500000L }
+            'counter-without-query' { $event.reason_code = 'CPU_COUNTER_UNAVAILABLE' }
+            'specific-reason' { $event.reason_code = 'CPU_ACCESS_DENIED' }
+            'baseline-already-accepted' {
+                $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{ slot_index = 0L; liveness = 'LIVE' })).state
+                $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent EVIDENCE_PROGRESS @{ slot_index = 0L; attempted_reading_count = 1L; valid_interval_count = 0L })).state
+                $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent POST_QUERY_LIVENESS @{ slot_index = 0L; liveness = 'LIVE' })).state
+            }
+            'extra-field' { $event | Add-Member -NotePropertyName retry -NotePropertyValue $true }
+        }
+        $result = Invoke-CpuI3Transition $state $event
+        $result.disposition | Should -BeExactly 'INVALID'
+        $result.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $result.state.reason_code | Should -BeExactly $state.reason_code
+        $result.effects.Count | Should -Be 0
+    }
+
+    It 'T182A-N10-B0-state preserves E0 <Reason> before a later baseline failure' -ForEach @(
+        @{ Reason = 'CPU_PROCESS_EXIT_OBSERVED'; Pre = 'EXITED'; Counter = 'AVAILABLE'; Timing = 'VALID'; Cancel = $false }
+        @{ Reason = 'CPU_IDENTITY_UNAVAILABLE'; Pre = 'UNAVAILABLE'; Counter = 'AVAILABLE'; Timing = 'VALID'; Cancel = $false }
+        @{ Reason = 'CPU_ACCESS_DENIED'; Pre = 'LIVE'; Counter = 'ACCESS_DENIED'; Timing = 'VALID'; Cancel = $false }
+        @{ Reason = 'CPU_COUNTER_REGRESSED'; Pre = 'LIVE'; Counter = 'REGRESSED'; Timing = 'VALID'; Cancel = $false }
+        @{ Reason = 'CPU_COUNTER_INVALID'; Pre = 'LIVE'; Counter = 'INVALID'; Timing = 'VALID'; Cancel = $false }
+        @{ Reason = 'CPU_TIMING_INVALID'; Pre = 'LIVE'; Counter = 'UNAVAILABLE'; Timing = 'INVALID'; Cancel = $false }
+        @{ Reason = 'CPU_CANCELLED'; Pre = 'LIVE'; Counter = 'UNAVAILABLE'; Timing = 'VALID'; Cancel = $true }
+    ) {
+        $terminal = Invoke-CpuI3Transition (Get-CpuI3RunningState) (New-CpuTestStateEvent TERMINAL_BOUNDARY @{
+            cancellation = $Cancel; timing_status = $Timing; pre_query_status = $Pre
+            counter_status = $Counter; post_query_status = 'LIVE'
+        })
+        $terminal.state.reason_code | Should -BeExactly $Reason
+        $terminal.state.phase | Should -BeExactly $(if ($Cancel) { 'CANCELLED' } else { 'STOPPED' })
+        $later = Invoke-CpuI3Transition $terminal.state (New-CpuTestStateEvent BASELINE_UNAVAILABLE @{
+            slot_index = 0L; reason_code = 'CPU_DEADLINE_MISSED'; now_tick = 22600000L; post_query_status = 'NOT_ATTEMPTED'
+        })
+        $later.state.reason_code | Should -BeExactly $Reason
+        $later.effects.Count | Should -Be 0
+    }
+
+    It 'T182A-N10-B0-state E0 postcheck <Post> takes precedence over counter unavailable' -ForEach @(
+        @{ Post = 'EXITED'; Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+        @{ Post = 'UNAVAILABLE'; Reason = 'CPU_IDENTITY_UNAVAILABLE' }
+        @{ Post = 'ACCESS_DENIED'; Reason = 'CPU_ACCESS_DENIED' }
+    ) {
+        $state = Get-CpuI3RunningState
+        $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{ slot_index = 0L; liveness = 'LIVE' })).state
+        $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent EVIDENCE_PROGRESS @{ slot_index = 0L; attempted_reading_count = 1L; valid_interval_count = 0L })).state
+        $terminal = Invoke-CpuI3Transition $state (New-CpuTestStateEvent BASELINE_UNAVAILABLE @{
+            slot_index = 0L; reason_code = 'CPU_COUNTER_UNAVAILABLE'; now_tick = 21000000L; post_query_status = $Post
+        })
+        $terminal.disposition | Should -BeExactly 'VALID'
+        $terminal.state.phase | Should -BeExactly 'STOPPED'
+        $terminal.state.reason_code | Should -BeExactly $Reason
+        $terminal.effects.Count | Should -Be 1
+        $terminal.effects[0].effect_type | Should -BeExactly 'DISPOSE_TARGET'
+    }
+
+    It 'T182A-N10-B0-state invalid clock at E0 remains a specific timing terminal' {
+        $terminal = Invoke-CpuI3Transition (Get-CpuI3RunningState) (New-CpuTestStateEvent BASELINE_UNAVAILABLE @{
+            slot_index = 0L; reason_code = 'CPU_DEADLINE_MISSED'; now_tick = 19999999L; post_query_status = 'NOT_ATTEMPTED'
+        })
+        $terminal.disposition | Should -BeExactly 'VALID'
+        $terminal.state.phase | Should -BeExactly 'STOPPED'
+        $terminal.state.reason_code | Should -BeExactly 'CPU_TIMING_INVALID'
+        $terminal.effects.Count | Should -Be 1
+        $terminal.effects[0].effect_type | Should -BeExactly 'DISPOSE_TARGET'
     }
 
     It 'I5A-contract exports the existing primitives, state functions, and four closed-result functions' {
