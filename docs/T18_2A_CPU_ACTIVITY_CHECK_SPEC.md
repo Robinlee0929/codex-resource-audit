@@ -309,9 +309,10 @@ are closed; no arbitrary properties, raw objects, prose or exception text.
 | record_type / contract_version | CPU_DIAGNOSTIC_RESULT / integer 1; independent of T17 and FOLLOWUP_RESULT. |
 | check_type / run_id | CPU_ACTIVITY_CHECK / new random GUID per attempt or rejected request; an ID alone does not imply START. |
 | status / reason_code | One terminal status and reason from section 11. |
+| prior_terminal | Always present; null for ordinary results. Only on representation rejection, a separately trusted, already-latched CPU-check-local terminal may be retained as a closed plain object with exactly status and reason_code from the section 11 matrix. Candidate content is never authority for this field. It grants no authorization and says nothing about CRA Incident lifecycle, ownership or cause. |
 | scope | kind=SINGLE_PROCESS, scope_ref=D1, selection_method=MANUAL_PID_THEN_HANDLE_REVIEW, binding_method=RETAINED_PROCESS_HANDLE; null before scope admission. No OS selector. |
-| authorization | gate_a and gate_b each NOT_CONFIRMED or CONFIRMED; freshness NOT_CHECKED, FRESH or EXPIRED; gate_a_to_b_elapsed_ticks or null. Invocation provenance only, not an authorization input. |
-| sampling_window | duration_ms, interval_ms=1000, interval_tolerance_ms=250, final_endpoint_tail_ms=250, planned_interval_count=N, expected_reading_count=N+1; started flag, start offset 0 or null, end_offset_ticks or null, clock_frequency_hz or null. Planned values null before configuration admission. |
+| authorization | gate_a and gate_b each NOT_CONFIRMED or CONFIRMED; freshness NOT_CHECKED, FRESH or EXPIRED; gate_a_to_b_elapsed_ticks or null. Only on representation rejection may the whole field be null when no independently trusted authorization state exists; NOT_CONFIRMED does not mean unknown. Invocation provenance only, not an authorization input. |
+| sampling_window | duration_ms, interval_ms=1000, interval_tolerance_ms=250, final_endpoint_tail_ms=250, planned_interval_count=N, expected_reading_count=N+1; started flag, start offset 0 or null, end_offset_ticks or null, clock_frequency_hz or null. Only on representation rejection may started be null when START is not independently known; ordinary results require a boolean. Planned values null before configuration admission. |
 | endpoints | E0..EN in index order, maximum 61; empty before START or on representation rejection. |
 | samples | Interval indexes 1..N, maximum 60; empty before START or on representation rejection. |
 | sample_summary | Section 10 interval statistics; null before START or on representation rejection. |
@@ -399,6 +400,12 @@ Every rendered summary states status/reason, expected/valid/unavailable/unattemp
 interval counts, timing_deviation_count, expected/attempted readings, authorized
 window and actual coverage. Mean/max cannot hide gaps or timing deviations. No
 spike count or sustained-pressure field exists. ALL_INTERVALS is not a CPU trace.
+For representation rejection, the formatter instead states the fixed FAILED
+status/reason and that no CPU interval evidence is returnable. It may state only
+independently validated safe metadata, including a known started flag and
+prior_terminal when the independent trusted metadata is supplied. It must not
+dereference a null summary or render CPU/interval statistics, zero activity or
+inferred cause.
 
 ## 11. Terminal status and fail-closed precedence
 
@@ -421,6 +428,11 @@ Missing Gate A or Gate B uses CPU_AUTHORIZATION_REQUIRED with no CPU reads; abse
 Gate B may remain pending only within the freshness window, never start itself.
 Gate A success does not imply Gate B confirmation. A Gate B confirmation after
 more than 60 seconds uses CPU_REVIEW_EXPIRED and requires fresh Gate A review.
+This reason requires established Gate A, unconfirmed Gate B, EXPIRED freshness,
+and a known monotonic elapsed value strictly greater than 60 seconds at the
+admitted frequency. Exactly 60 seconds is FRESH. Missing Gate A uses the earlier
+authorization failure; unavailable or invalid freshness timing uses
+CPU_TIMING_INVALID, never CPU_REVIEW_EXPIRED.
 
 Before START, choose the first failure in the gate order above; cancellation of
 an actual pending authorized invocation is CANCELLED. After START, the first
@@ -442,7 +454,18 @@ Output representation failure prevents returning any positive evidence result:
 return a minimal FAILED result with its fixed code, no samples/endpoints/summary,
 availability NO_INTERVALS and finding NONE. This describes no returnable evidence,
 not no activity; it must not assert that collection never occurred. Preserve the
-known started flag and safe terminal metadata. Do not truncate to rescue statistics.
+independently known started flag and approved safe scope, authorization, plan and
+terminal metadata. The top-level status/reason remain FAILED with the rejection
+code; a separately trusted earlier terminal pair survives only in prior_terminal.
+If no trusted metadata is available, return the same minimal FAILED result with
+started=null, authorization=null, scope=null, prior_terminal=null and no invented
+plan facts. A known started=false or Gate NOT_CONFIRMED is never used as a synonym
+for unknown. On rejection, a separately known started=true may survive even when
+authorization, scope or plan details cannot be safely projected; those unknown
+details remain null. A trusted CANCELLED terminal can coexist with unknown started
+because cancellation may occur before or after START. Closed validation rejects
+extra or unsafe prior_terminal fields and any inconsistency with separately
+supplied trusted metadata. Do not truncate to rescue statistics.
 Unexpected invalid result structure uses CPU_RESULT_INVALID, not a fabricated
 metric or a repaired record. Hard interruption may prevent any result from being
 returned; absence is not a synthetic CANCELLED or successful empty result.

@@ -289,10 +289,11 @@ Use recursive type/field/enum/cardinality checks and exact derived-value checks.
 
 | Record | Required projection, preserving specification section 9 |
 | --- | --- |
-| Top level | record_type=CPU_DIAGNOSTIC_RESULT, contract_version=1, check_type=CPU_ACTIVITY_CHECK, new run_id, status, reason_code, scope, authorization, sampling_window, endpoints, samples, sample_summary, availability, finding_code, limitations, provenance, retention=IN_MEMORY_ONLY. |
+| Top level | record_type=CPU_DIAGNOSTIC_RESULT, contract_version=1, check_type=CPU_ACTIVITY_CHECK, new run_id, status, reason_code, prior_terminal, scope, authorization, sampling_window, endpoints, samples, sample_summary, availability, finding_code, limitations, provenance, retention=IN_MEMORY_ONLY. This pre-public clarification retains contract_version=1. |
+| prior_terminal | Always present and null on ordinary results. A rejection may retain only a separately trusted, closed status/reason_code pair from the specification section 11 matrix; never copy it from candidate output. No authorization, ownership or Incident claim. |
 | scope | SINGLE_PROCESS, D1, MANUAL_PID_THEN_HANDLE_REVIEW, RETAINED_PROCESS_HANDLE; null before scope admission. No PID/handle. |
-| authorization | gate_a/gate_b each NOT_CONFIRMED or CONFIRMED, freshness NOT_CHECKED/FRESH/EXPIRED, gate_a_to_b_elapsed_ticks or null; descriptive output only. |
-| sampling_window | duration_ms, interval_ms=1000, interval_tolerance_ms=250, final_endpoint_tail_ms=250, planned_interval_count=N, expected_reading_count=N+1, started, start offset 0/null, end_offset_ticks, clock_frequency_hz; unadmitted/unknown values null as specified. |
+| authorization | gate_a/gate_b each NOT_CONFIRMED or CONFIRMED, freshness NOT_CHECKED/FRESH/EXPIRED, gate_a_to_b_elapsed_ticks or null; the whole field may be null only on rejection with no trusted authorization state. Descriptive output only. |
+| sampling_window | duration_ms, interval_ms=1000, interval_tolerance_ms=250, final_endpoint_tail_ms=250, planned_interval_count=N, expected_reading_count=N+1, started, start offset 0/null, end_offset_ticks, clock_frequency_hz; unadmitted values null. started may be null only on rejection when START is not independently known; ordinary results require a boolean. |
 | endpoint | index, scheduled_offset_ms, read_start_offset_ticks, read_end_offset_ticks, availability, reason_code, cpu_since_baseline_100ns. Maximum 61; no lifetime totals. |
 | sample | index, left_endpoint_index, right_endpoint_index, availability, reason_code, elapsed_ticks, timing_quality, cpu_delta_100ns, cpu_core_equivalents, cpu_percent_one_core_relative. Maximum 60; unavailable metrics null. |
 | sample_summary | All coverage and six statistic fields from section 6; null before START or on representation rejection. |
@@ -304,6 +305,16 @@ translation for failed assertions. Malformed output uses CPU_RESULT_INVALID;
 exceeded bounds use CPU_OUTPUT_BOUND_EXCEEDED. Both return no endpoints/samples/
 summary, NO_INTERVALS/NONE and safely known started/terminal metadata. An absent
 result after hard interruption stays absent; tests must not synthesize CANCELLED.
+Ordinary output validation failure without trusted metadata still returns a
+minimal FAILED result with unknown started and authorization, not a null result.
+The formatter must branch on this rejection form before reading the null summary
+and must emit no CPU or interval statistics. It renders prior_terminal only with
+independently supplied trusted metadata. CPU_REVIEW_EXPIRED requires confirmed
+Gate A, unconfirmed Gate B, EXPIRED freshness and a known monotonic elapsed value
+strictly greater than 60 seconds; equality remains FRESH. When independent
+trusted metadata is supplied, result validation compares its safe snapshot and
+latched terminal against the candidate, including all-valid CANCELLED/STOPPED
+cases; coverage cannot overwrite that terminal.
 
 Privacy rows inject synthetic sentinel values into Path, ExecutablePath, CommandLine,
 UserName, Environment, Arguments, RawProcess, PID, handles, absolute times, private

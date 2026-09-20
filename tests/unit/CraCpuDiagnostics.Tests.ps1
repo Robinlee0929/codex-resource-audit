@@ -8,6 +8,8 @@ $script:CpuExecutableCoverage = [ordered]@{
         P09 = @('T182A-P09-weighted-mean')
         P10 = @('T182A-P10-one-native-tick', 'T182A-P10-tiny-positive-summary')
         P11 = @('T182A-P11-above-2pow53')
+        P13 = @('T182A-P13-partial-result-retains-valid-evidence')
+        P14 = @('T182A-P14-deterministic-closed-projection')
         P16 = @('T182A-P16-actual-800ms-denominator', 'T182A-P16-actual-900ms-denominator')
         P17 = @('T182A-P17-valid-1400ms')
         P18 = @('T182A-P18-one-and-half-cores')
@@ -23,13 +25,802 @@ $script:CpuExecutableCoverage = [ordered]@{
         N14 = @('T182A-N14-zero-elapsed', 'T182A-N14-negative-elapsed', 'T182A-N14-missing-frequency', 'T182A-N14-zero-frequency')
         N16 = @('T182A-N16-zero-valid-intervals')
         N17 = @('T182A-N17-inconsistent-rate')
-        N23 = @('T182A-N23-too-many-intervals', 'T182A-N23-projected-delta-overflow', 'T182A-N23-valid-elapsed-overflow', 'T182A-N23-rational-component-overflow', 'T182A-N23-rational-component-boundary')
+        N18 = @('T182A-N18-result-rejects-host-normalized-or-inconsistent-rate')
+        N19 = @('T182A-N19-result-rejects-forbidden-conclusion')
+        N20 = @('T182A-N20-result-rejects-ownership-or-resolution')
+        N21 = @('T182A-N21-result-keeps-cross-run-correlation-unestablished')
+        N23 = @('T182A-N23-too-many-intervals', 'T182A-N23-projected-delta-overflow', 'T182A-N23-valid-elapsed-overflow', 'T182A-N23-rational-component-overflow', 'T182A-N23-rational-component-boundary', 'T182A-N23-result-overflow')
+        N24 = @('T182A-N24-result-rejects-missing-limitation-or-inconsistent-summary', 'T182A-N24-result-rejects-script-property')
         N26 = @('T182A-N26-replayed-authorization')
+        N27 = @('T182A-N27-terminal-cancelled', 'T182A-N27-terminal-stopped', 'T182A-N27-result-rejects-terminal-overwrite')
         N28 = @('T182A-N28-plan-change', 'T182A-N28-review-expiry', 'T182A-N28-changed-gate-b-plan-token', 'T182A-N28-changed-gate-b-duration', 'T182A-N28-changed-gate-b-retention', 'T182A-N28-changed-gate-b-metric')
         N33 = @('T182A-N33-gate-a-without-gate-b')
         N34 = @('T182A-N34-gate-b-after-60-seconds', 'T182A-N34-invalid-freshness-missing', 'T182A-N34-invalid-freshness-negative', 'T182A-N34-invalid-freshness-regressed', 'T182A-N34-invalid-freshness-missing-frequency')
         N36 = @('T182A-N36-valid-deviation', 'T182A-N36-extreme-200ms', 'T182A-N36-250ms-inclusive', 'T182A-N36-249ms-outside', 'T182A-N36-2000ms-inclusive', 'T182A-N36-2001ms-outside', 'T182A-N36-exact-tick-250ms-inclusive', 'T182A-N36-exact-tick-one-tick-below-250ms', 'T182A-N36-exact-tick-2000ms-inclusive', 'T182A-N36-exact-tick-one-tick-above-2000ms')
         N37 = @('T182A-N37-exact-rational', 'T182A-N37-format-ordinary', 'T182A-N37-format-zero', 'T182A-N37-format-tie-even-down', 'T182A-N37-format-tie-even-up', 'T182A-N37-format-above-100', 'T182A-N37-noncanonical-rational')
+    }
+}
+
+Describe 'T18.2A I5A closed result, configuration, and privacy contract' {
+    BeforeAll {
+        $script:cpuI5Limitations = @(
+            'CPU_INTERVAL_AVERAGES_ONLY',
+            'CPU_SINGLE_PROCESS_ONLY',
+            'CPU_ONE_CORE_NORMALIZATION',
+            'CPU_GAPS_NOT_ZERO',
+            'CPU_NO_RETROSPECTIVE_EVIDENCE',
+            'CPU_NO_CRA_IDENTITY_JOIN',
+            'CPU_NO_OWNERSHIP_OR_CAUSE',
+            'CPU_NO_CONTROL_AUTHORITY'
+        )
+
+        function New-CpuI5Configuration {
+            [pscustomobject][ordered]@{
+                metric = 'CPU_TIME'
+                duration_seconds = 5L
+                planned_interval_ms = 1000L
+                interval_tolerance_ms = 250L
+                final_endpoint_tail_ms = 250L
+                scope_kind = 'SINGLE_PROCESS'
+                retention = 'IN_MEMORY_ONLY'
+                read_only = $true
+                platform = 'WINDOWS'
+                clock_frequency_hz = 10000000L
+                offer_direction = 'CPU'
+                offer_association = 'INVOCATION_ASSOCIATED'
+                activity_relation = 'NEW_REPRODUCTION_HUMAN_REPORTED'
+                selector = [pscustomobject][ordered]@{
+                    selector_type = 'EXPLICIT_LOCAL_PID'
+                    process_id = 4242L
+                    selection_source = 'FRESH_HUMAN_SELECTION'
+                }
+            }
+        }
+
+        function New-CpuI5Endpoint {
+            param(
+                [long] $Index,
+                [string] $Availability = 'AVAILABLE',
+                [string] $ReasonCode = 'NONE',
+                [AllowNull()][object] $Counter = ($Index * 2000000L)
+            )
+            $ticks = $Index * 10000000L
+            [pscustomobject][ordered]@{
+                index = $Index
+                scheduled_offset_ms = $Index * 1000L
+                read_start_offset_ticks = if ($Availability -ceq 'NOT_ATTEMPTED') { $null } else { $ticks }
+                read_end_offset_ticks = if ($Availability -ceq 'NOT_ATTEMPTED') { $null } else { $ticks }
+                availability = $Availability
+                reason_code = $ReasonCode
+                cpu_since_baseline_100ns = if ($Availability -ceq 'AVAILABLE') { $Counter } else { $null }
+            }
+        }
+
+        function New-CpuI5PublicSummary {
+            param([object] $Summary)
+            [pscustomobject][ordered]@{
+                expected_interval_count = $Summary.expected_interval_count
+                valid_interval_count = $Summary.valid_interval_count
+                unavailable_interval_count = $Summary.unavailable_interval_count
+                not_attempted_interval_count = $Summary.not_attempted_interval_count
+                timing_deviation_count = $Summary.timing_deviation_count
+                expected_reading_count = $Summary.expected_reading_count
+                attempted_reading_count = $Summary.attempted_reading_count
+                valid_elapsed_ticks = $Summary.valid_elapsed_ticks
+                uncovered_interval_count = $Summary.uncovered_interval_count
+                min_cpu_core_equivalents = $Summary.min_cpu_core_equivalents
+                max_cpu_core_equivalents = $Summary.max_cpu_core_equivalents
+                mean_cpu_core_equivalents = $Summary.mean_cpu_core_equivalents
+                min_cpu_percent_one_core_relative = $Summary.min_cpu_percent_one_core_relative
+                max_cpu_percent_one_core_relative = $Summary.max_cpu_percent_one_core_relative
+                mean_cpu_percent_one_core_relative = $Summary.mean_cpu_percent_one_core_relative
+            }
+        }
+
+        function New-CpuI5Result {
+            param(
+                [string] $RunId = '11111111-1111-4111-8111-111111111111',
+                [switch] $Partial
+            )
+            $endpoints = 0..5 | ForEach-Object { New-CpuI5Endpoint $_ }
+            $readings = 0..5 | ForEach-Object { New-CpuTestReadingState $_ $true AVAILABLE }
+            $samples = 1..5 | ForEach-Object {
+                New-CpuTestSample $_ AVAILABLE NONE 10000000L TIMING_WITHIN_TOLERANCE 2000000L 1 5 20 1
+            }
+            $status = 'COMPLETED'
+            $reason = 'CPU_WINDOW_COMPLETE'
+            if ($Partial) {
+                $endpoints[2] = New-CpuI5Endpoint 2 UNAVAILABLE CPU_COUNTER_UNAVAILABLE $null
+                $readings[2] = New-CpuTestReadingState 2 $true UNAVAILABLE
+                $samples[1] = New-CpuTestSample 2 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE 10000000L TIMING_WITHIN_TOLERANCE $null $null $null $null $null
+                $samples[2] = New-CpuTestSample 3 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE 10000000L TIMING_WITHIN_TOLERANCE $null $null $null $null $null
+                $status = 'PARTIAL'
+                $reason = 'CPU_INTERVALS_UNAVAILABLE'
+            }
+            $computed = Get-CraCpuSummary 5 $readings $samples 10000000L
+            if ($computed.disposition -cne 'VALID') { throw 'Invalid I5 test fixture.' }
+            [pscustomobject][ordered]@{
+                record_type = 'CPU_DIAGNOSTIC_RESULT'
+                contract_version = 1L
+                check_type = 'CPU_ACTIVITY_CHECK'
+                run_id = $RunId
+                status = $status
+                reason_code = $reason
+                prior_terminal = $null
+                scope = [pscustomobject][ordered]@{
+                    kind = 'SINGLE_PROCESS'
+                    scope_ref = 'D1'
+                    selection_method = 'MANUAL_PID_THEN_HANDLE_REVIEW'
+                    binding_method = 'RETAINED_PROCESS_HANDLE'
+                }
+                authorization = [pscustomobject][ordered]@{
+                    gate_a = 'CONFIRMED'
+                    gate_b = 'CONFIRMED'
+                    freshness = 'FRESH'
+                    gate_a_to_b_elapsed_ticks = 10000000L
+                }
+                sampling_window = [pscustomobject][ordered]@{
+                    duration_ms = 5000L
+                    interval_ms = 1000L
+                    interval_tolerance_ms = 250L
+                    final_endpoint_tail_ms = 250L
+                    planned_interval_count = 5L
+                    expected_reading_count = 6L
+                    started = $true
+                    start_offset_ticks = 0L
+                    end_offset_ticks = 50000000L
+                    clock_frequency_hz = 10000000L
+                }
+                endpoints = @($endpoints)
+                samples = @($samples)
+                sample_summary = New-CpuI5PublicSummary $computed.summary
+                availability = $computed.summary.availability
+                finding_code = $computed.summary.finding_code
+                limitations = @($script:cpuI5Limitations)
+                provenance = [pscustomobject][ordered]@{
+                    method = 'WIN32_PROCESS_TIMES_V1'
+                    platform = 'WINDOWS'
+                    normalization = 'ONE_PROCESSOR_SECOND_PER_SECOND'
+                    offer_direction = 'CPU'
+                    activity_relation = 'NEW_REPRODUCTION_HUMAN_REPORTED'
+                    cra_identity_correlation = 'NOT_ESTABLISHED'
+                    ownership = 'UNKNOWN'
+                    causation = 'NOT_ESTABLISHED'
+                }
+                retention = 'IN_MEMORY_ONLY'
+            }
+        }
+
+        function New-CpuI5PreStartResult {
+            param([switch] $AfterGateA)
+            $result = New-CpuI5Result
+            $result.status = 'CANCELLED'
+            $result.reason_code = 'CPU_CANCELLED'
+            $result.scope = if ($AfterGateA) { $result.scope } else { $null }
+            $result.authorization = [pscustomobject][ordered]@{
+                gate_a = if ($AfterGateA) { 'CONFIRMED' } else { 'NOT_CONFIRMED' }
+                gate_b = 'NOT_CONFIRMED'
+                freshness = 'NOT_CHECKED'
+                gate_a_to_b_elapsed_ticks = $null
+            }
+            $result.sampling_window.started = $false
+            $result.sampling_window.start_offset_ticks = $null
+            $result.sampling_window.end_offset_ticks = $null
+            $result.endpoints = @()
+            $result.samples = @()
+            $result.sample_summary = $null
+            $result.availability = 'NO_INTERVALS'
+            $result.finding_code = 'NONE'
+            return $result
+        }
+
+        function New-CpuI5TrustedMetadata {
+            param([object] $SafeSource)
+            [pscustomobject][ordered]@{
+                scope = $SafeSource.scope
+                authorization = $SafeSource.authorization
+                sampling_window = $SafeSource.sampling_window
+                provenance = $SafeSource.provenance
+                prior_terminal = $null
+            }
+        }
+    }
+
+    It 'T182A-P07-result accepts cancellation after Gate A without START and retains reviewed plan' {
+        $candidate = New-CpuI5PreStartResult -AfterGateA
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id
+        $projection.disposition | Should -BeExactly 'VALID'
+        $projection.result.status | Should -BeExactly 'CANCELLED'
+        $projection.result.reason_code | Should -BeExactly 'CPU_CANCELLED'
+        $projection.result.sampling_window.started | Should -BeFalse
+        $projection.result.sampling_window.duration_ms | Should -Be 5000L
+        $projection.result.scope.scope_ref | Should -BeExactly 'D1'
+        $projection.result.authorization.gate_a | Should -BeExactly 'CONFIRMED'
+        $projection.result.authorization.gate_b | Should -BeExactly 'NOT_CONFIRMED'
+        $projection.result.endpoints.Count | Should -Be 0
+        $projection.result.samples.Count | Should -Be 0
+    }
+
+    It 'T182A-P07-result accepts cancellation before Gate A without inventing review metadata' {
+        $candidate = New-CpuI5PreStartResult
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id
+        $projection.disposition | Should -BeExactly 'VALID'
+        $projection.result.status | Should -BeExactly 'CANCELLED'
+        $projection.result.scope | Should -BeNullOrEmpty
+        $projection.result.authorization.gate_a | Should -BeExactly 'NOT_CONFIRMED'
+        $projection.result.authorization.gate_b | Should -BeExactly 'NOT_CONFIRMED'
+        $projection.result.sampling_window.started | Should -BeFalse
+    }
+
+    It 'I5A-rejection after START retains known safe metadata but no CPU evidence' {
+        $candidate = New-CpuI5Result
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $candidate.endpoints = @($candidate.endpoints) + @(0..55 | ForEach-Object { New-CpuI5Endpoint 5 })
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $projection.disposition | Should -BeExactly 'INVALID'
+        $projection.reason_code | Should -BeExactly 'CPU_OUTPUT_BOUND_EXCEEDED'
+        $projection.result.status | Should -BeExactly 'FAILED'
+        $projection.result.sampling_window.started | Should -BeTrue
+        $projection.result.sampling_window.end_offset_ticks | Should -Be 50000000L
+        $projection.result.authorization.gate_a | Should -BeExactly 'CONFIRMED'
+        $projection.result.authorization.gate_b | Should -BeExactly 'CONFIRMED'
+        $projection.result.scope.scope_ref | Should -BeExactly 'D1'
+        $projection.result.endpoints.Count | Should -Be 0
+        $projection.result.samples.Count | Should -Be 0
+        $projection.result.sample_summary | Should -BeNullOrEmpty
+        $projection.result.availability | Should -BeExactly 'NO_INTERVALS'
+        $projection.result.finding_code | Should -BeExactly 'NONE'
+        (Test-CraCpuResult $projection.result).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'I5A-rejection before START retains Gate A and plan without CPU evidence' {
+        $candidate = New-CpuI5PreStartResult -AfterGateA
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5PreStartResult -AfterGateA)
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $projection.disposition | Should -BeExactly 'INVALID'
+        $projection.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $projection.result.status | Should -BeExactly 'FAILED'
+        $projection.result.sampling_window.started | Should -BeFalse
+        $projection.result.sampling_window.duration_ms | Should -Be 5000L
+        $projection.result.authorization.gate_a | Should -BeExactly 'CONFIRMED'
+        $projection.result.scope.scope_ref | Should -BeExactly 'D1'
+        $projection.result.endpoints.Count | Should -Be 0
+        $projection.result.samples.Count | Should -Be 0
+        $projection.result.sample_summary | Should -BeNullOrEmpty
+        ($projection.result | ConvertTo-Json -Depth 8) | Should -Not -Match 'PRIVATE_SENTINEL|private_path'
+        (Test-CraCpuResult $projection.result).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'I5A-rejection never trusts malformed candidate metadata over independent known state' {
+        $candidate = New-CpuI5Result
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $candidate.sampling_window.started = $false
+        $candidate.authorization.gate_a = 'NOT_CONFIRMED'
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $projection.disposition | Should -BeExactly 'INVALID'
+        $projection.result.sampling_window.started | Should -BeTrue
+        $projection.result.authorization.gate_a | Should -BeExactly 'CONFIRMED'
+        ($projection.result | ConvertTo-Json -Depth 8) | Should -Not -Match 'PRIVATE_SENTINEL|private_path'
+    }
+
+    It 'I5A-rejection after START keeps unknown END unknown without claiming no START' {
+        $candidate = New-CpuI5Result
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $trusted.sampling_window.end_offset_ticks = $null
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $projection.disposition | Should -BeExactly 'INVALID'
+        $projection.result.sampling_window.started | Should -BeTrue
+        $projection.result.sampling_window.end_offset_ticks | Should -BeNullOrEmpty
+        $projection.result.endpoints.Count | Should -Be 0
+        (Test-CraCpuResult $projection.result).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'I5A-rejection without independent metadata returns no private candidate data' {
+        $candidate = New-CpuI5Result
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id
+        $projection.disposition | Should -BeExactly 'INVALID'
+        $projection.result | Should -Not -BeNullOrEmpty
+        ($projection.result | ConvertTo-Json -Depth 8) | Should -Not -Match 'PRIVATE_SENTINEL|private_path'
+    }
+
+    It 'I5A-rejection formatter handles a started result without a summary' {
+        $candidate = New-CpuI5Result
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $formatted = Format-CraCpuSummary $projection.result
+        $formatted.disposition | Should -BeExactly 'VALID'
+        $formatted.formatted_value | Should -Match 'FAILED.*CPU_RESULT_INVALID'
+        $formatted.formatted_value | Should -Match 'No CPU interval evidence is returnable'
+        $formatted.formatted_value | Should -Not -Match 'accumulated|Mean|maximum|CPU activity was observed'
+    }
+
+    It 'I5A-rejection without trusted metadata returns a minimal failure with unknown START' {
+        $candidate = New-CpuI5Result
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id
+        $projection.disposition | Should -BeExactly 'INVALID'
+        $projection.result | Should -Not -BeNullOrEmpty
+        $projection.result.status | Should -BeExactly 'FAILED'
+        $projection.result.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $projection.result.sampling_window.started | Should -BeNullOrEmpty
+        $projection.result.authorization | Should -BeNullOrEmpty
+        $projection.result.scope | Should -BeNullOrEmpty
+        $projection.result.endpoints.Count | Should -Be 0
+        $projection.result.samples.Count | Should -Be 0
+        (Test-CraCpuResult $projection.result).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'I5A-rejection keeps independently known START when authorization and plan are unknown' {
+        $candidate = New-CpuI5Result
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $trusted.scope = $null
+        $trusted.authorization = $null
+        foreach ($name in @('duration_ms', 'interval_ms', 'interval_tolerance_ms',
+            'final_endpoint_tail_ms', 'planned_interval_count', 'expected_reading_count',
+            'clock_frequency_hz', 'end_offset_ticks')) {
+            $trusted.sampling_window.$name = $null
+        }
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $projection.disposition | Should -BeExactly 'INVALID'
+        $projection.result.sampling_window.started | Should -BeTrue
+        $projection.result.sampling_window.start_offset_ticks | Should -Be 0L
+        $projection.result.sampling_window.duration_ms | Should -BeNullOrEmpty
+        $projection.result.authorization | Should -BeNullOrEmpty
+        $projection.result.scope | Should -BeNullOrEmpty
+        $projection.result.endpoints.Count | Should -Be 0
+        (Test-CraCpuResult -Result $projection.result -TrustedMetadata $trusted).disposition |
+            Should -BeExactly 'VALID'
+    }
+
+    It 'I5A-rejection retains trusted cancellation while START itself remains unknown' {
+        $candidate = New-CpuI5Result
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $trusted.scope = $null
+        $trusted.authorization = $null
+        foreach ($name in @('duration_ms', 'interval_ms', 'interval_tolerance_ms',
+            'final_endpoint_tail_ms', 'planned_interval_count', 'expected_reading_count',
+            'clock_frequency_hz', 'start_offset_ticks', 'end_offset_ticks')) {
+            $trusted.sampling_window.$name = $null
+        }
+        $trusted.sampling_window.started = $null
+        $trusted.prior_terminal = [pscustomobject][ordered]@{
+            status = 'CANCELLED'; reason_code = 'CPU_CANCELLED'
+        }
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $projection.disposition | Should -BeExactly 'INVALID'
+        $projection.result.status | Should -BeExactly 'FAILED'
+        $projection.result.prior_terminal.status | Should -BeExactly 'CANCELLED'
+        $projection.result.sampling_window.started | Should -BeNullOrEmpty
+        $projection.result.authorization | Should -BeNullOrEmpty
+        (Test-CraCpuResult -Result $projection.result -TrustedMetadata $trusted).disposition |
+            Should -BeExactly 'VALID'
+    }
+
+    It 'I5A-expiry requires an actual expired Gate A to Gate B window' {
+        $candidate = New-CpuI5PreStartResult
+        $candidate.status = 'FAILED'
+        $candidate.reason_code = 'CPU_REVIEW_EXPIRED'
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+    }
+
+    It 'T182A-N27-all-valid cancellation cannot be overwritten by a completion candidate' {
+        $candidate = New-CpuI5Result
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $trusted.prior_terminal = [pscustomobject][ordered]@{
+            status = 'CANCELLED'; reason_code = 'CPU_CANCELLED'
+        }
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $projection.disposition | Should -BeExactly 'INVALID'
+        $projection.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $projection.result.status | Should -BeExactly 'FAILED'
+        $projection.result.prior_terminal.status | Should -BeExactly 'CANCELLED'
+    }
+
+    It 'T182A-N27-all-valid-<TerminalStatus> retains a trusted terminal despite complete coverage' -ForEach @(
+        @{ TerminalStatus = 'CANCELLED'; TerminalReason = 'CPU_CANCELLED' }
+        @{ TerminalStatus = 'STOPPED'; TerminalReason = 'CPU_PROCESS_EXIT_OBSERVED' }
+    ) {
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $trusted.prior_terminal = [pscustomobject][ordered]@{
+            status = $TerminalStatus; reason_code = $TerminalReason
+        }
+        $forged = New-CpuI5Result
+        (Test-CraCpuResult -Result $forged -TrustedMetadata $trusted).reason_code |
+            Should -BeExactly 'CPU_RESULT_INVALID'
+        $rejected = New-CraCpuResult -Candidate $forged -RunId $forged.run_id -TrustedMetadata $trusted
+        $rejected.disposition | Should -BeExactly 'INVALID'
+        $rejected.result.status | Should -BeExactly 'FAILED'
+        $rejected.result.prior_terminal.status | Should -BeExactly $TerminalStatus
+        $rejected.result.endpoints.Count | Should -Be 0
+        $rejected.result.samples.Count | Should -Be 0
+
+        $correct = New-CpuI5Result
+        $correct.status = $TerminalStatus
+        $correct.reason_code = $TerminalReason
+        (Test-CraCpuResult -Result $correct -TrustedMetadata $trusted).disposition |
+            Should -BeExactly 'VALID'
+        $accepted = New-CraCpuResult -Candidate $correct -RunId $correct.run_id -TrustedMetadata $trusted
+        $accepted.disposition | Should -BeExactly 'VALID'
+        $accepted.result.status | Should -BeExactly $TerminalStatus
+        $accepted.result.prior_terminal | Should -BeNullOrEmpty
+        $accepted.result.sample_summary.valid_interval_count | Should -Be 5L
+    }
+
+    It 'T182A-N27-all-valid completion remains valid without an earlier terminal' {
+        $candidate = New-CpuI5Result
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        (Test-CraCpuResult -Result $candidate -TrustedMetadata $trusted).disposition |
+            Should -BeExactly 'VALID'
+        (New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted).result.status |
+            Should -BeExactly 'COMPLETED'
+    }
+
+    It 'I5A-rejection retains trusted <TerminalStatus> terminal without restoring CPU evidence' -ForEach @(
+        @{ TerminalStatus = 'CANCELLED'; TerminalReason = 'CPU_CANCELLED'; Partial = $false }
+        @{ TerminalStatus = 'STOPPED'; TerminalReason = 'CPU_PROCESS_EXIT_OBSERVED'; Partial = $false }
+        @{ TerminalStatus = 'COMPLETED'; TerminalReason = 'CPU_WINDOW_COMPLETE'; Partial = $false }
+        @{ TerminalStatus = 'PARTIAL'; TerminalReason = 'CPU_INTERVALS_UNAVAILABLE'; Partial = $true }
+    ) {
+        $trustedSource = New-CpuI5Result -Partial:$Partial
+        $trusted = New-CpuI5TrustedMetadata $trustedSource
+        $trusted.prior_terminal = [pscustomobject][ordered]@{
+            status = $TerminalStatus; reason_code = $TerminalReason
+        }
+        $candidate = New-CpuI5Result -Partial:$Partial
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $rejected = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+
+        $rejected.disposition | Should -BeExactly 'INVALID'
+        $rejected.result.status | Should -BeExactly 'FAILED'
+        $rejected.result.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $rejected.result.prior_terminal.status | Should -BeExactly $TerminalStatus
+        $rejected.result.prior_terminal.reason_code | Should -BeExactly $TerminalReason
+        $rejected.result.sampling_window.started | Should -BeTrue
+        $rejected.result.endpoints.Count | Should -Be 0
+        $rejected.result.samples.Count | Should -Be 0
+        $rejected.result.sample_summary | Should -BeNullOrEmpty
+        $rejected.result.availability | Should -BeExactly 'NO_INTERVALS'
+        $rejected.result.finding_code | Should -BeExactly 'NONE'
+        (Test-CraCpuResult -Result $rejected.result -TrustedMetadata $trusted).disposition |
+            Should -BeExactly 'VALID'
+        (Test-CraCpuResult $rejected.result).disposition | Should -BeExactly 'INVALID'
+        (Format-CraCpuSummary $rejected.result).disposition | Should -BeExactly 'INVALID'
+        $formatted = Format-CraCpuSummary -Result $rejected.result -TrustedMetadata $trusted
+        $formatted.disposition | Should -BeExactly 'VALID'
+        $formatted.formatted_value | Should -Match "Prior CPU-check terminal $TerminalStatus"
+        $formatted.formatted_value | Should -Not -Match 'accumulated|Mean|maximum|CPU activity was observed'
+        ($rejected.result | ConvertTo-Json -Depth 8) | Should -Not -Match 'PRIVATE_SENTINEL|private_path'
+    }
+
+    It 'I5A-candidate cannot supply or rewrite its own prior terminal' {
+        $candidate = New-CpuI5Result
+        $candidate.prior_terminal = [pscustomobject][ordered]@{
+            status = 'CANCELLED'; reason_code = 'CPU_CANCELLED'
+        }
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+        $rejected = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $rejected.disposition | Should -BeExactly 'INVALID'
+        $rejected.result.prior_terminal | Should -BeNullOrEmpty
+    }
+
+    It 'I5A-closed result requires prior terminal field and limits unknown state to rejection' {
+        $candidate = New-CpuI5Result
+        $candidate.PSObject.Properties.Remove('prior_terminal')
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+
+        $candidate = New-CpuI5Result
+        $candidate.sampling_window.started = $null
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+
+        $candidate = New-CpuI5Result
+        $candidate.authorization = $null
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+    }
+
+    It 'I5A-prior terminal rejects extra nested result fields' {
+        $candidate = New-CpuI5Result
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $trusted.prior_terminal = [pscustomobject][ordered]@{
+            status = 'CANCELLED'; reason_code = 'CPU_CANCELLED'
+        }
+        $rejected = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $rejected.result.prior_terminal | Add-Member -NotePropertyName PID -NotePropertyValue 4242L
+        (Test-CraCpuResult -Result $rejected.result -TrustedMetadata $trusted).reason_code |
+            Should -BeExactly 'CPU_RESULT_INVALID'
+    }
+
+    It 'I5A-prior terminal is closed and unsafe getters are never invoked' {
+        $script:i5TerminalGetterRan = $false
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $trusted.prior_terminal = [pscustomobject][ordered]@{
+            status = 'CANCELLED'; reason_code = 'CPU_CANCELLED'
+        }
+        $trusted.prior_terminal | Add-Member -MemberType ScriptProperty -Name private_path -Value {
+            $script:i5TerminalGetterRan = $true
+            'PRIVATE_SENTINEL'
+        }
+        $candidate = New-CpuI5Result
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $rejected = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $rejected.disposition | Should -BeExactly 'INVALID'
+        $rejected.result.prior_terminal | Should -BeNullOrEmpty
+        $rejected.result.sampling_window.started | Should -BeNullOrEmpty
+        $script:i5TerminalGetterRan | Should -BeFalse
+        ($rejected.result | ConvertTo-Json -Depth 8) | Should -Not -Match 'PRIVATE_SENTINEL|private_path'
+    }
+
+    It 'I5A-rejects mismatched prior terminal status and reason' {
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $trusted.prior_terminal = [pscustomobject][ordered]@{
+            status = 'COMPLETED'; reason_code = 'CPU_CANCELLED'
+        }
+        $candidate = New-CpuI5Result
+        $candidate | Add-Member -NotePropertyName private_path -NotePropertyValue 'PRIVATE_SENTINEL'
+        $rejected = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+        $rejected.disposition | Should -BeExactly 'INVALID'
+        $rejected.result.prior_terminal | Should -BeNullOrEmpty
+    }
+
+    It 'I5A-expiry accepts only a strictly greater than 60 second Gate A to Gate B elapsed value' {
+        $expired = New-CpuI5PreStartResult -AfterGateA
+        $expired.status = 'FAILED'
+        $expired.reason_code = 'CPU_REVIEW_EXPIRED'
+        $expired.authorization.freshness = 'EXPIRED'
+        $expired.authorization.gate_a_to_b_elapsed_ticks = 600000001L
+        (Test-CraCpuResult $expired).disposition | Should -BeExactly 'VALID'
+        $expired.authorization.gate_a_to_b_elapsed_ticks = 600000000L
+        (Test-CraCpuResult $expired).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $expired.authorization.gate_a_to_b_elapsed_ticks = $null
+        (Test-CraCpuResult $expired).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+
+        $fresh = New-CpuI5Result
+        $fresh.authorization.gate_a_to_b_elapsed_ticks = 600000000L
+        (Test-CraCpuResult $fresh).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'I5A-output-bound rejection without trusted metadata retains no invented state' {
+        $candidate = New-CpuI5Result
+        $candidate.endpoints = @($candidate.endpoints) + @(0..55 | ForEach-Object { New-CpuI5Endpoint 5 })
+        $rejected = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id
+        $rejected.reason_code | Should -BeExactly 'CPU_OUTPUT_BOUND_EXCEEDED'
+        $rejected.result.status | Should -BeExactly 'FAILED'
+        $rejected.result.reason_code | Should -BeExactly 'CPU_OUTPUT_BOUND_EXCEEDED'
+        $rejected.result.sampling_window.started | Should -BeNullOrEmpty
+        $rejected.result.authorization | Should -BeNullOrEmpty
+        $rejected.result.scope | Should -BeNullOrEmpty
+        $rejected.result.endpoints.Count | Should -Be 0
+        $rejected.result.samples.Count | Should -Be 0
+    }
+
+    It 'I5A-validates the exact closed configuration contract' {
+        $result = Test-CraCpuConfiguration (New-CpuI5Configuration)
+        $result.disposition | Should -BeExactly 'VALID'
+        $result.reason_code | Should -BeExactly 'NONE'
+        $result.PSObject.Properties.Name | Should -Be @('disposition', 'reason_code')
+    }
+
+    It 'T182A-N07-config rejects unknown and artifact request fields without inspecting them' {
+        foreach ($field in @('output_path', 'artifact', 'control_action')) {
+            $configuration = New-CpuI5Configuration
+            $configuration | Add-Member -NotePropertyName $field -NotePropertyValue 'PRIVATE_SENTINEL'
+            $result = Test-CraCpuConfiguration $configuration
+            $result.disposition | Should -BeExactly 'INVALID'
+            $result.reason_code | Should -BeExactly 'CPU_CONFIGURATION_INVALID'
+            ($result | ConvertTo-Json -Compress) | Should -Not -Match 'PRIVATE_SENTINEL'
+        }
+    }
+
+    It 'T182A-N07-config-<CaseId> fails closed without coercion or defaults' -ForEach @(
+        @{ CaseId = 'duration-low'; Field = 'duration_seconds'; Value = 4L; Reason = 'CPU_CONFIGURATION_INVALID' }
+        @{ CaseId = 'duration-high'; Field = 'duration_seconds'; Value = 61L; Reason = 'CPU_CONFIGURATION_INVALID' }
+        @{ CaseId = 'duration-string'; Field = 'duration_seconds'; Value = '5'; Reason = 'CPU_CONFIGURATION_INVALID' }
+        @{ CaseId = 'interval'; Field = 'planned_interval_ms'; Value = 999L; Reason = 'CPU_CONFIGURATION_INVALID' }
+        @{ CaseId = 'tolerance'; Field = 'interval_tolerance_ms'; Value = 249L; Reason = 'CPU_CONFIGURATION_INVALID' }
+        @{ CaseId = 'tail'; Field = 'final_endpoint_tail_ms'; Value = 251L; Reason = 'CPU_CONFIGURATION_INVALID' }
+        @{ CaseId = 'retention'; Field = 'retention'; Value = 'FILE'; Reason = 'CPU_CONFIGURATION_INVALID' }
+        @{ CaseId = 'scope'; Field = 'scope_kind'; Value = 'PROCESS_SET'; Reason = 'CPU_SCOPE_UNSUPPORTED' }
+        @{ CaseId = 'platform'; Field = 'platform'; Value = 'LINUX'; Reason = 'CPU_PLATFORM_UNSUPPORTED' }
+        @{ CaseId = 'clock'; Field = 'clock_frequency_hz'; Value = 0L; Reason = 'CPU_TIMING_INVALID' }
+    ) {
+        $configuration = New-CpuI5Configuration
+        $configuration.$Field = $Value
+        $result = Test-CraCpuConfiguration $configuration
+        $result.disposition | Should -BeExactly 'INVALID'
+        $result.reason_code | Should -BeExactly $Reason
+    }
+
+    It 'T182A-N02-config rejects implicit evidence labels, names, and stale selector forms' {
+        foreach ($selector in @(
+            [pscustomobject][ordered]@{ selector_type = 'EVIDENCE_LABEL'; process_id = 'P1'; selection_source = 'INHERITED' },
+            [pscustomobject][ordered]@{ selector_type = 'PROCESS_NAME'; process_id = 4242L; selection_source = 'FRESH_HUMAN_SELECTION' },
+            [pscustomobject][ordered]@{ selector_type = 'EXPLICIT_LOCAL_PID'; process_id = 0L; selection_source = 'FRESH_HUMAN_SELECTION' },
+            [pscustomobject][ordered]@{ selector_type = 'EXPLICIT_LOCAL_PID'; process_id = 4242L; selection_source = 'PRIOR_RUN' }
+        )) {
+            $configuration = New-CpuI5Configuration
+            $configuration.selector = $selector
+            (Test-CraCpuConfiguration $configuration).reason_code | Should -BeExactly 'CPU_CONFIGURATION_INVALID'
+        }
+    }
+
+    It 'T182A-N08-config rejects malformed or aliased CPU handoff' {
+        foreach ($field in @('offer_direction', 'offer_association')) {
+            $configuration = New-CpuI5Configuration
+            $configuration.$field = if ($field -ceq 'offer_direction') { 'CPU_ACTIVITY' } else { 'FOREIGN_RESULT' }
+            $result = Test-CraCpuConfiguration $configuration
+            $result.disposition | Should -BeExactly 'INVALID'
+            $result.reason_code | Should -BeExactly 'CPU_HANDOFF_INVALID'
+        }
+    }
+
+    It 'T182A-P14-deterministic-closed-projection validates and clones in stable order' {
+        $candidate = New-CpuI5Result -RunId '11111111-1111-4111-8111-111111111111'
+        $otherCandidate = New-CpuI5Result -RunId '22222222-2222-4222-8222-222222222222'
+        $first = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id
+        $second = New-CraCpuResult -Candidate $otherCandidate -RunId $otherCandidate.run_id
+
+        $first.disposition | Should -BeExactly 'VALID'
+        $second.disposition | Should -BeExactly 'VALID'
+        $first.result.run_id | Should -Not -BeExactly $second.result.run_id
+        $first.result.run_id = '<RUN_ID>'
+        $second.result.run_id = '<RUN_ID>'
+        ($first.result | ConvertTo-Json -Depth 8 -Compress) | Should -BeExactly ($second.result | ConvertTo-Json -Depth 8 -Compress)
+        [object]::ReferenceEquals($first.result, $candidate) | Should -BeFalse
+        [object]::ReferenceEquals($first.result.scope, $candidate.scope) | Should -BeFalse
+        $first.result.PSObject.Properties.Name | Should -Be @(
+            'record_type', 'contract_version', 'check_type', 'run_id', 'status', 'reason_code',
+            'prior_terminal', 'scope', 'authorization', 'sampling_window', 'endpoints', 'samples', 'sample_summary',
+            'availability', 'finding_code', 'limitations', 'provenance', 'retention'
+        )
+    }
+
+    It 'T182A-P13-partial-result-retains-valid-evidence and explicit gaps' {
+        $candidate = New-CpuI5Result -Partial
+        $validation = Test-CraCpuResult $candidate
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id
+
+        $validation.disposition | Should -BeExactly 'VALID'
+        $projection.result.status | Should -BeExactly 'PARTIAL'
+        $projection.result.reason_code | Should -BeExactly 'CPU_INTERVALS_UNAVAILABLE'
+        $projection.result.sample_summary.valid_interval_count | Should -Be 3L
+        $projection.result.sample_summary.unavailable_interval_count | Should -Be 2L
+        @($projection.result.samples | Where-Object availability -CEQ 'AVAILABLE').Count | Should -Be 3
+        @($projection.result.samples | Where-Object availability -CEQ 'UNAVAILABLE').Count | Should -Be 2
+        $projection.result.provenance.activity_relation | Should -BeExactly 'NEW_REPRODUCTION_HUMAN_REPORTED'
+        $projection.result.provenance.cra_identity_correlation | Should -BeExactly 'NOT_ESTABLISHED'
+        $projection.result.provenance.ownership | Should -BeExactly 'UNKNOWN'
+        $projection.result.provenance.causation | Should -BeExactly 'NOT_ESTABLISHED'
+    }
+
+    It 'T182A-N18-result-rejects-host-normalized-or-inconsistent-rate' {
+        $candidate = New-CpuI5Result
+        $candidate.samples[0].cpu_percent_one_core_relative = New-CpuTestRational 10 1
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+
+        $candidate = New-CpuI5Result
+        $candidate.samples[0] | Add-Member -NotePropertyName host_normalized_percent -NotePropertyValue 5
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+    }
+
+    It 'T182A-N19-result-rejects-forbidden-conclusion and formatter emits measured wording only' {
+        $candidate = New-CpuI5Result
+        $candidate.finding_code = 'CPU_SPIKE'
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+
+        $formatted = Format-CraCpuSummary (New-CpuI5Result)
+        $formatted.disposition | Should -BeExactly 'VALID'
+        $formatted.formatted_value | Should -Match 'D1 accumulated 1000 ms of CPU time across 5 of 5 valid intervals'
+        $formatted.formatted_value | Should -Match 'CPU activity was observed in measured intervals'
+        $formatted.formatted_value | Should -Not -Match '(?i)spike|high|sustained|pressure|CPU-bound|root cause|bug|solved|kill|restart'
+    }
+
+    It 'T182A-N20-result-rejects-ownership-or-resolution assertions' {
+        foreach ($field in @('ownership', 'causation')) {
+            $candidate = New-CpuI5Result
+            $candidate.provenance.$field = if ($field -ceq 'ownership') { 'CODEX' } else { 'BUG_CONFIRMED' }
+            (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        }
+    }
+
+    It 'T182A-N21-result-keeps-cross-run-correlation-unestablished' {
+        $first = New-CraCpuResult -Candidate (New-CpuI5Result -RunId '11111111-1111-4111-8111-111111111111') -RunId '11111111-1111-4111-8111-111111111111'
+        $second = New-CraCpuResult -Candidate (New-CpuI5Result -RunId '22222222-2222-4222-8222-222222222222') -RunId '22222222-2222-4222-8222-222222222222'
+        $first.result.scope.scope_ref | Should -BeExactly 'D1'
+        $second.result.scope.scope_ref | Should -BeExactly 'D1'
+        $first.result.provenance.cra_identity_correlation | Should -BeExactly 'NOT_ESTABLISHED'
+        $second.result.provenance.cra_identity_correlation | Should -BeExactly 'NOT_ESTABLISHED'
+
+        $candidate = New-CpuI5Result
+        $candidate.provenance.cra_identity_correlation = 'ESTABLISHED_BY_PID'
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+    }
+
+    It 'T182A-N22-result-rejects-private-field-without-getter-execution' {
+        $script:i5GetterExecuted = $false
+        $candidate = New-CpuI5Result
+        $candidate.scope | Add-Member -MemberType ScriptProperty -Name ExecutablePath -Value {
+            $script:i5GetterExecuted = $true
+            'C:\private\sentinel.exe'
+        }
+        $result = Test-CraCpuResult $candidate
+
+        $result.disposition | Should -BeExactly 'INVALID'
+        $result.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $script:i5GetterExecuted | Should -BeFalse
+        ($result | ConvertTo-Json -Depth 5) | Should -Not -Match 'sentinel|private'
+    }
+
+    It 'T182A-N24-result-rejects-missing-limitation-or-inconsistent-summary' {
+        $candidate = New-CpuI5Result
+        $candidate.limitations = @($candidate.limitations[0..6])
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+
+        $candidate = New-CpuI5Result
+        $candidate.sample_summary.valid_interval_count = 4L
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+
+        $candidate = New-CpuI5Result
+        $candidate.endpoints[1].read_end_offset_ticks = 11000000L
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+
+        $candidate = New-CpuI5Result -Partial
+        $candidate.status = 'STOPPED'
+        $candidate.reason_code = 'CPU_PROCESS_EXIT_OBSERVED'
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+    }
+
+    It 'T182A-N24-result-rejects-script-property' {
+        $script:i5UnsafeGetter = $false
+        $candidate = New-CpuI5Result
+        $candidate.sample_summary | Add-Member -MemberType ScriptProperty -Name confidence -Value {
+            $script:i5UnsafeGetter = $true
+            'HIGH'
+        }
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        $script:i5UnsafeGetter | Should -BeFalse
+    }
+
+    It 'T182A-N23-result-overflow returns a bounded empty failure instead of truncating' {
+        $candidate = New-CpuI5Result
+        $trusted = New-CpuI5TrustedMetadata (New-CpuI5Result)
+        $candidate.endpoints = @($candidate.endpoints) + @(0..55 | ForEach-Object { New-CpuI5Endpoint 5 })
+        $candidate.samples = @($candidate.samples) + @(0..55 | ForEach-Object { New-CpuTestSample 5 AVAILABLE NONE 10000000L TIMING_WITHIN_TOLERANCE 2000000L 1 5 20 1 })
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id -TrustedMetadata $trusted
+
+        $projection.disposition | Should -BeExactly 'INVALID'
+        $projection.reason_code | Should -BeExactly 'CPU_OUTPUT_BOUND_EXCEEDED'
+        $projection.result.status | Should -BeExactly 'FAILED'
+        $projection.result.reason_code | Should -BeExactly 'CPU_OUTPUT_BOUND_EXCEEDED'
+        $projection.result.endpoints.Count | Should -Be 0
+        $projection.result.samples.Count | Should -Be 0
+        $projection.result.sample_summary | Should -BeNullOrEmpty
+        $projection.result.availability | Should -BeExactly 'NO_INTERVALS'
+        $projection.result.finding_code | Should -BeExactly 'NONE'
+        (Test-CraCpuResult $projection.result).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'T182A-N27-result-rejects-terminal-overwrite' {
+        $candidate = New-CpuI5Result -Partial
+        $candidate.status = 'COMPLETED'
+        $candidate.reason_code = 'CPU_WINDOW_COMPLETE'
+        (Test-CraCpuResult $candidate).reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+    }
+
+    It 'T182A-P19-result remains IN_MEMORY_ONLY and contains no private selector data' {
+        $candidate = New-CpuI5Result
+        $projection = New-CraCpuResult -Candidate $candidate -RunId $candidate.run_id
+        $text = $projection.result | ConvertTo-Json -Depth 8
+
+        $projection.result.retention | Should -BeExactly 'IN_MEMORY_ONLY'
+        $text | Should -Not -Match '(?i)"process_id"|"pid"|native_handle|hostname|commandline|executablepath|username|environment|arguments|rawprocess|destination|private_path'
     }
 }
 
@@ -736,17 +1527,45 @@ Describe 'T18.2A I3 pure authorization, schedule, and terminal reducer' {
                 clock_frequency_hz = $FrequencyHz
             })).state
         }
+
+        function Get-CpuI3FullyObservedState {
+            $state = Get-CpuI3RunningState
+            for ($i = 0; $i -le 5; $i++) {
+                if ($i -gt 0) {
+                    $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent SLOT_DUE @{
+                        slot_index = [long]$i
+                        now_tick = [long](20000000L + ($i * 10000000L))
+                    })).state
+                }
+                $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent PRE_QUERY_LIVENESS @{
+                    slot_index = [long]$i; liveness = 'LIVE'
+                })).state
+                $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent EVIDENCE_PROGRESS @{
+                    slot_index = [long]$i
+                    attempted_reading_count = [long]($i + 1)
+                    valid_interval_count = [long]$i
+                })).state
+                $state = (Invoke-CpuI3Transition $state (New-CpuTestStateEvent POST_QUERY_LIVENESS @{
+                    slot_index = [long]$i; liveness = 'LIVE'
+                })).state
+            }
+            return $state
+        }
     }
 
-    It 'I3-contract exports the five existing primitives plus the two pure state functions' {
+    It 'I5A-contract exports the existing primitives, state functions, and four closed-result functions' {
         $exports = @((Get-Module CraCpuDiagnostics).ExportedFunctions.Keys | Sort-Object)
         $exports | Should -Be @(
             'Format-CraCpuRate'
+            'Format-CraCpuSummary'
             'Get-CraCpuInterval'
             'Get-CraCpuSummary'
             'Get-CraCpuTimingQuality'
+            'New-CraCpuResult'
             'New-CraCpuState'
+            'Test-CraCpuConfiguration'
             'Test-CraCpuReading'
+            'Test-CraCpuResult'
             'Update-CraCpuState'
         )
     }
@@ -1068,6 +1887,44 @@ Describe 'T18.2A I3 pure authorization, schedule, and terminal reducer' {
         $late.state.phase | Should -BeExactly $Phase
         $late.state.reason_code | Should -BeExactly $Reason
         $late.effects.Count | Should -Be 0
+    }
+
+    It 'T182A-N27-all-valid-<TerminalKind> state remains latched after final observed interval' -ForEach @(
+        @{ TerminalKind = 'cancelled'; Phase = 'CANCELLED'; Reason = 'CPU_CANCELLED' }
+        @{ TerminalKind = 'stopped'; Phase = 'STOPPED'; Reason = 'CPU_PROCESS_EXIT_OBSERVED' }
+    ) {
+        $allValid = Get-CpuI3FullyObservedState
+        $allValid.phase | Should -BeExactly 'RUNNING'
+        $allValid.valid_interval_count | Should -Be 5L
+        $event = if ($TerminalKind -ceq 'cancelled') {
+            New-CpuTestStateEvent CANCEL
+        }
+        else {
+            New-CpuTestStateEvent TERMINAL_BOUNDARY @{
+                cancellation = $false; timing_status = 'VALID'
+                pre_query_status = 'EXITED'; counter_status = 'AVAILABLE'
+                post_query_status = 'LIVE'
+            }
+        }
+        $terminal = Invoke-CpuI3Transition $allValid $event
+        $late = Invoke-CpuI3Transition $terminal.state (New-CpuTestStateEvent NATURAL_HORIZON @{
+            now_tick = 70000000L
+        })
+        $terminal.state.valid_interval_count | Should -Be 5L
+        $terminal.state.phase | Should -BeExactly $Phase
+        $terminal.state.reason_code | Should -BeExactly $Reason
+        $late.state.phase | Should -BeExactly $Phase
+        $late.state.reason_code | Should -BeExactly $Reason
+    }
+
+    It 'T182A-N27-all-valid state completes only without an earlier terminal event' {
+        $allValid = Get-CpuI3FullyObservedState
+        $complete = Invoke-CpuI3Transition $allValid (New-CpuTestStateEvent NATURAL_HORIZON @{
+            now_tick = 70000000L
+        })
+        $complete.state.valid_interval_count | Should -Be 5L
+        $complete.state.phase | Should -BeExactly 'COMPLETED'
+        $complete.state.reason_code | Should -BeExactly 'CPU_WINDOW_COMPLETE'
     }
 
     It 'I3-terminal-precedence-<CaseId> selects the first authoritative condition at one boundary' -ForEach @(
