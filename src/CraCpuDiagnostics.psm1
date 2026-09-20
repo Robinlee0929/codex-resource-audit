@@ -1528,6 +1528,23 @@ function Get-CraCpuEndpointContractValidation {
         }
     }
 
+    if ($Endpoint.availability -ceq 'UNAVAILABLE' -and
+        $Endpoint.reason_code -ceq 'CPU_DEADLINE_MISSED' -and
+        $ExpectedIndex -gt 0 -and $null -ne $start) {
+        # Retained query brackets prove an attempt. An interior miss must end
+        # at/after the next original due time; final misses cannot retain a
+        # bracket beyond the authorized D+tail projection cutoff.
+        if ($ExpectedIndex -eq ($DurationMs / 1000) -or
+            ([System.Numerics.BigInteger]$start * 1000) -lt
+                ([System.Numerics.BigInteger]$ExpectedIndex * $FrequencyHz * 1000) -or
+            ([System.Numerics.BigInteger]$start * 1000) -ge
+                ([System.Numerics.BigInteger]($ExpectedIndex + 1) * $FrequencyHz * 1000) -or
+            ([System.Numerics.BigInteger]$end * 1000) -lt
+                ([System.Numerics.BigInteger]($ExpectedIndex + 1) * $FrequencyHz * 1000)) {
+            return New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
+        }
+    }
+
     $counter = $null
     switch ($Endpoint.availability) {
         'AVAILABLE' {
@@ -2147,24 +2164,44 @@ function Get-CraCpuResultValidation {
     }
     $endpoints = [System.Collections.Generic.List[object]]::new()
     $readingStates = [System.Collections.Generic.List[object]]::new()
+    $ambiguousDeadlineAttempts = 0L
     $baselineFailure = $Result.status -ceq 'FAILED' -and $Result.reason_code -ceq 'CPU_BASELINE_UNAVAILABLE'
     for ($i = 0; $i -le $intervalCount; $i++) {
         $endpointValidation = Get-CraCpuEndpointContractValidation $Result.endpoints[$i] $i $durationMs 250 $frequency
         if ($endpointValidation.disposition -ceq 'INVALID') { return $endpointValidation }
         $endpoint = $endpointValidation.value
         $endpoints.Add($endpoint)
+        $queryAttempted = $endpoint.availability -cne 'NOT_ATTEMPTED'
+        if ($endpoint.reason_code -ceq 'CPU_DEADLINE_MISSED') {
+            if ($i -eq 0) {
+                $queryAttempted = $baselineFailure -and $null -ne $endpoint.read_end_offset_ticks
+            }
+            else {
+                $queryAttempted = $null -ne $endpoint.read_end_offset_ticks
+                if (-not $queryAttempted) { $ambiguousDeadlineAttempts++ }
+            }
+        }
         $readingStates.Add([pscustomobject][ordered]@{
             index = [long]$i
-            query_attempted = $endpoint.availability -cne 'NOT_ATTEMPTED' -and
-                ($endpoint.reason_code -cne 'CPU_DEADLINE_MISSED' -or
-                    ($baselineFailure -and $i -eq 0 -and $null -ne $endpoint.read_end_offset_ticks))
+            query_attempted = [bool]$queryAttempted
             availability = $endpoint.availability
         })
     }
     $lastReadEnd = @($endpoints | Where-Object { $null -ne $_.read_end_offset_ticks } |
             ForEach-Object read_end_offset_ticks | Measure-Object -Maximum).Maximum
+    $lastObserved = $null
+    for ($i = $intervalCount; $i -ge 0; $i--) {
+        if ($endpoints[$i].availability -cne 'NOT_ATTEMPTED') {
+            $lastObserved = $endpoints[$i]
+            break
+        }
+    }
+    $lateFinalizationWithOmittedDeadline = $null -ne $lastObserved -and
+        $lastObserved.availability -ceq 'UNAVAILABLE' -and
+        $lastObserved.reason_code -ceq 'CPU_DEADLINE_MISSED' -and
+        $null -eq $lastObserved.read_end_offset_ticks
     if (($null -ne $lastReadEnd -and $Result.sampling_window.end_offset_ticks -lt $lastReadEnd) -or
-        (-not $baselineFailure -and
+        (-not $baselineFailure -and -not $lateFinalizationWithOmittedDeadline -and
             ([System.Numerics.BigInteger]$Result.sampling_window.end_offset_ticks * 1000) -gt
                 ([System.Numerics.BigInteger]($durationMs + 250) * $frequency))) {
         return New-CraCpuValidationResult INVALID CPU_RESULT_INVALID $null
@@ -2196,6 +2233,20 @@ function Get-CraCpuResultValidation {
             }
         }
         $samples.Add((Copy-CraCpuSampleContract $sample))
+    }
+    # A deadline-missed endpoint with no returnable bracket may have been
+    # skipped or queried too late to project timestamps. The public count must
+    # lie within one attempt per such slot; all other summary fields stay exact.
+    if ($ambiguousDeadlineAttempts -gt 0 -and
+        $Result.sample_summary -is [pscustomobject] -and
+        $null -ne $Result.sample_summary.PSObject.Properties['attempted_reading_count'] -and
+        (Test-CraCpuContractInteger $Result.sample_summary.attempted_reading_count)) {
+        $reportedAttempts = [System.Numerics.BigInteger]$Result.sample_summary.attempted_reading_count
+        $minimumAttempts = [System.Numerics.BigInteger]$summaryValidation.summary.attempted_reading_count
+        if ($reportedAttempts -ge $minimumAttempts -and
+            $reportedAttempts -le ($minimumAttempts + $ambiguousDeadlineAttempts)) {
+            $summaryValidation.summary.attempted_reading_count = [long]$reportedAttempts
+        }
     }
     $publicSummaryValidation = Get-CraCpuSummaryContractValidation $Result.sample_summary $summaryValidation.summary
     if ($publicSummaryValidation.disposition -ceq 'INVALID' -and $baselineFailure -and

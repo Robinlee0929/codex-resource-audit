@@ -344,6 +344,54 @@ Describe 'T18.2A I5A closed result, configuration, and privacy contract' {
             }
             throw "Unknown no-valid fixture $Case"
         }
+
+        function New-CpuB1InteriorDeadlineResult {
+            param([switch] $RetainedQueryTimes, [switch] $CountAmbiguousQuery)
+            $result = New-CpuI5Result -Partial
+            $e2 = New-CpuI5Endpoint 2 UNAVAILABLE CPU_DEADLINE_MISSED $null
+            if ($RetainedQueryTimes) {
+                $e2.read_start_offset_ticks = 29000000L
+                $e2.read_end_offset_ticks = 30000000L
+                $result.endpoints[3].read_start_offset_ticks = 31000000L
+                $result.endpoints[3].read_end_offset_ticks = 31000000L
+                $result.samples[1] = New-CpuTestSample 2 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE 20000000L TIMING_DEVIATION $null $null $null $null $null
+                $result.samples[2] = New-CpuTestSample 3 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE 1000000L TIMING_DEVIATION $null $null $null $null $null
+                $result.samples[3] = New-CpuTestSample 4 AVAILABLE NONE 9000000L TIMING_WITHIN_TOLERANCE 2000000L 2 9 200 9
+                $result.sample_summary.timing_deviation_count = 2L
+                $result.sample_summary.valid_elapsed_ticks = 29000000L
+                $result.sample_summary.max_cpu_core_equivalents = New-CpuTestRational 2 9
+                $result.sample_summary.max_cpu_percent_one_core_relative = New-CpuTestRational 200 9
+                $result.sample_summary.mean_cpu_core_equivalents = New-CpuTestRational 6 29
+                $result.sample_summary.mean_cpu_percent_one_core_relative = New-CpuTestRational 600 29
+            }
+            else {
+                $e2.read_start_offset_ticks = $null
+                $e2.read_end_offset_ticks = $null
+                $result.samples[1] = New-CpuTestSample 2 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE $null TIMING_UNAVAILABLE $null $null $null $null $null
+                $result.samples[2] = New-CpuTestSample 3 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE $null TIMING_UNAVAILABLE $null $null $null $null $null
+            }
+            $result.endpoints[2] = $e2
+            $result.sample_summary.attempted_reading_count = if ($RetainedQueryTimes -or $CountAmbiguousQuery) { 6L } else { 5L }
+            $result
+        }
+
+        function New-CpuB1FinalDeadlineResult {
+            param([switch] $LateQuery)
+            $result = New-CpuI5Result
+            $result.status = 'PARTIAL'; $result.reason_code = 'CPU_INTERVALS_UNAVAILABLE'
+            $result.endpoints[5] = New-CpuI5Endpoint 5 UNAVAILABLE CPU_DEADLINE_MISSED $null
+            $result.endpoints[5].read_start_offset_ticks = $null
+            $result.endpoints[5].read_end_offset_ticks = $null
+            $result.samples[4] = New-CpuTestSample 5 UNAVAILABLE CPU_ENDPOINT_UNAVAILABLE $null TIMING_UNAVAILABLE $null $null $null $null $null
+            $result.sample_summary.valid_interval_count = 4L
+            $result.sample_summary.unavailable_interval_count = 1L
+            $result.sample_summary.valid_elapsed_ticks = 40000000L
+            $result.sample_summary.uncovered_interval_count = 1L
+            $result.sample_summary.attempted_reading_count = if ($LateQuery) { 6L } else { 5L }
+            $result.sampling_window.end_offset_ticks = 52500001L
+            $result.availability = 'SOME_INTERVALS'
+            $result
+        }
     }
 
     It 'T182A-N10-B0-result-<Case> preserves early baseline failure and actual query count' -ForEach @(
@@ -799,6 +847,134 @@ Describe 'T18.2A I5A closed result, configuration, and privacy contract' {
         $formatted.formatted_value | Should -Match "D1 accumulated .* ms of CPU time across $Intervals of 5 valid intervals"
         $formatted.formatted_value | Should -Match 'CPU activity was observed in measured intervals'
         $formatted.formatted_value | Should -Not -Match 'No valid CPU intervals were available'
+    }
+
+    It 'T182A-N15-B1 counts E2 query ending exactly at E3 due without admitting CPU' {
+        $candidate = New-CpuB1InteriorDeadlineResult -RetainedQueryTimes
+        $candidate.endpoints[2].read_start_offset_ticks | Should -Be 29000000L
+        $candidate.endpoints[2].read_end_offset_ticks | Should -Be 30000000L
+        $candidate.endpoints[2].reason_code | Should -BeExactly 'CPU_DEADLINE_MISSED'
+        $candidate.endpoints[2].cpu_since_baseline_100ns | Should -BeNullOrEmpty
+        $candidate.sample_summary.attempted_reading_count | Should -Be 6L
+        $candidate.samples[1].cpu_delta_100ns | Should -BeNullOrEmpty
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.disposition | Should -BeExactly 'VALID'
+        $built.result.status | Should -BeExactly 'PARTIAL'
+        $built.result.sample_summary.attempted_reading_count | Should -Be 6L
+        $built.result.endpoints[2].cpu_since_baseline_100ns | Should -BeNullOrEmpty
+    }
+
+    It 'T182A-N15-B1 skipped E2 has no query timestamps and contributes zero attempts' {
+        $candidate = New-CpuB1InteriorDeadlineResult
+        $candidate.endpoints[2].read_start_offset_ticks | Should -BeNullOrEmpty
+        $candidate.endpoints[2].read_end_offset_ticks | Should -BeNullOrEmpty
+        $candidate.sample_summary.attempted_reading_count | Should -Be 5L
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+    }
+
+    It 'T182A-N15-B1 one tick before E3 due remains an admissible E2 measurement' {
+        $earlier = [pscustomobject][ordered]@{
+            index = 1L; availability = 'AVAILABLE'; reason_code = 'NONE'
+            read_end_ticks = 10000000L; kernel_100ns = 2000000L; user_100ns = 0L
+        }
+        $later = [pscustomobject][ordered]@{
+            index = 2L; availability = 'AVAILABLE'; reason_code = 'NONE'
+            read_end_ticks = 29999999L; kernel_100ns = 4000000L; user_100ns = 0L
+        }
+        $interval = Get-CraCpuInterval $earlier $later 10000000L
+        $interval.disposition | Should -BeExactly 'VALID'
+        $interval.sample.availability | Should -BeExactly 'AVAILABLE'
+        $interval.sample.elapsed_ticks | Should -Be 19999999L
+        $interval.sample.cpu_delta_100ns | Should -Be 2000000L
+    }
+
+    It 'T182A-N15-B1 omitted interior timestamps permit only bounded <Attempts> attempts' -ForEach @(
+        @{ Attempts = 5L; Accepted = $true }
+        @{ Attempts = 6L; Accepted = $true }
+        @{ Attempts = 4L; Accepted = $false }
+        @{ Attempts = 7L; Accepted = $false }
+    ) {
+        $candidate = New-CpuB1InteriorDeadlineResult
+        $candidate.sample_summary.attempted_reading_count = $Attempts
+        $validation = Test-CraCpuResult $candidate
+        if ($Accepted) {
+            $validation.disposition | Should -BeExactly 'VALID'
+        }
+        else {
+            $validation.disposition | Should -BeExactly 'INVALID'
+            $validation.reason_code | Should -BeExactly 'CPU_RESULT_INVALID'
+        }
+    }
+
+    It 'T182A-N15-B1 final query after D plus 250ms counts without late evidence' {
+        $candidate = New-CpuB1FinalDeadlineResult -LateQuery
+        $candidate.sampling_window.end_offset_ticks | Should -Be 52500001L
+        $candidate.endpoints[5].cpu_since_baseline_100ns | Should -BeNullOrEmpty
+        $candidate.samples[4].cpu_delta_100ns | Should -BeNullOrEmpty
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $built = New-CraCpuResult $candidate $candidate.run_id
+        $built.disposition | Should -BeExactly 'VALID'
+        $built.result.sample_summary.attempted_reading_count | Should -Be 6L
+    }
+
+    It 'T182A-N15-B1 skipped final slot after cutoff contributes zero attempts' {
+        $candidate = New-CpuB1FinalDeadlineResult
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $candidate.sample_summary.attempted_reading_count | Should -Be 5L
+    }
+
+    It 'T182A-N15-B1 rejects <Case> deadline structure without fabricating an attempt' -ForEach @(
+        @{ Case = 'interior-end-before-next-due' }
+        @{ Case = 'interior-start-at-next-due' }
+        @{ Case = 'final-late-cpu-value' }
+        @{ Case = 'final-late-timestamps' }
+    ) {
+        $candidate = if ($Case -clike 'final-*') { New-CpuB1FinalDeadlineResult -LateQuery }
+            else { New-CpuB1InteriorDeadlineResult -RetainedQueryTimes }
+        switch ($Case) {
+            'interior-end-before-next-due' { $candidate.endpoints[2].read_end_offset_ticks = 29999999L }
+            'interior-start-at-next-due' { $candidate.endpoints[2].read_start_offset_ticks = 30000000L }
+            'final-late-cpu-value' { $candidate.endpoints[5].cpu_since_baseline_100ns = 10000000L }
+            'final-late-timestamps' {
+                $candidate.endpoints[5].read_start_offset_ticks = 52400000L
+                $candidate.endpoints[5].read_end_offset_ticks = 52500001L
+            }
+        }
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'INVALID'
+    }
+
+    It 'T182A-N15-B1 exact final cutoff admits a real endpoint and its fifth interval' {
+        $candidate = New-CpuI5Result
+        $candidate.endpoints[5].read_start_offset_ticks = 52400000L
+        $candidate.endpoints[5].read_end_offset_ticks = 52500000L
+        $candidate.sampling_window.end_offset_ticks = 52500000L
+        $candidate.samples[4] = New-CpuTestSample 5 AVAILABLE NONE 12500000L TIMING_WITHIN_TOLERANCE 2000000L 4 25 16 1
+        $candidate.sample_summary.valid_elapsed_ticks = 52500000L
+        $candidate.sample_summary.min_cpu_core_equivalents = New-CpuTestRational 4 25
+        $candidate.sample_summary.min_cpu_percent_one_core_relative = New-CpuTestRational 16 1
+        $candidate.sample_summary.mean_cpu_core_equivalents = New-CpuTestRational 4 21
+        $candidate.sample_summary.mean_cpu_percent_one_core_relative = New-CpuTestRational 400 21
+        (Test-CraCpuResult $candidate).disposition | Should -BeExactly 'VALID'
+        $candidate.sample_summary.attempted_reading_count | Should -Be 6L
+    }
+
+    It 'T182A-N15-B1 read-span and counter-unavailable calls remain attempted' {
+        $span = New-CpuB0BaselineResult span
+        $counter = New-CpuB0BaselineResult counter
+        (Test-CraCpuResult $span).disposition | Should -BeExactly 'VALID'
+        (Test-CraCpuResult $counter).disposition | Should -BeExactly 'VALID'
+        $span.sample_summary.attempted_reading_count | Should -Be 1L
+        $counter.sample_summary.attempted_reading_count | Should -Be 1L
+    }
+
+    It 'T182A-N15-B1 cannot count future NOT_ATTEMPTED slots or double-count a query' {
+        $early = New-CpuB0BaselineResult
+        $early.sample_summary.attempted_reading_count = 2L
+        (Test-CraCpuResult $early).disposition | Should -BeExactly 'INVALID'
+        $all = New-CpuI5Result
+        $all.sample_summary.attempted_reading_count = 7L
+        (Test-CraCpuResult $all).disposition | Should -BeExactly 'INVALID'
     }
 
     It 'T182A-P07-result accepts cancellation after Gate A without START and retains reviewed plan' {
