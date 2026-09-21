@@ -1,8 +1,16 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][AllowNull()][object] $ProcessId,
-    [Parameter(Mandatory)][AllowNull()][object] $DurationSeconds,
-    [Parameter(Mandatory)][AllowNull()][object] $ActivityRelation
+    [Parameter(Mandatory)]
+    [ValidateScript({ $_.ToUInt64() -ge 1 -and $_.ToUInt64() -le [uint32]::MaxValue })]
+    [System.UIntPtr] $ProcessId,
+
+    [Parameter(Mandatory)]
+    [ValidateScript({ $_.ToUInt64() -ge 5 -and $_.ToUInt64() -le 60 })]
+    [System.UIntPtr] $DurationSeconds,
+
+    [Parameter(Mandatory)]
+    [ValidateSet('NEW_REPRODUCTION_HUMAN_REPORTED', 'NO_ACTIVITY_ASSOCIATION', IgnoreCase = $false)]
+    [string] $ActivityRelation
 )
 
 Set-StrictMode -Version Latest
@@ -13,8 +21,8 @@ Import-Module (Join-Path $PSScriptRoot 'CraCpuLiveServices.psm1') -Force -ErrorA
 
 $services = New-CraCpuLiveServices
 $configuration = New-CraCpuLiveConfiguration `
-    -ProcessId $ProcessId `
-    -DurationSeconds $DurationSeconds `
+    -ProcessId ([uint32]$ProcessId.ToUInt64()) `
+    -DurationSeconds ([long]$DurationSeconds.ToUInt64()) `
     -ActivityRelation $ActivityRelation `
     -Services $services
 

@@ -161,6 +161,47 @@ Describe 'T18.2A I5D production live composition seam' {
                 native_context = $native.context
             }
         }
+
+        function Invoke-I5DEntrypointChild {
+            param(
+                [Parameter(Mandatory)][string] $ProcessId,
+                [Parameter(Mandatory)][string] $DurationSeconds,
+                [Parameter(Mandatory)][string] $ActivityRelation
+            )
+
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = 'pwsh'
+            $startInfo.UseShellExecute = $false
+            $startInfo.RedirectStandardInput = $true
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+            foreach ($argument in @(
+                '-NoProfile', '-File',
+                (Join-Path $script:RepoRoot 'src/Invoke-CraCpuActivityCheckLive.ps1'),
+                '-ProcessId', $ProcessId,
+                '-DurationSeconds', $DurationSeconds,
+                '-ActivityRelation', $ActivityRelation
+            )) {
+                [void]$startInfo.ArgumentList.Add($argument)
+            }
+
+            $process = [System.Diagnostics.Process]::Start($startInfo)
+            try {
+                $process.StandardInput.WriteLine('CANCEL')
+                $process.StandardInput.Close()
+                $standardOutput = $process.StandardOutput.ReadToEnd()
+                $standardError = $process.StandardError.ReadToEnd()
+                $process.WaitForExit()
+                [pscustomobject]@{
+                    exit_code = $process.ExitCode
+                    standard_output = $standardOutput
+                    standard_error = $standardError
+                }
+            }
+            finally {
+                $process.Dispose()
+            }
+        }
     }
 
     It 'A01 creates the exact closed live Services shape' {
@@ -334,6 +375,26 @@ Describe 'T18.2A I5D production live composition seam' {
         @($ast.ParamBlock.Parameters.Name.VariablePath.UserPath) | Should -Be @('ProcessId','DurationSeconds','ActivityRelation')
         $source = Get-Content -Raw -LiteralPath $path
         $source | Should -Not -Match 'Get-Process|Get-CimInstance|Win32_Process|ProcessName'
+    }
+
+    It 'G04 actual pwsh -File binding creates integers and rejects fractional or unapproved CLI values before target access' {
+        $accepted = Invoke-I5DEntrypointChild -ProcessId '4294967295' `
+            -DurationSeconds '5' -ActivityRelation 'NO_ACTIVITY_ASSOCIATION'
+        $accepted.exit_code | Should -Be 0
+        $accepted.standard_error | Should -BeNullOrEmpty
+        $accepted.standard_output | Should -Match 'GATE A.+BIND PERMISSION'
+        $accepted.standard_output | Should -Match 'CANCELLED'
+
+        foreach ($rejected in @(
+            @{ ProcessId = '4242.5'; Duration = '5'; Relation = 'NO_ACTIVITY_ASSOCIATION' },
+            @{ ProcessId = '4242'; Duration = '5.5'; Relation = 'NO_ACTIVITY_ASSOCIATION' },
+            @{ ProcessId = '4242'; Duration = '5'; Relation = 'no_activity_association' }
+        )) {
+            $result = Invoke-I5DEntrypointChild -ProcessId $rejected.ProcessId `
+                -DurationSeconds $rejected.Duration -ActivityRelation $rejected.Relation
+            $result.exit_code | Should -Not -Be 0
+            ($result.standard_output + $result.standard_error) | Should -Not -Match 'GATE A.+BIND PERMISSION'
+        }
     }
 
     It 'H01 preserves the canonical recursive public-result privacy boundary' {
