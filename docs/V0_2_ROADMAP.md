@@ -399,16 +399,40 @@ environment using positive and negative controls. Document the bounded result
 before making any compatibility claim; do not change attribution merely to
 force a PASS.
 
-### T18 — Bounded resource sampling research
+### T18 — Bounded resource sampling
 
-Research CPU/memory sampling and short-lived-process observation as separate,
-bounded evidence questions. Record signal semantics, sampling error, overhead,
-privacy, privileges, platform support, and failure modes. Recommend at most one
-small future experiment; do not implement a daemon, service, cleanup behavior,
-or generic Task Manager.
+T18.2A now provides a separately authorized, live-validated Windows
+[CPU Activity Check](T18_2A_CPU_ACTIVITY_CHECK.md) for one independently selected
+process. It uses explicit human gates, one retained process handle, monotonic
+5–60 second sampling and an `IN_MEMORY_ONLY` result. It remains read-only and is
+not a daemon, service, generic Task Manager, automatic diagnosis, target finder,
+ownership proof or process-control feature.
 
-Short-lived-process capture remains research within T18 unless evidence supports
-a separately authorized implementation phase.
+CPU executable coverage is 22/22 positive and 37/38 negative. N30 remains
+PARTIAL because T18.1 has no executable parent external-state runtime seam; that
+declared design boundary does not justify implementing T18.1 merely to close a
+count.
+
+T18.2A stage status:
+
+- **I5B — COMPLETE:** fake-driven orchestration and the trusted query-attempt
+  ledger are checkpointed, with Hosted CI complete.
+- **I5C — COMPLETE:** N25 is `CLOSED`; N30 is `PARTIAL` at its declared
+  non-executable design boundary; executable closure remains 22/22 positive plus
+  37/38 negative.
+- **I5D — COMPLETE:** the live production composition seam, human gates, real
+  adapter wiring and live entrypoint are checkpointed, with Hosted CI complete.
+- **I6 — PASS:** L1 normal 5-second live validation passed; L2 maximum 60-second
+  live validation passed; L3 process-exit live validation passed; L4 is
+  `NOT_EXPOSED`.
+- **I7 — CURRENT / DOCUMENTATION + BETA.2 PREPARATION:** this phase is not
+  complete until its documentation and release preparation are reviewed and
+  checkpointed.
+
+T18.2B Memory Trend, T18.3 AI interpretation and T18.1 runtime ingestion remain
+future or deferred work and are not implemented. Short-lived-process capture and
+other resource directions remain research unless evidence supports a separately
+authorized implementation phase.
 
 ## Non-goals for initial v0.2
 

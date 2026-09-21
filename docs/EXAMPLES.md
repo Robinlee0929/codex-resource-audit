@@ -2,6 +2,13 @@
 
 All four examples below are **SYNTHETIC EXAMPLES**, not real operator evidence or Windows validation results. PIDs, timestamps, paths, and relationships are fictional. No live process collection was used to produce them.
 
+For the separate live-validated CPU workflow, use the
+[CPU Activity Check guide](T18_2A_CPU_ACTIVITY_CHECK.md). Its exact command uses
+the placeholder `<SELECTED_PID>` and requires the operator to independently
+verify a current benign target. The
+[beta.2 CPU demo storyboard](../demo/v0.2.0-beta.2/CPU_DEMO_STORYBOARD.md) is a
+recording plan only, not a fake screenshot or live result.
+
 Commands show current CLI syntax for use from the repository root in an operator-owned PowerShell 7 console. **Do not run the fictional Session identities against your machine.** Live Candidates/Session work belongs outside the Codex execution environment. Output blocks are selected excerpts generated offline through the existing formatters; omissions are described outside the blocks.
 
 ## 1. SYNTHETIC EXAMPLE — Candidates, Groups, and Quick Index

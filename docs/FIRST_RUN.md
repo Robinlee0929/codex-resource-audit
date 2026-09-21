@@ -2,7 +2,9 @@
 
 Start with the [README Quick Start](../README.md#quick-start) to get public main
 and choose a workflow. The AI-assisted path is **Incident Observation only**.
-This guide covers setup and recovery; it does not add runtime capabilities.
+The standalone [CPU Activity Check](T18_2A_CPU_ACTIVITY_CHECK.md) is a separate
+human-operated workflow and does not require the `cra-incident` Skill. This guide
+covers setup and recovery; it does not add runtime capabilities.
 
 ## Skill deployment and recognition
 
@@ -55,6 +57,33 @@ You personally review candidates, select one target, choose Observe, enter O1
 while the activity runs, and enter ACTIVITY_END only after O1 returns and the
 activity finishes. Codex cannot drive these prompts or confirm for you.
 
+## Run one CPU Activity Check
+
+Use this path only when you want bounded CPU-time evidence for one process you
+have independently selected. It does not continue an Incident, discover a target,
+or diagnose the cause of a symptom.
+
+Requirements: Windows, PowerShell 7+ in an operator-owned interactive
+`ConsoleHost`, a newly verified current benign PID, a whole-second duration from
+5 through 60, and an exact approved activity relation. From the repository root:
+
+```powershell
+pwsh -NoProfile -File .\src\Invoke-CraCpuActivityCheckLive.ps1 `
+  -ProcessId <SELECTED_PID> `
+  -DurationSeconds 5 `
+  -ActivityRelation NO_ACTIVITY_ASSOCIATION
+```
+
+The three exact, case-sensitive continue tokens are `CONFIRM` for
+`GATE_A_BIND`, `CONFIRM` for `GATE_A_REVIEW`, and `START` for `GATE_B_START`.
+Anything else cancels at that gate. Do not treat `Ctrl+C` as normal
+`CPU_CANCELLED`; normal live running cancellation is `NOT_EXPOSED` and terminal
+interruption is a hard interruption.
+
+Read the [CPU Activity Check guide](T18_2A_CPU_ACTIVITY_CHECK.md) before the first
+run. It explains independent target selection, the retained-handle boundary,
+metric semantics, safe result reporting and the sanitized live-validation record.
+
 ## First-run mini glossary
 
 | Term | What it means here |
@@ -99,10 +128,12 @@ does not authorize cleanup, process control, automatic retry or extra captures.
 
 ## After CRA — what next?
 
-Choose a possible **read-only** next step from the recorded result. CRA does not
-collect CPU, I/O, log, network or handle signals, or continuous memory trends;
-those directions require separate tools. A repeat or delayed follow-up means a
-separate fresh attempt, not extra captures or a timing change in the current run.
+Choose a possible **read-only** next step from the recorded result. CRA provides
+the separate CPU Activity Check described above; it does not automatically run
+it from an Incident or ingest its result into T18.1. I/O, log, network, handle and
+continuous memory signals still require separate tools. A repeat or delayed
+follow-up means a separate fresh attempt, not extra captures or a timing change
+in the current run.
 
 | What CRA recorded | What it means | Possible next read-only direction |
 | --- | --- | --- |

@@ -9,6 +9,9 @@ Use [GitHub Issues](https://github.com/Robinlee0929/codex-resource-audit/issues)
 for CRA installation/setup, documented CRA workflows, CRA bugs, documentation
 problems, and safe feature/UX feedback. Use the bug report form for defects or
 quick feedback for a question, idea, first-run experience or small suggestion.
+For the standalone CPU workflow, read the
+[CPU Activity Check guide](docs/T18_2A_CPU_ACTIVITY_CHECK.md) before reporting a
+result or suspected defect.
 For a suspected security vulnerability, use GitHub Private Vulnerability Reporting
 through the [repository Security Advisories page](https://github.com/Robinlee0929/codex-resource-audit/security/advisories).
 Follow [SECURITY.md](SECURITY.md) for the private reporting steps; do not open a public issue or PR.
@@ -32,12 +35,19 @@ Public issues should contain only the minimum useful information:
   use `unknown` for anything you do not know.
 - Workflow and stopped/failed stage; a fixed CRA reason/error code if available.
 - Sanitized reproduction steps, expected behavior and actual behavior.
+- For a CPU result only: sanitized status/reason, aggregate expected/attempted/
+  valid/unavailable/not-attempted counts, retention value and whether the target
+  was closed manually. These safe aggregates are validation context, not a
+  diagnosis or benchmark.
 
 Do not post full process tables, raw process dumps, command lines, usernames,
 hostnames, private paths, credentials, tokens, cookies, real PIDs/creation times,
 terminal transcripts, private source code, sensitive screenshots, sensitive diagnostic artifacts or
 entire artifact directories. Logs, screenshots and artifacts are not required
 and should not be attached by default. Describe the stage in your own words.
+For CPU reports, also exclude handles, raw process objects and private task
+content. Do not paste a complete `CPU_DIAGNOSTIC_RESULT`; report only the safe
+aggregate fields listed above.
 
 If extra diagnostic information is necessary, the maintainer should first
 identify the minimum specific field, explain why it is needed and the appropriate

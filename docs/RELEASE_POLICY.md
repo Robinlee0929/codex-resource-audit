@@ -9,6 +9,7 @@ availability, test results, maturity and support commitments are separate.
 | --- | --- |
 | `main` | Moving development/latest public source. Reports should include the actual commit when possible, or `unknown`. It is not a fixed Community Beta version. |
 | Community beta | Owner-selected strategy: `TAGGED_PRERELEASE`. The current published Community Beta prerelease is `v0.2.0-beta.1`, whose tag targets `dd865498af7ae0c6aef79338df1c642b63ec5a5b`. |
+| Prepared candidate | `v0.2.0-beta.2` documentation is in preparation. It is not a tag or release until the Owner selects an exact post-review checkpoint, verifies exact-commit Hosted CI, creates the tag and publishes the prerelease. |
 | Stable release | A separate future Owner decision requiring explicit scope, validation, compatibility limitations and release notes. No stable or production-ready status is established here. |
 
 [`v0.2.0-beta.1`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.1)
@@ -53,6 +54,16 @@ memory trend collector or automatic diagnostic execution. Later T18 documents on
 `main` do not add those capabilities to the fixed beta. Any later implementation
 needs its own review and validation at the selected commit before capabilities
 are described.
+
+Public `main` now contains the separately reviewed and live-validated standalone
+T18.2A CPU Activity Check. The prepared `v0.2.0-beta.2` notes may describe that
+capability only after the documentation checkpoint and exact-commit Hosted CI are
+Owner-reviewed. They must retain the EXPERIMENTAL / ACTIVE - BEST EFFORT status,
+single-process and human-gate scope, `IN_MEMORY_ONLY` result, no process control,
+no normal live running cancellation, no T18.2B Memory Trend, and the honest
+22/22 positive plus 37/38 negative executable-vector disclosure. N30 remains
+PARTIAL because there is no existing T18.1 runtime seam. Preparing those notes
+does not publish, tag or supersede beta.1.
 
 ## Community Beta gate and Owner actions
 

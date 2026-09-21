@@ -14,6 +14,11 @@ EXPERIMENTAL regardless of a passing test result.
   checkout, and the Skill, bridge and runtime from that same version.
 - For the bridge: an existing parent directory on a local Windows drive and a new,
   nonexistent per-request output directory. Follow the [first-run guide](FIRST_RUN.md).
+- For the standalone CPU Activity Check: an operator-owned interactive PowerShell
+  7 `ConsoleHost`, one independently selected current PID, a whole-second duration
+  from 5 through 60, and the exact human gates documented in the
+  [CPU guide](T18_2A_CPU_ACTIVITY_CHECK.md). The CPU path does not require Codex
+  or the Incident bridge and does not run inside Codex's execution environment.
 - Pester 6.2.0 is a development-test prerequisite, not a live-use prerequisite.
 
 Unavailable or denied metadata remains unavailable. CRA does not elevate privileges
@@ -36,9 +41,25 @@ versioned environment tuple:
 | Scope | Skill deployment/recognition, repository resolution, manual wrapper launch, safe candidate/review/final reads, O0 MATCHED, operator O1 and ACTIVITY_END, automatic O2/O3, and Owner review of AI interpretation. |
 
 The [README validation provenance](../README.md#quick-start) separately records
-offline tests at `f3c7a25707f66849d0b681d4763ad6f48db92abf`. Offline CI is not
-evidence of desktop-client or live-host compatibility. No new validation was
-performed to create this policy.
+offline tests at `ef450c2679e38eb380278861adc66e4c9ab0c50e`. Offline CI is not
+evidence of desktop-client or live-host compatibility.
+
+### T18.2A CPU live-validation environment
+
+The supported design boundary is Windows with PowerShell 7+ in an interactive
+`ConsoleHost`. The narrower environment actually observed in T18.2A live
+validation was **Windows with PowerShell 7.6.6**. The Windows edition/build was
+not retained in the sanitized record and must remain unknown.
+
+At implementation baseline `ef450c2679e38eb380278861adc66e4c9ab0c50e`, the
+Hosted Windows offline suite passed 1859/1859. Human-operated live validation
+covered a normal 5-second run, the maximum 60-second schedule, and selected-target
+exit during sampling. This validates those exercised paths, not every Windows
+edition, CPU topology, PowerShell 7 build, terminal host or permission state.
+
+The CPU result is one-core-relative process CPU time. Compatibility does not make
+it Task Manager process %, host CPU %, logical-core-normalized utilization,
+child/application aggregation, or a performance benchmark.
 
 Historical [Stage 0 results](STAGE0_RESULTS.md) and
 [v0.1.1 notes](RELEASE_NOTES_v0.1.1.md#requirements-and-limitations) retain their
@@ -59,12 +80,13 @@ is claimed. ChatGPT cloud direct control of a local PC is not supported.
 
 Manual Guided has separate Finder/Session/Observation eligibility. The
 PassThru/bridge/Skill AI path supports Incident Observation only; Finder and
-Session are not AI-callable. The current Community Beta user flow remains the
-existing T17-capable CRA workflow. T18 specification files do not establish an
-implemented capability: T18 automatic triage runtime, a T18 CPU collector, a memory
-trend collector and automatic diagnostic execution are not available at the
-OSR-02 baseline. Review actual implementation at the eventual beta target commit;
-see the [beta capability boundary](RELEASE_POLICY.md#beta-capability-boundary).
+Session are not AI-callable. The fixed published `v0.2.0-beta.1` remains the
+existing T17-capable CRA workflow. Public `main` now contains the standalone
+live-validated T18.2A CPU Activity Check, but still does not provide T18 automatic
+triage runtime, T18.2B Memory Trend, automatic target selection, automatic
+diagnostic execution, persistent CPU artifacts or AI consumption of CPU results.
+Review the exact selected beta target; see the
+[beta capability boundary](RELEASE_POLICY.md#beta-capability-boundary).
 
 Older releases may not contain current workflows or work with future clients.
 The [release policy](RELEASE_POLICY.md) covers version selection, breaking-change
