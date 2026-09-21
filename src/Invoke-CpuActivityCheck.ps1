@@ -154,7 +154,7 @@ function Invoke-CpuActivityCheck {
         'wait_until', 'is_cancelled', 'acquire', 'check_liveness', 'query_cpu_time', 'dispose')
     if ($Services -isnot [pscustomobject] -or
         @($Services.PSObject.Properties).Count -ne $names.Count -or
-        $Services.seam_type -cne 'CRA_CPU_OFFLINE_SERVICES_V1') {
+        $Services.seam_type -cnotin @('CRA_CPU_OFFLINE_SERVICES_V1', 'CRA_CPU_LIVE_SERVICES_V1')) {
         throw 'Invalid CPU offline service seam.'
     }
     foreach ($name in $names[2..($names.Count - 1)]) {
