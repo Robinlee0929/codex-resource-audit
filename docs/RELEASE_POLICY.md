@@ -8,18 +8,34 @@ availability, test results, maturity and support commitments are separate.
 | Channel | Policy |
 | --- | --- |
 | `main` | Moving development/latest public source. Reports should include the actual commit when possible, or `unknown`. It is not a fixed Community Beta version. |
-| Community beta | Owner-selected strategy: `TAGGED_PRERELEASE`. The current published Community Beta prerelease is `v0.2.0-beta.1`, whose tag targets `dd865498af7ae0c6aef79338df1c642b63ec5a5b`. |
-| Prepared candidate | `v0.2.0-beta.2` documentation is in preparation. It is not a tag or release until the Owner selects an exact post-review checkpoint, verifies exact-commit Hosted CI, creates the tag and publishes the prerelease. |
+| Community beta | Owner-selected strategy: `TAGGED_PRERELEASE`. Each fixed beta is authoritative only through its immutable tag and GitHub prerelease record. Use the Skill, bridge and runtime from the same checkout. |
+| Prepared candidate | Documentation may name an intended fixed tag before publication. Preparation does not itself create a tag or release; the Owner still selects the exact post-review checkpoint, verifies exact-commit Hosted CI, creates the tag and publishes the prerelease. |
 | Stable release | A separate future Owner decision requiring explicit scope, validation, compatibility limitations and release notes. No stable or production-ready status is established here. |
 
-[`v0.2.0-beta.1`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.1)
-is a fixed, published prerelease baseline. Public `main` continues to move and may
-contain later specifications, plans or implementations that are not part of that
-beta. Use the selected beta's Skill, bridge and runtime together and record its
-exact target commit. Prerelease status does not establish production readiness,
-stable support or universal compatibility. A future prerelease may supersede the
-current beta only after its own Owner selection, exact-commit review, validation
-and truthful release notes.
+## Live publication state
+
+The [GitHub Releases page](https://github.com/Robinlee0929/codex-resource-audit/releases)
+is authoritative for which prereleases are currently published and which one is
+latest. This policy deliberately does not hardcode a "current published beta"
+sentence that becomes stale after the next release. Public `main` may contain
+later specifications, plans or implementations not included in a fixed beta.
+
+The intended fixed documentation baseline described by this checkout is
+`v0.2.0-beta.3`. Its presence in documentation is not a publication claim; use
+the Releases page to determine whether the tag is available. Prerelease status
+does not establish production readiness, stable support or universal
+compatibility.
+
+## Historical release records
+
+| Release | Immutable target and historical scope |
+| --- | --- |
+| [`v0.2.0-beta.1`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.1) | Target `dd865498af7ae0c6aef79338df1c642b63ec5a5b`; T17-capable CRA workflow with operator-run Incident Observation and retained human gates. It predates the T18.2A CPU runtime. |
+| [`v0.2.0-beta.2`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.2) | Target `f7ef051fa1dbac24aca384e79435ce6dbd6fd8ef`; added the standalone T18.2A CPU Activity Check within the scope recorded in its release notes. It remains immutable after beta.3 preparation. |
+
+These records preserve historical release scope; they do not identify which beta
+is currently latest. Use the selected beta's Skill, bridge and runtime together
+and record its exact target commit.
 
 For a beta or stable release, record the exact commit and its validation results,
 including exact-commit Hosted CI and any applicable operator validation. State
@@ -42,28 +58,29 @@ or retirement decisions should be stated explicitly with the release notes and
 
 ## Beta capability boundary
 
-The published `v0.2.0-beta.1` may describe only runtime capabilities actually
+Historical `v0.2.0-beta.1` may describe only runtime capabilities actually
 implemented at its target commit, `dd865498af7ae0c6aef79338df1c642b63ec5a5b`.
 Its Community Beta user flow is the existing T17-capable CRA workflow, with
 operator-run Incident Observation for the AI-assisted path and every human gate
 retained.
 
-T18 specification and planning files are not runtime capabilities. The current
-beta does not provide T18 automatic triage runtime, the T18 CPU collector, a
+T18 specification and planning files are not runtime capabilities. The beta.1
+scope does not provide T18 automatic triage runtime, the T18 CPU collector, a
 memory trend collector or automatic diagnostic execution. Later T18 documents on
-`main` do not add those capabilities to the fixed beta. Any later implementation
+`main` do not add those capabilities to that fixed beta. Any later implementation
 needs its own review and validation at the selected commit before capabilities
 are described.
 
-Public `main` now contains the separately reviewed and live-validated standalone
-T18.2A CPU Activity Check. The prepared `v0.2.0-beta.2` notes may describe that
-capability only after the documentation checkpoint and exact-commit Hosted CI are
-Owner-reviewed. They must retain the EXPERIMENTAL / ACTIVE - BEST EFFORT status,
+Historical `v0.2.0-beta.2` contains the separately reviewed and live-validated
+standalone T18.2A CPU Activity Check. Its scope retains the EXPERIMENTAL /
+ACTIVE - BEST EFFORT status,
 single-process and human-gate scope, `IN_MEMORY_ONLY` result, no process control,
 no normal live running cancellation, no T18.2B Memory Trend, and the honest
 22/22 positive plus 37/38 negative executable-vector disclosure. N30 remains
-PARTIAL because there is no existing T18.1 runtime seam. Preparing those notes
-does not publish, tag or supersede beta.1.
+PARTIAL because there is no existing T18.1 runtime seam.
+
+The intended `v0.2.0-beta.3` is a first-run documentation correction only. It
+does not change beta.2 runtime behavior, CPU semantics or capability scope.
 
 ## Community Beta gate and Owner actions
 
@@ -72,6 +89,10 @@ applicable validation for that commit, truthful capability and compatibility
 notes, and verification of its tag and published prerelease. Any subsequent
 candidate commit requires its own applicable review and validation. A confirmed
 Gate 2 false positive remains NO-GO.
+
+Before tagging a prerelease, verify that the README fixed-tag Quick Start names
+the intended tag, README release-state text does not contradict publication, and
+this policy does not identify an older beta as current.
 
 Release readiness and promotion timing are separate Owner-controlled decisions.
 A prerelease may remain published while the Owner delays or limits an organized

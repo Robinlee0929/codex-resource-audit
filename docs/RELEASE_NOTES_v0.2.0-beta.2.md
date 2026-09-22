@@ -1,13 +1,12 @@
-# v0.2.0-beta.2 release notes — draft
+# v0.2.0-beta.2 release notes
 
-**DRAFT — NOT PUBLISHED.** No tag or GitHub release is created by this document.
-The exact release target remains Owner-selected after documentation review,
-checkpointing and exact-commit Hosted CI. CRA remains **EXPERIMENTAL** with
+**HISTORICAL PRERELEASE.** The immutable `v0.2.0-beta.2` tag targets
+`f7ef051fa1dbac24aca384e79435ce6dbd6fd8ef`. CRA remains **EXPERIMENTAL** with
 **ACTIVE - BEST EFFORT** maintenance.
 
 ## Theme: Live-validated CPU Activity Check
 
-This candidate adds the standalone T18.2A Windows CPU Activity Check to the
+This release added the standalone T18.2A Windows CPU Activity Check to the
 existing CRA workflows. A human independently supplies one current PID, reviews
 separate bind and bound-target gates, reviews the sampling plan, and explicitly
 starts a bounded 5–60 second check.
@@ -90,5 +89,5 @@ and sanitized live-validation summary. The
 recording but is not a capture or release asset.
 
 The published `v0.2.0-beta.1` remains an immutable historical prerelease with its
-original target and capability claims. This draft does not alter beta.1 facts,
-publish beta.2, or imply stable/production support.
+original target and capability claims. This beta.2 record does not alter beta.1
+facts or imply stable/production support.
