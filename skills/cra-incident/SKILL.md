@@ -161,6 +161,26 @@ before collection, plus the agreed directory. They need not wait for the final
 receipt to share these IDs. Do not request the full console transcript, process
 dump, PID, creation time, executable path or command line as AI-facing evidence.
 
+Before STEP 2, explain that the operator is choosing a review set, not the final
+target. If several same-name candidates remain plausible, the operator may place
+all of them in the review set; membership does not mean a candidate is correct,
+authorize Observe or select the target. STEP 3 then shows local PID and Creation
+Time UTC evidence. The operator compares both with independently known current
+information for the intended instance. Name, READY, ordering, group or PID alone
+is insufficient, and creation time does not establish ownership.
+
+At STEP 4, the human operator chooses exactly one candidate from the STEP 2
+review set. This is the target-selection point, but it is not VERIFIED_ROOT;
+Codex must not make or recommend this choice.
+
+The safe candidate/review artifacts omit PID, Creation Time UTC, executable path,
+parent information, command line and user/session context. Explain only the safe
+artifact fields and their limits; do not use them as a substitute for the local
+recognition display, request a private process table, nominate or recommend a
+candidate, rank candidates, or infer that `codex.exe` is the intended target. If
+the operator still cannot distinguish the intended instance, `Q`/`QUIT` is the
+correct fail-closed action rather than a failed workflow.
+
 All of these actions remain in the operator's PowerShell window:
 
 | Gate | Operator's action |

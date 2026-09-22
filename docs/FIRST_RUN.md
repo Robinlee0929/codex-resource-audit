@@ -57,6 +57,28 @@ You personally review candidates, select one target, choose Observe, enter O1
 while the activity runs, and enter ACTIVITY_END only after O1 returns and the
 activity finishes. Codex cannot drive these prompts or confirm for you.
 
+## How to recognize the candidate you intend to inspect
+
+1. Decide which real application/process instance you intend to inspect before
+   selecting anything in CRA.
+2. At STEP 2, choose a **review set**. This is not final target selection. If
+   several same-name entries remain plausible, put all of them in the review set
+   instead of guessing one.
+3. At STEP 3, compare the additional local evidence—PID and Creation Time UTC—
+   with independent current information you already obtained for the intended
+   process. Use multiple current facts: name, READY, ordering, group or PID alone
+   is insufficient, and creation time does not establish ownership.
+4. At STEP 4, the human chooses exactly one candidate from the STEP 2 review set.
+   This is the target-selection point, but it is not `VERIFIED_ROOT`. Review
+   membership does not mean a candidate is correct or authorize Observe.
+5. Codex may explain the safe candidate/review artifact fields and their semantic
+   limits, but those artifacts intentionally omit PID, Creation Time UTC,
+   executable path, parent information, command line and user/session context.
+   Codex cannot perform the local terminal comparison or choose the target. Do
+   not paste a private process table merely to let AI choose.
+6. If the intended instance still cannot be distinguished at STEP 4, enter
+   `Q`/`QUIT` to cancel. This is expected fail-closed behavior, not an error.
+
 ## Run one CPU Activity Check
 
 Use this path only when you want bounded CPU-time evidence for one process you

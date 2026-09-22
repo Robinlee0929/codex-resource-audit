@@ -21,7 +21,7 @@ sentence that becomes stale after the next release. Public `main` may contain
 later specifications, plans or implementations not included in a fixed beta.
 
 The intended fixed documentation baseline described by this checkout is
-`v0.2.0-beta.3`. Its presence in documentation is not a publication claim; use
+`v0.2.0-beta.4`. Its presence in documentation is not a publication claim; use
 the Releases page to determine whether the tag is available. Prerelease status
 does not establish production readiness, stable support or universal
 compatibility.
@@ -31,7 +31,8 @@ compatibility.
 | Release | Immutable target and historical scope |
 | --- | --- |
 | [`v0.2.0-beta.1`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.1) | Target `dd865498af7ae0c6aef79338df1c642b63ec5a5b`; T17-capable CRA workflow with operator-run Incident Observation and retained human gates. It predates the T18.2A CPU runtime. |
-| [`v0.2.0-beta.2`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.2) | Target `f7ef051fa1dbac24aca384e79435ce6dbd6fd8ef`; added the standalone T18.2A CPU Activity Check within the scope recorded in its release notes. It remains immutable after beta.3 preparation. |
+| [`v0.2.0-beta.2`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.2) | Target `f7ef051fa1dbac24aca384e79435ce6dbd6fd8ef`; added the standalone T18.2A CPU Activity Check within the scope recorded in its release notes. It remains immutable. |
+| [`v0.2.0-beta.3`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.3) | Target `b62b2be485826339c9c558b549f6920697b37f85`; first-run documentation correction with unchanged beta.2 runtime scope, as recorded in its release notes. It remains immutable after beta.4 preparation. |
 
 These records preserve historical release scope; they do not identify which beta
 is currently latest. Use the selected beta's Skill, bridge and runtime together
@@ -79,8 +80,12 @@ no normal live running cancellation, no T18.2B Memory Trend, and the honest
 22/22 positive plus 37/38 negative executable-vector disclosure. N30 remains
 PARTIAL because there is no existing T18.1 runtime seam.
 
-The intended `v0.2.0-beta.3` is a first-run documentation correction only. It
-does not change beta.2 runtime behavior, CPU semantics or capability scope.
+Historical `v0.2.0-beta.3` is a first-run documentation correction only. It did
+not change beta.2 runtime behavior, CPU semantics or capability scope.
+
+The intended `v0.2.0-beta.4` is a first-run human-recognition guidance correction
+only. It explains review-set selection and local candidate comparison without
+changing runtime behavior, candidate information, automatic selection or ranking.
 
 ## Community Beta gate and Owner actions
 

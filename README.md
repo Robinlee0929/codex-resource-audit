@@ -23,10 +23,10 @@ When Codex feels stuck or process behavior looks unusual, CRA captures bounded p
 Check are implemented. Fixed tagged prereleases are authoritative through
 [GitHub Releases](https://github.com/Robinlee0929/codex-resource-audit/releases),
 while `main` is moving development/latest source. This document set is prepared
-for the intended fixed `v0.2.0-beta.3` baseline; the Releases page remains the
-authority for whether that tag has been published. `v0.2.0-beta.1` and
-`v0.2.0-beta.2` remain immutable historical prereleases with their documented
-scope. A prerelease is not production readiness.
+for the intended fixed `v0.2.0-beta.4` baseline; the Releases page remains the
+authority for whether that tag has been published. `v0.2.0-beta.1`,
+`v0.2.0-beta.2` and `v0.2.0-beta.3` remain immutable historical prereleases with
+their documented scope. A prerelease is not production readiness.
 
 ## When to use CRA
 
@@ -56,19 +56,19 @@ The AI-assisted path supports **Incident Observation only**. Finder and Session 
 
 ### Get the fixed beta or moving source
 
-If you arrived from the `v0.2.0-beta.3` Release, use the matching fixed checkout.
+If you arrived from the `v0.2.0-beta.4` Release, use the matching fixed checkout.
 Choose a parent directory in your own terminal and run:
 
 ```powershell
-git clone --branch v0.2.0-beta.3 `
+git clone --branch v0.2.0-beta.4 `
   https://github.com/Robinlee0929/codex-resource-audit.git
 cd codex-resource-audit
 ```
 
 For moving development/latest source, use `--branch main` instead and report the
 actual commit when possible. Use the Skill, bridge and runtime from the same
-checkout; do not mix files from `main`, beta.1, beta.2 or another archive with a
-beta.3 run. The beta.3 Release should be used with the beta.3 checkout, while
+checkout; do not mix files from `main`, beta.1, beta.2, beta.3 or another archive
+with a beta.4 run. The beta.4 Release should be used with the beta.4 checkout, while
 `main` continues to move. See the [version policy](docs/RELEASE_POLICY.md).
 
 **Validation provenance at this documentation update:** the T18.2A implementation
@@ -111,8 +111,14 @@ The output directory's parent must already exist, and `observation-001` must not
 
 ## How the observation works
 
-1. **You review candidates** in PowerShell. Share only the safe request/candidate-set ID line and agreed output directory with Codex. It can explain the candidate artifact while the review prompt waits.
-2. **You select one target and choose `O/OBSERVE`.** Codex can explain the review artifact first, but cannot make these choices.
+Before STEP 2, decide which real application/process instance you intend to
+inspect. STEP 2 chooses a **review set**, not the final target. If several
+same-name candidates remain plausible, put all of them in the review set rather
+than guessing. Review membership does not mean a candidate is correct and does
+not authorize Observe.
+
+1. **You choose candidates for review** in PowerShell. STEP 3 then shows additional local comparison evidence, including PID and Creation Time UTC. Compare both with independent current information about the instance you intend to inspect. Do not choose by name, READY, ordering, group or PID alone; creation time does not establish ownership.
+2. **At STEP 4, the human chooses exactly one candidate from the STEP 2 review set.** This is the target-selection point, but it is not `VERIFIED_ROOT`. You then choose `O/OBSERVE`. Codex can explain the safe candidate/review artifact fields and their limits, but it cannot see the local PID/Creation Time comparison or make or recommend these choices. If you still cannot distinguish the intended instance at STEP 4, enter `Q` to cancel instead of guessing.
 3. **CRA checks the target at O0.** O0 is the starting identity check and baseline capture. Only `MATCHED` allows the observation to continue.
 4. **Start or continue the activity, then enter `O1` while it is running.** This requests the during-activity capture. After O1 returns and the activity finishes, personally enter `ACTIVITY_END`.
 5. **CRA captures O2, waits 30 seconds, then captures O3.** These are the immediate and later follow-up observations; the wait is not a total-runtime guarantee.
@@ -128,7 +134,13 @@ Codex can guide you, explain readiness and summarize safe evidence. It cannot dr
 | `review.json` | The candidates you chose to review; it does not imply target selection or consent to Observe. |
 | `final_result.json` | The retained observation result, including incomplete or stopped outcomes. |
 
-Artifacts are one-way data, not AI control messages. Codex uses the existing safe reader with your explicit request context and validates versions and correlation. Missing or invalid evidence stops interpretation; a delivered file alone is not observation success. Do not paste private process tables or terminal transcripts. [Reader and failure details](docs/FIRST_RUN.md#safe-artifact-reading).
+Artifacts are one-way data, not AI control messages. Candidate/review artifacts
+do not expose PID, Creation Time UTC, executable path, parent information,
+command line or user/session context. Codex uses the existing safe reader with
+your explicit request context and validates versions and correlation. Missing or
+invalid evidence stops interpretation; a delivered file alone is not observation
+success. Do not paste private process tables or terminal transcripts. [Reader and
+failure details](docs/FIRST_RUN.md#safe-artifact-reading).
 
 ## What the evidence means — and does not prove
 
@@ -177,9 +189,10 @@ Task Manager helps show what exists now; CRA records what changed in bounded CPU
 intervals for one process the human independently selected. Neither is an
 automatic diagnosis.
 
-The intended fixed `v0.2.0-beta.3` checkout contains the same CPU Activity Check
-runtime as beta.2. Users arriving from the beta.3 Release should use beta.3;
-`main` remains moving development/latest source. The historical fixed
+The intended fixed `v0.2.0-beta.4` checkout contains the same CPU Activity Check
+runtime as beta.2. Users arriving from the beta.4 Release should use beta.4;
+`main` remains moving development/latest source. Historical beta.3 remains an
+immutable documentation-only prerelease, and the historical fixed
 `v0.2.0-beta.1` checkout does not contain the CPU runtime.
 
 The operator flow is deliberately explicit:
@@ -260,7 +273,7 @@ Read `result_type` first: `GUIDED_INCIDENT_REQUEST` means no Incident run was pr
 - [T17.1 semantic contract](docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md), [T17.2 result API](docs/T17_2_POWERSHELL_RESULT_API_SPEC.md), [T17.3 bridge and artifacts](docs/T17_3_LOCAL_AI_INTEGRATION_SPEC.md)
 - [Session Task Delta](docs/V0_1_1_T6_9_TASK_DELTA_ISSUE_EVIDENCE.md) and [Process Branch Origin](docs/V0_1_1_T6_9_5_PROCESS_BRANCH_ORIGIN.md)
 - [Pipeline design](docs/STAGE0_PLAN.md#pipeline), [validation record](docs/STAGE0_VALIDATION.md), [synthetic examples](docs/EXAMPLES.md)
-- Historical [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md), [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md) and [v0.2.0-beta.2 release notes](docs/RELEASE_NOTES_v0.2.0-beta.2.md); prepared [v0.2.0-beta.3 release notes](docs/RELEASE_NOTES_v0.2.0-beta.3.md).
+- Historical [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md), [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md), [v0.2.0-beta.2 release notes](docs/RELEASE_NOTES_v0.2.0-beta.2.md) and [v0.2.0-beta.3 release notes](docs/RELEASE_NOTES_v0.2.0-beta.3.md); prepared [v0.2.0-beta.4 release notes](docs/RELEASE_NOTES_v0.2.0-beta.4.md).
 
 <a id="current-limitations"></a>
 
@@ -285,7 +298,7 @@ The pipeline separates collection, attribution, lifecycle analysis and reporting
 pwsh -NoProfile -File .\scripts\Test-Stage0.ps1 -Offline
 ```
 
-The baseline recorded in Quick Start passed **1859/1859** locally and on Hosted Windows CI, with zero failed, skipped, inconclusive or NotRun tests. This beta.3 documentation preparation reran the same full offline suite before Owner review; the result is recorded separately from the earlier exact-SHA baseline.
+The baseline recorded in Quick Start passed **1859/1859** locally and on Hosted Windows CI, with zero failed, skipped, inconclusive or NotRun tests. The beta.3 documentation checkpoint reran the same full offline suite; this beta.4 documentation preparation reran it again before Owner review. These local results remain separate from the earlier exact-SHA baseline.
 
 T17.1, T17.2, T17.3 and standalone T18.2A are complete within their documented public-main scopes. T18.2A live validation passed L1/L2/L3; L4 is `NOT_EXPOSED` by design. Executable vectors remain 22/22 positive and 37/38 negative: N30 is intentionally `PARTIAL` because T18.1 has no executable parent external-state runtime seam. This does not implement T18.1 or T18.2B Memory Trend. Windows operator integration acceptance is not a universal host/client-version guarantee. Historical phase statements retain their own checkpoint scope.
 
