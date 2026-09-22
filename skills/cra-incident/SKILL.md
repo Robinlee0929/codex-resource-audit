@@ -142,7 +142,10 @@ ask the operator to re-establish it; do not guess or join different runs.
 Provide the following fixed-purpose command for the operator to run manually in
 their own interactive PowerShell 7 ConsoleHost. Have the operator set `$RepoRoot`
 to the validated absolute repository root and `$OutputDirectory` to the agreed new
-destination as literal values in that window, then run:
+destination as literal values in that window. Before launch, proactively explain
+that CRA will print a safe correlation line before collection and that the operator
+must preserve that line and `$OutputDirectory` for later safe artifact reading.
+Then have the operator run:
 
 ```powershell
 $receipt = & (Join-Path $RepoRoot 'scripts/Invoke-CraAiBridge.ps1') -OutputDirectory $OutputDirectory
@@ -156,18 +159,47 @@ operator, use Start-Process, drive keyboard/stdin/Read-Host, mock the interactiv
 host, or invoke Guided/PassThru directly to bypass the wrapper. The only feature
 argument is OutputDirectory; no target, action, timing or approval input is accepted.
 
-Ask the operator to share only the safe request_id/candidate_set_id line emitted
-before collection, plus the agreed directory. They need not wait for the final
-receipt to share these IDs. Do not request the full console transcript, process
-dump, PID, creation time, executable path or command line as AI-facing evidence.
+Tell the operator that the line has this form and should be saved or copied:
 
-Before STEP 2, explain that the operator is choosing a review set, not the final
-target. If several same-name candidates remain plausible, the operator may place
-all of them in the review set; membership does not mean a candidate is correct,
-authorize Observe or select the target. STEP 3 then shows local PID and Creation
-Time UTC evidence. The operator compares both with independently known current
-information for the intended instance. Name, READY, ordering, group or PID alone
-is insufficient, and creation time does not establish ownership.
+```text
+CRA AI request_id=<GUID> candidate_set_id=<GUID>
+```
+
+It is safe correlation context used later with the reader for candidate, review
+or final-result artifacts; it is not authentication or action authority. Ask the
+operator to share only that line plus the agreed directory. They need not wait for
+the final receipt to share the IDs. Do not request the full console transcript,
+process dump, PID, creation time, executable path or command line as AI-facing
+evidence.
+
+If the operator misses the line, do not rerun CRA, search arbitrary JSON, parse a
+transcript or ask for the full terminal output. After the bridge returns and the
+assigned `$receipt` is available, it retains the supported fields. Have the operator
+reprint them locally in the same PowerShell window:
+
+```powershell
+"CRA AI request_id={0} candidate_set_id={1}" -f `
+  $receipt.request_id,$receipt.candidate_set_id
+
+$OutputDirectory
+```
+
+Explain that this reprint creates no new request, changes no evidence and authorizes
+no action. A hard interruption may prevent a receipt; never recover expected IDs
+from an unvalidated artifact or invent them.
+
+Before STEP 2, explain the review-once, compare-once flow. STEP 2 creates one review
+set rather than starting a candidate trial: if several same-name candidates remain
+plausible, the operator may place all of them in that set. Membership does not mean
+a candidate is correct, authorize Observe or select the target. STEP 3 then shows
+the set side by side with local PID and Creation Time UTC evidence. The operator
+compares both with independently known current information obtained locally from
+the intended application or another operator-trusted, read-only system view. Codex
+cannot see or perform this private comparison. Name, READY, ordering, group or PID
+alone is insufficient, and creation time does not establish ownership. Matching
+PID and Creation Time UTC is recognition evidence for the captured process identity
+only; it does not establish Codex ownership, task ownership, causation, VERIFIED_ROOT,
+suspiciousness or root cause.
 
 At STEP 4, the human operator chooses exactly one candidate from the STEP 2
 review set. This is the target-selection point, but it is not VERIFIED_ROOT;
@@ -177,7 +209,8 @@ The safe candidate/review artifacts omit PID, Creation Time UTC, executable path
 parent information, command line and user/session context. Explain only the safe
 artifact fields and their limits; do not use them as a substitute for the local
 recognition display, request a private process table, nominate or recommend a
-candidate, rank candidates, or infer that `codex.exe` is the intended target. If
+candidate, rank candidates, suggest sequential candidate runs, or infer that
+`codex.exe` is the intended target. If
 the operator still cannot distinguish the intended instance, `Q`/`QUIT` is the
 correct fail-closed action rather than a failed workflow.
 

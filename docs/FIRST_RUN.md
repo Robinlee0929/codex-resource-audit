@@ -50,24 +50,66 @@ interactive PowerShell 7 ConsoleHost.
 Choose an absolute local output directory whose parent already exists. The new
 per-request directory must not exist; the wrapper creates it. The only feature
 parameter is `OutputDirectory`. The wrapper generates fresh request and candidate-set
-IDs and shows a safe ID line before collection. Share that line and the explicit
-directory with Codex, not the process table or a private terminal transcript.
+IDs and shows a safe ID line before collection.
+
+Before you launch, be ready to preserve that safe line and the agreed output
+directory as described next. Share only that context with Codex, not the process
+table or a private terminal transcript.
 
 You personally review candidates, select one target, choose Observe, enter O1
 while the activity runs, and enter ACTIVITY_END only after O1 returns and the
 activity finishes. Codex cannot drive these prompts or confirm for you.
 
+## Keep the safe request context
+
+Immediately after launch and before collection, CRA prints a line like:
+
+```text
+CRA AI request_id=<GUID> candidate_set_id=<GUID>
+```
+
+Save or copy that line and retain the agreed `OutputDirectory`. Together they are
+safe correlation context that Codex later uses with CRA's reader for the candidate,
+review or final-result artifact. Do not paste the full process table, full terminal
+transcript, PID/time comparison or arbitrary JSON into AI.
+
+If you miss the line, do not rerun CRA and do not search artifact JSON for IDs.
+After the bridge returns and `$receipt` is available in the same PowerShell window,
+reprint the supported context locally:
+
+```powershell
+"CRA AI request_id={0} candidate_set_id={1}" -f `
+  $receipt.request_id,$receipt.candidate_set_id
+
+$OutputDirectory
+```
+
+`$receipt` is the bridge result object and retains both IDs; `$OutputDirectory`
+is the directory agreed before launch. Reprinting these values creates no new
+request, changes no evidence and authorizes no action. If the bridge was hard-
+interrupted before it returned, a receipt is not guaranteed; do not substitute
+IDs learned from unvalidated files.
+
 ## How to recognize the candidate you intend to inspect
+
+**Review once, compare once, then choose.** The intended workflow is one review
+set and one side-by-side local comparison, not repeated runs that test candidates
+one by one.
 
 1. Decide which real application/process instance you intend to inspect before
    selecting anything in CRA.
 2. At STEP 2, choose a **review set**. This is not final target selection. If
    several same-name entries remain plausible, put all of them in the review set
    instead of guessing one.
-3. At STEP 3, compare the additional local evidence—PID and Creation Time UTC—
-   with independent current information you already obtained for the intended
-   process. Use multiple current facts: name, READY, ordering, group or PID alone
-   is insufficient, and creation time does not establish ownership.
+3. At STEP 3, compare the review set side by side using its additional local
+   evidence—PID and Creation Time UTC—with independent current information you
+   obtained locally from the intended application or another operator-trusted,
+   read-only system view. Codex cannot see or perform this private comparison.
+   Use multiple current facts: name, READY, ordering, group or PID alone is
+   insufficient, and creation time does not establish ownership.
+   Matching PID and Creation Time UTC supports recognition of the captured process
+   identity only; it does not establish Codex ownership, task ownership, causation,
+   `VERIFIED_ROOT`, suspiciousness or root cause.
 4. At STEP 4, the human chooses exactly one candidate from the STEP 2 review set.
    This is the target-selection point, but it is not `VERIFIED_ROOT`. Review
    membership does not mean a candidate is correct or authorize Observe.
@@ -75,7 +117,7 @@ activity finishes. Codex cannot drive these prompts or confirm for you.
    limits, but those artifacts intentionally omit PID, Creation Time UTC,
    executable path, parent information, command line and user/session context.
    Codex cannot perform the local terminal comparison or choose the target. Do
-   not paste a private process table merely to let AI choose.
+   not paste the local recognition table or a private process table into AI.
 6. If the intended instance still cannot be distinguished at STEP 4, enter
    `Q`/`QUIT` to cancel. This is expected fail-closed behavior, not an error.
 
