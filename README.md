@@ -22,11 +22,12 @@ When Codex feels stuck or process behavior looks unusual, CRA captures bounded p
 **Available now:** T17 and the standalone, live-validated T18.2A CPU Activity
 Check are implemented. Fixed tagged prereleases are authoritative through
 [GitHub Releases](https://github.com/Robinlee0929/codex-resource-audit/releases),
-while `main` is moving development/latest source. This document set is prepared
-for the intended fixed `v0.2.0-beta.5` baseline; the Releases page remains the
-authority for whether that tag has been published. Earlier beta.1 through beta.4
-tags remain immutable historical prereleases with their documented scope. A
-prerelease is not production readiness.
+while `main` is moving development/latest source. Version `v0.2.0-beta.6`
+contains this checkout's STEP 2 operator-guidance change; the Releases page
+remains the authority for whether that tag has been published. Published beta.1
+through beta.4 remain immutable historical prereleases with their documented
+scope. The existing `v0.2.0-beta.5` tag was not published as a GitHub prerelease
+and remains unchanged. A prerelease is not production readiness.
 
 ## When to use CRA
 
@@ -56,11 +57,11 @@ The AI-assisted path supports **Incident Observation only**. Finder and Session 
 
 ### Get the fixed beta or moving source
 
-When the Releases page provides `v0.2.0-beta.5`, use its matching fixed checkout.
+When the Releases page provides `v0.2.0-beta.6`, use its matching fixed checkout.
 Choose a parent directory in your own terminal and run:
 
 ```powershell
-git clone --branch v0.2.0-beta.5 `
+git clone --branch v0.2.0-beta.6 `
   https://github.com/Robinlee0929/codex-resource-audit.git
 cd codex-resource-audit
 ```
@@ -190,11 +191,12 @@ Task Manager helps show what exists now; CRA records what changed in bounded CPU
 intervals for one process the human independently selected. Neither is an
 automatic diagnosis.
 
-The intended fixed `v0.2.0-beta.5` checkout contains the same CPU Activity Check
+The `v0.2.0-beta.6` version contains the same CPU Activity Check
 runtime as beta.2. Every published beta should be used with its matching fixed
-checkout; `main` remains moving development/latest source. Historical beta.3,
-beta.4 and earlier prereleases remain immutable with their recorded scopes, and
-the historical fixed `v0.2.0-beta.1` checkout does not contain the CPU runtime.
+checkout; `main` remains moving development/latest source. Published beta.3,
+beta.4 and earlier prereleases remain immutable with their recorded scopes. The
+unpublished beta.5 tag remains unchanged, and the historical fixed
+`v0.2.0-beta.1` checkout does not contain the CPU runtime.
 
 The operator flow is deliberately explicit:
 
@@ -274,7 +276,7 @@ Read `result_type` first: `GUIDED_INCIDENT_REQUEST` means no Incident run was pr
 - [T17.1 semantic contract](docs/T17_1_AI_CALLABLE_CONTRACT_SPEC.md), [T17.2 result API](docs/T17_2_POWERSHELL_RESULT_API_SPEC.md), [T17.3 bridge and artifacts](docs/T17_3_LOCAL_AI_INTEGRATION_SPEC.md)
 - [Session Task Delta](docs/V0_1_1_T6_9_TASK_DELTA_ISSUE_EVIDENCE.md) and [Process Branch Origin](docs/V0_1_1_T6_9_5_PROCESS_BRANCH_ORIGIN.md)
 - [Pipeline design](docs/STAGE0_PLAN.md#pipeline), [validation record](docs/STAGE0_VALIDATION.md), [synthetic examples](docs/EXAMPLES.md)
-- Historical [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md), [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md), [v0.2.0-beta.2 release notes](docs/RELEASE_NOTES_v0.2.0-beta.2.md), [v0.2.0-beta.3 release notes](docs/RELEASE_NOTES_v0.2.0-beta.3.md) and [v0.2.0-beta.4 release notes](docs/RELEASE_NOTES_v0.2.0-beta.4.md); prepared [v0.2.0-beta.5 release notes](docs/RELEASE_NOTES_v0.2.0-beta.5.md).
+- Historical [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md), [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md), [v0.2.0-beta.2 release notes](docs/RELEASE_NOTES_v0.2.0-beta.2.md), [v0.2.0-beta.3 release notes](docs/RELEASE_NOTES_v0.2.0-beta.3.md) and [v0.2.0-beta.4 release notes](docs/RELEASE_NOTES_v0.2.0-beta.4.md); unpublished-tag [v0.2.0-beta.5 notes](docs/RELEASE_NOTES_v0.2.0-beta.5.md); [v0.2.0-beta.6 release notes](docs/RELEASE_NOTES_v0.2.0-beta.6.md).
 
 <a id="current-limitations"></a>
 
@@ -299,7 +301,7 @@ The pipeline separates collection, attribution, lifecycle analysis and reporting
 pwsh -NoProfile -File .\scripts\Test-Stage0.ps1 -Offline
 ```
 
-The baseline recorded in Quick Start passed **1859/1859** locally and on Hosted Windows CI, with zero failed, skipped, inconclusive or NotRun tests. The beta.3 and beta.4 documentation checkpoints reran the same full offline suite; this beta.5 documentation preparation reran it again before Owner review. These local reruns remain separate from the earlier exact-SHA baseline.
+The baseline recorded in Quick Start passed **1859/1859** locally and on Hosted Windows CI, with zero failed, skipped, inconclusive or NotRun tests. The beta.3, beta.4 and beta.5 preparation checkpoints reran the same full offline suite. For beta.6, one focused STEP 2 display regression was added and **1860/1860** offline tests passed before Owner review. These local reruns remain separate from the earlier exact-SHA baseline.
 
 T17.1, T17.2, T17.3 and standalone T18.2A are complete within their documented public-main scopes. T18.2A live validation passed L1/L2/L3; L4 is `NOT_EXPOSED` by design. Executable vectors remain 22/22 positive and 37/38 negative: N30 is intentionally `PARTIAL` because T18.1 has no executable parent external-state runtime seam. This does not implement T18.1 or T18.2B Memory Trend. Windows operator integration acceptance is not a universal host/client-version guarantee. Historical phase statements retain their own checkpoint scope.
 

@@ -85,8 +85,14 @@ function Invoke-GuidedDiscovery {
     } else {
         'Not sure which process to inspect? Type F to find candidates related to a reproduced activity.'
     }
+    $reviewSetGuidance = @(
+        Format-OperatorLine Note -Value 'STEP 2 selects one review set, not the final target.'
+        Format-OperatorLine Note -Value 'Include every candidate you cannot yet rule out as relevant to the intended process or activity; same-name candidates may be reviewed together.'
+        Format-OperatorLine Note -Value 'STEP 3 compares the review set with additional local identity information before STEP 4 asks the human to choose exactly one target from that set.'
+        Format-OperatorLine Note -Value 'Do not trial candidates one-by-one merely to identify them; Q/QUIT cancels safely if you cannot form a meaningful review set.'
+    ) -join [Environment]::NewLine
     Write-Information ((Format-OperatorLine Step -Step 2 -Label 'SELECT FOR REVIEW') + [Environment]::NewLine +
-        $reviewGuidance) -InformationAction Continue
+        $reviewGuidance + [Environment]::NewLine + $reviewSetGuidance) -InformationAction Continue
     $finderUsed=$false
     while ($true) {
         try {

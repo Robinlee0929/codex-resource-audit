@@ -20,8 +20,8 @@ latest. This policy deliberately does not hardcode a "current published beta"
 sentence that becomes stale after the next release. Public `main` may contain
 later specifications, plans or implementations not included in a fixed beta.
 
-The intended fixed documentation baseline described by this checkout is
-`v0.2.0-beta.5`. Its presence in documentation is not a publication claim; use
+The fixed version described by this checkout is `v0.2.0-beta.6`. Its presence
+in documentation is not a publication claim; use
 the Releases page to determine whether the tag is available. Prerelease status
 does not establish production readiness, stable support or universal
 compatibility.
@@ -34,6 +34,13 @@ compatibility.
 | [`v0.2.0-beta.2`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.2) | Target `f7ef051fa1dbac24aca384e79435ce6dbd6fd8ef`; added the standalone T18.2A CPU Activity Check within the scope recorded in its release notes. It remains immutable. |
 | [`v0.2.0-beta.3`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.3) | Target `b62b2be485826339c9c558b549f6920697b37f85`; first-run documentation correction with unchanged beta.2 runtime scope, as recorded in its release notes. It remains immutable. |
 | [`v0.2.0-beta.4`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.4) | Target `8e17f415ba63b6e0421677d34eae49176fe92279`; first-run human-recognition guidance correction with unchanged beta.2 runtime scope, as recorded in its release notes. It remains immutable. |
+
+An immutable `v0.2.0-beta.5` tag targets
+`9ebb713bacac36c85474eb6869eef8d02198daad`, but Owner held publication after
+the STEP 2 terminal UX review. It was not published as a GitHub prerelease and
+remains unchanged. Version `v0.2.0-beta.6` follows that unpublished tag and
+contains the subsequent STEP 2 operator-guidance correction. The Releases page
+remains authoritative for beta.6 publication state.
 
 These records preserve historical release scope; they do not identify which beta
 is currently latest. Use the selected beta's Skill, bridge and runtime together
@@ -88,12 +95,21 @@ Historical `v0.2.0-beta.4` is a first-run human-recognition guidance correction
 only. It explains review-set selection and local candidate comparison without
 changing runtime behavior, candidate information, automatic selection or ranking.
 
-The intended `v0.2.0-beta.5` is a first-run safe-handoff and recognition-guidance
-correction only. It makes the existing correlation IDs and output-directory
-handoff discoverable and recoverable from the existing receipt, and clarifies the
-single review-set / single local-comparison flow. It changes no runtime behavior,
-candidate model, AI artifact schema, private-field exposure, selection authority
-or ranking.
+The immutable but unpublished `v0.2.0-beta.5` tag is a first-run safe-handoff and
+recognition-guidance correction only. It makes the existing correlation IDs and
+output-directory handoff discoverable and recoverable from the existing receipt,
+and clarifies the single review-set / single local-comparison flow. It changes no
+runtime behavior, candidate model, AI artifact schema, private-field exposure,
+selection authority or ranking.
+
+Version `v0.2.0-beta.6` contains a display-only STEP 2 correction. Before input,
+the terminal explains that STEP 2 forms one review set rather than choosing the
+final target, same-name candidates may be reviewed together, STEP 3 compares the
+set, STEP 4 requires one human target choice, candidate-by-candidate trials are
+not needed, and `Q`/`QUIT` cancels safely. It does not change review grammar,
+review-set or target-selection semantics, candidate fields or model, readiness,
+trust, private-field exposure, AI artifact schema, grouping, ordering, or the
+human selection boundary. It adds no automatic target selection or ranking.
 
 ## Community Beta gate and Owner actions
 

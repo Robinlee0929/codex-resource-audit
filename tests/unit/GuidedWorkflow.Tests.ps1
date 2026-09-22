@@ -136,6 +136,21 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         $index | Should -Match 'Group order is presentation-only'
         $index | Should -Not -Match 'node.exe|LIKELY_ROOT|BEST_CANDIDATE|SCORE|CONFIRMED_CODEX_OWNED|\x1B'
     }
+    It 'H02b explains review-set selection before the first STEP 2 input' {
+        Invoke-CapturedGuided
+        $guidance = $script:info[1]
+        $guidance | Should -Match 'STEP 2 - SELECT FOR REVIEW'
+        $guidance | Should -Match 'one review set, not the final target'
+        $guidance | Should -Match 'every candidate you cannot yet rule out'
+        $guidance | Should -Match 'same-name candidates may be reviewed together'
+        $guidance | Should -Match 'STEP 3 compares the review set'
+        $guidance | Should -Match 'STEP 4 asks the human to choose exactly one target from that set'
+        $guidance | Should -Match 'Do not trial candidates one-by-one'
+        $guidance | Should -Match 'Q/QUIT cancels safely'
+        $firstPrompt = $script:trace.IndexOf('prompt')
+        $firstPrompt | Should -BeGreaterThan 0
+        @($script:trace[0..($firstPrompt - 1)] | Where-Object { $_ -ceq 'display' }).Count | Should -Be 2
+    }
     It 'H03 Review grammar <label> preserves first occurrence order without duplicate state' -ForEach @(
         @{label='single'; reviewText='C2'; target='C2'; expected=@('C2')}
         @{label='multiple'; reviewText='C3,C1'; target='C1'; expected=@('C3','C1')}
