@@ -59,3 +59,10 @@ Beta.6 adds one focused regression assertion for the pre-input STEP 2 guidance.
 The complete offline synthetic suite passed **1860/1860**, with zero failed,
 skipped, inconclusive or not-run tests. This local preparation result establishes
 no new Hosted CI, operator-validation or release result.
+
+The retained executable-vector disclosures remain:
+
+- positive executable vectors: **22/22**;
+- negative executable vectors: **37/38**; and
+- N30: **PARTIAL** because the corresponding T18.1 runtime integration seam
+  does not exist.
