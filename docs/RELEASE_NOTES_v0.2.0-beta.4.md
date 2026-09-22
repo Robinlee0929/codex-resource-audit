@@ -21,7 +21,10 @@ Beta.4 clarifies that:
 - review membership does not authorize Observe or imply that a candidate is
   correct;
 - STEP 3 presents local PID and Creation Time UTC evidence for comparison with
-  independent current information about the intended process instance; and
+  independent current information about the intended process instance;
+- STEP 4 is the human-owned target-selection point: the human chooses exactly one
+  candidate from the STEP 2 review set. The choice is not `VERIFIED_ROOT`, and
+  Codex does not choose or recommend it; and
 - the human must cancel with `Q` rather than guess when recognition remains
   insufficient.
 
