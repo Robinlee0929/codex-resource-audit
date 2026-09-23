@@ -6,6 +6,11 @@ The standalone [CPU Activity Check](T18_2A_CPU_ACTIVITY_CHECK.md) is a separate
 human-operated workflow and does not require the `cra-incident` Skill. This guide
 covers setup and recovery; it does not add runtime capabilities.
 
+The same-request STEP 2 correction below belongs to the unreleased
+`FIRST_RUN_RECOVERY_BATCH` implementation candidate. Published beta.6 still stops
+on an invalid review string. Use matching checkout, runtime and Skill when testing
+the candidate; its documentation is not a release or acceptance claim.
+
 ## Skill deployment and recognition
 
 **SETUP REQUEST:** ask Codex to install/deploy and recognize `cra-incident`, using
@@ -18,15 +23,53 @@ in your checkout. Its local Codex copy is deployment, not another source of trut
 The local user-Skill mechanism used in Windows acceptance is a normal copy into
 `$CODEX_HOME/skills/cra-incident/SKILL.md`, defaulting to
 `~/.codex/skills/cra-incident/SKILL.md` when `CODEX_HOME` is unset. Confirm the root
-used by your Codex installation. Ask Codex to deploy it using the README prompt,
-or copy the repository's `skills/cra-incident` directory into that root yourself.
-If absent, create the destination and copy; if content/SHA-256 already matches,
-it is current. Stop on different or unknown existing content instead of overwriting
-it. No global configuration change is needed.
+used by your Codex installation. Ask Codex to follow this setup procedure for the
+canonical source file and that exact destination file. Setup authorization is
+distinct from observation authorization. No global configuration change is needed.
 
-On the next turn, confirm `cra-incident` is in Codex's available Skill list.
-If absent, check the deployment location and content; a client reload or new
-conversation may be needed. Do not start observation until recognition succeeds.
+| Installed state | Supported action |
+| --- | --- |
+| ABSENT | Under explicit setup authorization, create the destination directory as needed, copy the canonical file, and verify destination SHA-256 equals the source. |
+| IDENTICAL | Matching SHA-256: no replacement; proceed to recognition. |
+| DIFFERENT | Stop ordinary installation. Existing provenance remains UNKNOWN unless independently established; it may contain custom changes. Use the explicitly authorized replacement flow below. |
+
+### Replace different content safely
+
+1. Show the exact source path, destination path, source SHA-256, destination
+   SHA-256 and proposed unused backup path outside active Skill discovery roots.
+   Warn that existing content may contain custom changes. Do not classify it as
+   an older CRA version merely by its name or frontmatter.
+2. Obtain explicit human authorization to replace that destination file with
+   that approved source. Denied authorization means STOP, without replacement.
+3. Back up the existing content outside active Skill discovery locations without
+   overwriting another backup. Verify the backup SHA-256 matches the original.
+4. Immediately re-read/re-hash both source and destination against the approved
+   hashes. If either changed, STOP before replacement.
+5. Replace ONLY the explicitly authorized destination file. Verify its SHA-256
+   equals the approved source hash. A failed copy or mismatch means STOP.
+6. Reload Codex or start a new conversation when necessary. Confirm `cra-incident`
+   is recognized, then read the matching deployed instructions before observation.
+
+| Setup condition | Required response |
+| --- | --- |
+| Authorization denied | STOP; do not replace the destination. |
+| Backup creation or hash verification fails | STOP before replacement; preserve existing content. |
+| Source changes before replacement | STOP; the approved source hash no longer matches. |
+| Destination changes before replacement | STOP; the approved destination hash no longer matches. |
+| Copy fails | STOP; preserve the backup and do not start observation. |
+| Post-copy hash mismatch | STOP; matching deployment is not established. |
+| Skill unrecognized or matching instructions not loaded | Reload/new conversation as needed; confirm recognition and matching deployed instructions before observation. |
+
+Unknown provenance blocks automatic replacement, not informed human-authorized
+replacement. No historical hash registry, automatic provenance inference, installer
+helper, automatic restoration or cleanup is used. Preserve backups on failure;
+any restoration requires separate explicit authorization.
+
+For absent, identical and replaced installations alike, verify canonical/deployed
+SHA-256 equality and recognition. File existence or a listed Skill name alone does
+not prove matching instructions are loaded. A mismatch can invalidate version-specific
+UX acceptance; record the checkout SHA, matching hashes and recognition in that
+acceptance record. Do not begin observation while setup is incomplete.
 
 The installed path never determines the CRA repository root. Codex first uses
 the current workspace's Git top-level as a candidate, then checks for the CLI,
@@ -42,10 +85,23 @@ not process trust.
 
 > Use cra-incident to help me inspect Codex-related process activity while I reproduce my task.
 
-Tell Codex what activity you can reproduce. It supplies a complete command with
-your validated checkout and agreed output directory; see the
-[bridge example](../README.md#use-with-codex). You manually launch it in your own
-interactive PowerShell 7 ConsoleHost.
+Tell Codex what activity you can reproduce. For a genuinely new invocation, FIRST
+preserve any previous request's complete safe tuple if still needed:
+`(OutputDirectory, request_id, candidate_set_id)`. Only then set new path variables,
+clear stale `$receipt`, and manually launch in your own PowerShell 7 ConsoleHost.
+Codex supplies literal single-quoted assignments using the validated real checkout
+and agreed fresh destination; embedded apostrophes are doubled. Never evaluate path
+text as code. After those actual assignments, the canonical command is:
+
+```powershell
+$receipt = $null
+$receipt = & (Join-Path $RepoRoot 'scripts/Invoke-CraAiBridge.ps1') `
+  -OutputDirectory $OutputDirectory
+```
+
+Never clear `$receipt` or replace the active `$OutputDirectory` during STEP 2
+correction, same-request troubleshooting, artifact reading or active request
+recovery. No automatic context archive or launcher is needed.
 
 Choose an absolute local output directory whose parent already exists. The new
 per-request directory must not exist; the wrapper creates it. The only feature
@@ -73,6 +129,10 @@ safe correlation context that Codex later uses with CRA's reader for the candida
 review or final-result artifact. Do not paste the full process table, full terminal
 transcript, PID/time comparison or arbitrary JSON into AI.
 
+Supply the complete tuple once. Codex reuses it within the same explicit request,
+asking again only if missing, ambiguous, stale or mismatched. Never combine IDs
+from different runs or treat them as authentication or authorization.
+
 If you miss the line, do not rerun CRA and do not search artifact JSON for IDs.
 After the bridge returns and `$receipt` is available in the same PowerShell window,
 reprint the supported context locally:
@@ -95,6 +155,16 @@ IDs learned from unvalidated files.
 **Review once, compare once, then choose.** The intended workflow is one review
 set and one side-by-side local comparison, not repeated runs that test candidates
 one by one.
+
+In the bridge/PassThru path, an invalid STEP 2 string accepts NOTHING. Re-enter
+the COMPLETE review set, or Q/QUIT to cancel. The same request, directory, IDs,
+discovery and candidate mapping remain active, with no partial selection retained
+and no review publication before acceptance. The local message identifies the
+first invalid position and shows only a short identifier-shaped token; other input
+is not echoed. No correction is guessed. Valid acceptance occurs once; STEP 2 is
+not re-entered afterward. Malformed reader output, reader errors, Ctrl+C and later
+invalid target/action retain their existing terminal behavior. Manual Guided,
+Session and Finder behavior is unchanged.
 
 1. Decide which real application/process instance you intend to inspect before
    selecting anything in CRA.
@@ -168,6 +238,13 @@ with both IDs from your request context. Candidate/review data explains the revi
 set without granting target choice or consent. The final artifact retains the
 actual result type and outcome, including incomplete evidence.
 
+With supported local execution/file access, Codex invokes the reader itself.
+You normally do not run `Read-CraAiArtifact`, parse JSON, format `observed_context`,
+or paste raw artifacts/private process tables. If the client lacks that capability,
+Codex states the limitation, does not claim validation occurred, and uses no raw
+JSON fallback. Reader rejection stops consumption; an older successful result
+variable must never substitute for the failed current read.
+
 Missing context, mismatched IDs, malformed files or unsupported versions stop
 interpretation. Keep the exact request context: no newest-file search, stale-result
 reuse, raw/pending-file parsing or JSON repair. If context is lost, re-establish it
@@ -180,6 +257,11 @@ Delivery does not imply observation success. See the
 | What you see | What it means | Safe next action and retry boundary |
 | --- | --- | --- |
 | Skill not recognized | Codex has not loaded the deployed instructions. A file on disk alone is insufficient. | Verify the configured Skill root and matching content, then check the next turn/reloaded client. No CRA attempt is needed just to resolve recognition. Start only after it succeeds. |
+| Different installed Skill | It may contain custom changes; provenance can remain UNKNOWN. | Follow the authorized backup/recheck/replacement flow above; never silently overwrite it. |
+| STEP 2 invalid string | Nothing was accepted; the same request is still open. | Re-enter the COMPLETE set or Q/QUIT. Keep the same directory and IDs; no fresh attempt is needed. |
+| `CRA_AI_DESTINATION_EXISTS` | No NEW observation started from this invocation. | Preserve the existing directory; do not delete/reuse it. Choose another fresh destination. |
+| Known pre-creation failure | Request creation was not reached. | Correct the reported setup problem; do not claim a directory/request was created. |
+| `CRA_AI_DESTINATION_CREATE_FAILED` | A directory may have been created before failure. | Preserve it; invent no IDs and delete nothing automatically. Use a different fresh destination for a new attempt. |
 | No correct candidate | The captured list does not give you an appropriate target to choose. It does not prove the relevant process is absent. | Do not choose the nearest name or let AI substitute a target. Cancel in PowerShell, review what activity/instance you intend to inspect, and use fresh discovery in a new attempt if you try again. Manual Finder is a separate manual workflow, not an AI-assisted fallback. |
 | O0 is not `MATCHED` | CRA could not confirm continuity of your selected identity at the starting capture. | Stop this attempt. If retrying, use a new request and fresh discovery, then make all human choices again. Never reuse a C label or silently retarget. |
 | You cancel (`Q`/`QUIT`, or interrupt) | The observation may be incomplete. An interruption can prevent a final artifact or receipt. | Interpret only an actual returned result; do not invent a cancellation/completion record or infer process exit. Starting observation again requires a fresh attempt, not resume. |

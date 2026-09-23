@@ -5,7 +5,8 @@ function Resolve-OperatorReviewSet {
        Normalize ID case, ASCII space/tab and duplicate IDs, preserving
        first occurrence. Any invalid token rejects the entire request. #>
     param([Parameter(Mandatory)] [object] $InputResult,
-        [AllowNull()] [AllowEmptyCollection()] [object[]] $Candidates)
+        [AllowNull()] [AllowEmptyCollection()] [object[]] $Candidates,
+        [switch] $ExplainInvalidInput)
     $result = [pscustomobject]@{ status='INVALID'; candidate_indices=@() }
     $status = Get-RootCandidateField $InputResult 'status'
     $text = Get-RootCandidateField $InputResult 'text'
@@ -13,10 +14,24 @@ function Resolve-OperatorReviewSet {
     if ($status -ceq 'CANCELLED') { $result.status='CANCELLED'; return $result }
     if ($status -cne 'INPUT' -or $text -isnot [string]) { return $result }
     $indices = [Collections.Generic.List[int]]::new()
+    $position = 0
     foreach ($token in $text.Split(',')) {
+        $position++
         $trimmed = $token.Trim([char[]]@(' ', "`t"))
         $choice = Resolve-OperatorChoice -InputResult ([pscustomobject]@{ status='INPUT'; text=$trimmed }) -Purpose Candidate -Candidates $Candidates
-        if ($choice.status -cne 'SELECTED') { return $result }
+        if ($choice.status -cne 'SELECTED') {
+            if ($ExplainInvalidInput) {
+                # Display projection only, from the same validation pass. Never
+                # return rejected text or partial indices in the resolver result.
+                $display = if ($trimmed -cmatch '\A[A-Za-z][0-9]{1,10}\z') { $trimmed } else { 'value not displayed' }
+                Write-Information (@(
+                    Format-OperatorLine Note -Value ("Invalid candidate ID at token {0}: {1}" -f $position,$display)
+                    Format-OperatorLine Note -Value 'Nothing was accepted. Re-enter the COMPLETE review set, or Q/QUIT to cancel.'
+                    Format-OperatorLine Note -Value 'Same active request, directory and IDs; no new discovery or directory is needed.'
+                ) -join [Environment]::NewLine) -InformationAction Continue
+            }
+            return $result
+        }
         if (-not $indices.Contains($choice.candidate_index)) { $indices.Add($choice.candidate_index) }
     }
     if ($indices.Count -eq 0) { return $result }
@@ -101,21 +116,31 @@ function Invoke-GuidedDiscovery {
         catch [Management.Automation.PipelineStoppedException] { throw }
         catch { throw 'GUIDED_INPUT_FAILED: selection input failed; no selection or assertion recorded.' }
         $reviewText=Get-RootCandidateField $inputValue 'text'
-        if (-not (Test-RootCandidateCode $inputValue 'status' 'INPUT') -or $reviewText -isnot [string] -or
-            -not [string]::Equals($reviewText,'F',[StringComparison]::OrdinalIgnoreCase)) {break}
-        if ($IncidentOnly) {$outcome.reason_code='PASSTHRU_FINDER_UNSUPPORTED';return $outcome}
-        if ($finderUsed) {
-            Write-Information 'Finder has already been used. Enter candidate IDs for normal review.' -InformationAction Continue
+        if ((Test-RootCandidateCode $inputValue 'status' 'INPUT') -and $reviewText -is [string] -and
+            [string]::Equals($reviewText,'F',[StringComparison]::OrdinalIgnoreCase)) {
+            if ($IncidentOnly) {$outcome.reason_code='PASSTHRU_FINDER_UNSUPPORTED';return $outcome}
+            if ($finderUsed) {
+                Write-Information 'Finder has already been used. Enter candidate IDs for normal review.' -InformationAction Continue
+                continue
+            }
+            $finderUsed=$true
+            $finder=Invoke-ActivityTargetFinder -Baseline $snapshot -Candidates $candidates -ScopeId $observationScopeId -Reader $Reader
+            if (-not $finder.can_return_to_review) {
+                if ($finder.status -ceq 'FINDER_CANCELLED') {$outcome.status='CANCELLED'}
+                return $outcome
+            }
             continue
         }
-        $finderUsed=$true
-        $finder=Invoke-ActivityTargetFinder -Baseline $snapshot -Candidates $candidates -ScopeId $observationScopeId -Reader $Reader
-        if (-not $finder.can_return_to_review) {
-            if ($finder.status -ceq 'FINDER_CANCELLED') {$outcome.status='CANCELLED'}
-            return $outcome
-        }
+        $review = Resolve-OperatorReviewSet -InputResult $inputValue -Candidates $view.rows -ExplainInvalidInput:$IncidentOnly
+        $correctable = $IncidentOnly -and (Test-RootCandidateCode $inputValue 'status' 'INPUT') -and
+            $reviewText -is [string] -and $review.status -ceq 'INVALID'
+        # Input correction retains only the original discovery, never rejected
+        # text or a partial selection. Malformed reader output remains terminal.
+        $inputValue = $null
+        $reviewText = $null
+        if ($correctable) { $review = $null; continue }
+        break
     }
-    $review = Resolve-OperatorReviewSet -InputResult $inputValue -Candidates $view.rows
     if ($review.status -ceq 'CANCELLED') { $outcome.status = 'CANCELLED'; return $outcome }
     if ($review.status -cne 'REVIEW_SELECTED') { Stop-GuidedInput -Code GUIDED_REVIEW_INVALID }
     $reviewRows = @($review.candidate_indices | ForEach-Object { $view.rows[$_] })

@@ -160,7 +160,7 @@ Describe 'T17.2 PowerShell in-process Incident result' {
     It 'MR05 blocks <case> before Incident, without fabricating an Incident timeline' -ForEach @(
         @{case='finder';inputs=@('F');reason='PASSTHRU_FINDER_UNSUPPORTED'},
         @{case='session';inputs=@('C1','C1','S');reason='PASSTHRU_SESSION_UNSUPPORTED'},
-        @{case='invalid review';inputs=@('C999');reason='GUIDED_REVIEW_INVALID'},
+        @{case='malformed review reader';inputs=@(42);reason='GUIDED_REVIEW_INVALID'},
         @{case='invalid target';inputs=@('C1','P1');reason='GUIDED_TARGET_INVALID'},
         @{case='no automatic target';inputs=@('C1','');reason='GUIDED_TARGET_INVALID'},
         @{case='invalid action';inputs=@('C1','C1','O2');reason='GUIDED_ACTION_INVALID'},

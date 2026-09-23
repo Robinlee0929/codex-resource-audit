@@ -26,6 +26,10 @@ verified-root or confirmed-ownership claim.
 
 ## Input and cancellation contract
 
+The following bullets record the historical T2/T3 behavior. For the current
+IncidentOnly/PassThru path, the same-request input-correction amendment below
+supersedes only the rule that an invalid review string ends the attempt.
+
 - Review IDs use the existing exact case-sensitive C-number grammar. Commas
   separate tokens. ASCII spaces and tabs around review tokens are trimmed.
 - Duplicate IDs are removed while preserving their first occurrence. This affects
@@ -46,6 +50,32 @@ verified-root or confirmed-ownership claim.
 - Noninteractive/unsupported input is rejected before capture. The message points
   to advanced modes for automation. Scripted input is an internal offline-test
   seam, not a public CLI switch that bypasses operator interaction.
+
+### Same-request input correction (IncidentOnly/PassThru)
+
+Before STEP 2 accepts a review set, an invalid string submission accepts nothing
+and retains no partial selection. The human may enter a COMPLETE new submission
+in the same active request. Discovery, candidate mapping, OutputDirectory,
+request_id and candidate_set_id remain unchanged. This is input correction, not
+execution restart, automatic retry, rediscovery, capture retry or a new request.
+Acceptance happens once; after acceptance STEP 2 is never re-entered.
+
+The existing validator identifies the first invalid comma-delimited token and
+its one-based position. After existing ASCII space/tab trimming, local Information
+output may show that token only if it matches `\A[A-Za-z][0-9]{1,10}\z`; otherwise
+it shows `value not displayed`. Fixed guidance says nothing was accepted, to
+re-enter the complete review set, and that Q/QUIT cancels. No other rejected input
+is displayed, truncated into a displayable prefix, or retained in workflow state,
+artifacts, receipts or structured results. This display rule adds no parser or
+accepted input syntax; existing case normalization and duplicate ordering remain.
+
+Q/QUIT and EOF retain cancellation semantics. Reader exceptions, malformed reader
+output and Ctrl+C remain terminal; they never consume another input for correction.
+Unsupported Finder in PassThru remains refused. Later invalid target/action
+behavior and manual Guided/Session/Finder behavior remain unchanged. Human target
+selection and Observe still precede fresh O0; no extra capture is introduced.
+See [T17.3 publication rules](T17_3_LOCAL_AI_INTEGRATION_SPEC.md#directory-and-publication-contract)
+for the distinction between valid review acceptance and successful delivery.
 
 ## Reuse and privacy boundaries
 

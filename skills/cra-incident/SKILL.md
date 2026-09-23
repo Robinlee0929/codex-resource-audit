@@ -114,6 +114,29 @@ during T17.3D deployment acceptance; it is not a new process trust system here.
 
 ## Establish one request context
 
+Before observation, setup must establish matching canonical/deployed SHA-256 and
+recognized matching instructions. A listed Skill name alone does not prove a
+replacement loaded; a mismatch invalidates version-specific UX acceptance.
+
+For a separate explicit setup request, read `docs/FIRST_RUN.md` from the validated
+repository root and follow its replacement procedure, never an installed-parent path.
+There are only three operational states: ABSENT (install under setup authorization
+and verify destination SHA-256), IDENTICAL (no replacement; proceed to recognition),
+and DIFFERENT (stop ordinary installation). For DIFFERENT, provenance may remain
+UNKNOWN and existing content may contain custom changes. Show source/destination
+paths and hashes plus an unused backup path outside active Skill discovery roots.
+Require explicit human replacement authorization. Back up and verify the original,
+then immediately re-read/re-hash source and destination against the approved hashes.
+If either changed, STOP. Replace only the authorized file and verify destination
+SHA-256 equals the approved source. Reload/new conversation as needed; confirm
+recognition and read the matching deployed instructions before observation.
+Denied authorization, backup failure, source/destination change, copy failure or
+post-copy hash mismatch means STOP. No historical hash registry, automatic
+provenance inference, installer helper, automatic restoration, cleanup or global
+configuration changes. Unknown provenance blocks automatic replacement, not an
+informed human-authorized replacement. Setup authorization is not observation
+authorization; an observation request must not silently install or update a Skill.
+
 Use the user's authorization for one observation request. Keep a conversation-local
 association of the intended activity, repository root, explicit artifact directory,
 and (once supplied) the wrapper's request_id and candidate_set_id. This is bookkeeping,
@@ -137,18 +160,32 @@ the operator's request context. Never learn the expected IDs from an unvalidated
 artifact and then validate it against itself. If context was lost or is ambiguous,
 ask the operator to re-establish it; do not guess or join different runs.
 
+Reuse the complete established tuple `(OutputDirectory, request_id, candidate_set_id)`
+within the same explicit request context. Ask again only when missing, ambiguous,
+stale or mismatched. Never combine isolated IDs from different runs. Correlation
+IDs are neither authentication nor authorization.
+
 ## Guide the operator; do not drive the terminal
 
 Provide the following fixed-purpose command for the operator to run manually in
 their own interactive PowerShell 7 ConsoleHost. Have the operator set `$RepoRoot`
 to the validated absolute repository root and `$OutputDirectory` to the agreed new
-destination as literal values in that window. Before launch, proactively explain
+destination as literal values in that window. Supply those actual assignments as
+single-quoted PowerShell literals, doubling embedded apostrophes; never use fake
+absolute paths in copyable launch examples. For a genuinely NEW invocation, FIRST
+preserve any previous request's complete safe tuple if still needed, THEN set new
+path variables, clear stale `$receipt`, and manually launch. Never clear `$receipt`
+or replace the active `$OutputDirectory` during STEP 2 correction, same-request
+troubleshooting, artifact reading or active recovery. Do not create an automatic
+context archive. Before launch, proactively explain
 that CRA will print a safe correlation line before collection and that the operator
 must preserve that line and `$OutputDirectory` for later safe artifact reading.
 Then have the operator run:
 
 ```powershell
-$receipt = & (Join-Path $RepoRoot 'scripts/Invoke-CraAiBridge.ps1') -OutputDirectory $OutputDirectory
+$receipt = $null
+$receipt = & (Join-Path $RepoRoot 'scripts/Invoke-CraAiBridge.ps1') `
+  -OutputDirectory $OutputDirectory
 ```
 
 Use only the validated root and agreed new directory. Quote paths as literal data;
@@ -191,7 +228,15 @@ from an unvalidated artifact or invent them.
 Before STEP 2, explain the review-once, compare-once flow. STEP 2 creates one review
 set rather than starting a candidate trial: if several same-name candidates remain
 plausible, the operator may place all of them in that set. Membership does not mean
-a candidate is correct, authorize Observe or select the target. STEP 3 then shows
+a candidate is correct, authorize Observe or select the target. An invalid STEP 2
+string accepts NOTHING and retains no partial selection. Tell the operator to
+re-enter the COMPLETE set or Q/QUIT, within the SAME active request, directory,
+IDs and discovery. Do not autocorrect or recommend an ID. No review publishes
+before acceptance; after valid acceptance STEP 2 is never re-entered. There is
+one review publication point, with one immutable artifact when delivery succeeds;
+delivery failure is not retried. Reader errors/malformed output, Ctrl+C, PassThru
+Finder refusal and later target/action failures keep their existing behavior.
+Manual Guided/Session/Finder behavior is unchanged. STEP 3 then shows
 the set side by side with local PID and Creation Time UTC evidence. The operator
 compares both with independently known current information obtained locally from
 the intended application or another operator-trusted, read-only system view. Codex
@@ -239,6 +284,12 @@ request for the operator's supported interaction; never kill or control a proces
 ## Read only through the safe reader
 
 AI-side reading is permitted in local PowerShell 7; it does not collect processes.
+When supported local execution/file access is available, use the existing safe
+reader yourself with the established context supplied once. Do not normally ask
+the operator to invoke Read-CraAiArtifact, parse JSON, format observed_context,
+or paste raw artifacts/private process tables. If the client lacks this capability,
+state the limitation and do not claim validation occurred. No raw JSON fallback
+or private-artifact substitute is allowed; do not add a new reader runtime.
 Set the variables below from the verified repository and explicit operator request
 context, then use the existing reader. Read each message when it is available;
 do not run all three reads immediately or start a background polling service.
@@ -329,6 +380,10 @@ system configuration changes belong to this Skill.
 
 | Condition | AI response |
 | --- | --- |
+| Recoverable STEP 2 invalid string | Nothing was accepted. Guide complete human resubmission in the same request/directory/IDs or Q/QUIT; never start a new attempt for this correction. |
+| CRA_AI_DESTINATION_EXISTS | No NEW observation started. Preserve the existing directory; do not delete/reuse it. Agree on a different fresh destination. |
+| Known pre-creation failure | Report the fixed failure without claiming a directory/request was created. |
+| CRA_AI_DESTINATION_CREATE_FAILED | A directory may have been created. State uncertainty, invent no IDs and delete nothing automatically; a new attempt needs a different fresh destination. |
 | Missing context or stale/foreign request or candidate-set ID | Stop interpretation; obtain the correct operator context. Never substitute IDs or remap a C label. |
 | Missing file, pending file or open human prompt | Report evidence unavailable; no inference of zero activity, completion or failure. Re-read the same explicit context only after publication is established. |
 | Unsupported version, malformed/oversized data, unsafe path, reader error | Report the fixed rejection and stop consumption. No raw-file fallback, truncation, edit or validation bypass. |
@@ -340,6 +395,8 @@ system configuration changes belong to this Skill.
 
 An independently authorized new attempt needs a new directory, fresh wrapper IDs,
 discovery and all human choices. Reading an old result never resumes observation.
+After successful creation the directory permanently belongs to that request, even
+after abort/cancellation/failure. Preserve it; no automatic cleanup or rerun.
 Conclude with delivery availability, actual result type/outcome/reason, supported
 stage facts and unresolved limits. Do not claim tests, live validation or integration
 acceptance that were not performed. A confirmed false positive is NO-GO, not a reason

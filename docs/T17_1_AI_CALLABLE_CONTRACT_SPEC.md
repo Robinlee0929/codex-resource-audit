@@ -16,6 +16,25 @@ on clean `main`, before this documentation change.
 
 ## A. Purpose, scope, and evidence authority
 
+**Current amendment — same-request input correction:** before STEP 2 accepts a
+review set in IncidentOnly/PassThru, an invalid string MUST accept nothing and
+retain no partial selection. Another COMPLETE human submission may replace it
+within that same active request, preserving discovery, mapping, directory and
+both correlation IDs. This is not execution restart, automatic retry, rediscovery,
+capture retry or a new request. Historical descriptions of invalid review stopping
+Guided below do not override this narrowly scoped amendment. Review acceptance
+occurs once; STEP 2 is not re-entered after acceptance. No candidate is corrected,
+recommended or ranked. Fresh O0 still follows explicit target selection and Observe.
+
+Q/QUIT/EOF, terminal reader exceptions/malformed output, Ctrl+C propagation,
+PassThru Finder refusal, later invalid target/action behavior, and manual
+Guided/Session/Finder behavior MUST remain unchanged. The
+[Guided amendment](V0_1_1_GUIDED_DISCOVER_COMPARE_SELECT_VERIFY.md#same-request-input-correction-incidentonlypassthru)
+defines bounded local rejection display. The
+[T17.3 contract](T17_3_LOCAL_AI_INTEGRATION_SPEC.md) retains one publication point
+after valid acceptance, with one immutable review artifact only when delivery
+succeeds. Delivery failure MUST NOT cause publication retry or a return to STEP 2.
+
 This is the canonical T17.1 semantic and behavioral contract for a future AI
 caller requesting **Incident Observation through Guided**. It defines permitted
 intent, human action, reference scope, evidence meaning, and failure behavior.

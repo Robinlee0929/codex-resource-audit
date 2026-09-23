@@ -3,6 +3,8 @@ BeforeAll {
     $script:skillRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
     $script:skillPath = Join-Path $script:skillRoot 'skills/cra-incident/SKILL.md'
     $script:skill = Get-Content -LiteralPath $script:skillPath -Raw
+    $script:firstRun = Get-Content -LiteralPath (Join-Path $script:skillRoot 'docs/FIRST_RUN.md') -Raw
+    $script:readme = Get-Content -LiteralPath (Join-Path $script:skillRoot 'README.md') -Raw
 
     function Assert-SkillFrontmatter([string]$Text) {
         # Validate this repository's plain-scalar form, not general YAML.
@@ -498,5 +500,103 @@ Describe 'T17.3C observation facts never become unsupported inferences' {
         Test-SkillInferenceBoundary $omitted 'O3 PRESENT' @('Residue','orphan','leak') 'Observed' | Should -BeFalse
         $relabeled = $script:skill.Replace('Unsupported conclusion', 'Supported conclusion')
         Test-SkillInferenceBoundary $relabeled 'O3 PRESENT' @('Residue','orphan','leak') 'Observed' | Should -BeFalse
+    }
+}
+
+Describe 'First-run Skill setup and handoff guidance (no installed Skill changes)' {
+    It 'SK41 <state> fixture maps to the documented setup decision without assuming provenance' -ForEach @(
+        @{state='ABSENT';content=$null;required='explicit setup authorization.*verify destination SHA-256'},
+        @{state='IDENTICAL';content='canonical';required='no replacement.*recognition'},
+        @{state='DIFFERENT';content='custom instructions of UNKNOWN provenance';required='Stop ordinary installation.*UNKNOWN.*custom changes.*authorized replacement'}
+    ) {
+        # Files establish only the scenario; this is a guidance test, not an installer.
+        $fixture=Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        $null=New-Item -ItemType Directory -Path $fixture
+        $source=Join-Path $fixture 'source.md';$destination=Join-Path $fixture 'destination.md'
+        Set-Content -LiteralPath $source -Value canonical -NoNewline
+        if ($null -ne $content) {Set-Content -LiteralPath $destination -Value $content -NoNewline}
+        $actual=if (-not (Test-Path -LiteralPath $destination)) {'ABSENT'}
+            elseif ((Get-FileHash -LiteralPath $source).Hash -ceq (Get-FileHash -LiteralPath $destination).Hash) {'IDENTICAL'}
+            else {'DIFFERENT'}
+        $actual | Should -BeExactly $state
+        $row=@(Get-SkillTableRows $script:firstRun 'Installed state' | Where-Object Key -CEQ $actual)
+        $row.Count | Should -Be 1
+        $row[0].Cells[1] | Should -Match $required
+        $script:plain | Should -Match 'only three operational states: ABSENT.*IDENTICAL.*DIFFERENT'
+        if ($actual -eq 'DIFFERENT') {
+            $setup=ConvertTo-SkillPlainText $script:firstRun
+            $setup | Should -Match 'source path, destination path, source SHA-256, destination SHA-256.*backup path outside active Skill discovery'
+            $setup | Should -Match 'explicit human authorization.*Back up.*Verify the backup SHA-256.*Immediately re-read/re-hash both source and destination.*Replace ONLY.*Verify its SHA-256.*Reload'
+            $setup | Should -Match 'Unknown provenance blocks automatic replacement, not informed human-authorized replacement'
+            (Get-Content -LiteralPath $destination -Raw) | Should -BeExactly $content
+        }
+    }
+    It 'SK42 setup guidance stops on <condition>' -ForEach @(
+        @{condition='Authorization denied';required='STOP.*do not replace'},
+        @{condition='Backup creation or hash verification fails';required='STOP before replacement.*preserve existing content'},
+        @{condition='Source changes before replacement';required='STOP.*approved source hash'},
+        @{condition='Destination changes before replacement';required='STOP.*approved destination hash'},
+        @{condition='Copy fails';required='STOP.*preserve the backup.*do not start observation'},
+        @{condition='Post-copy hash mismatch';required='STOP.*matching deployment is not established'}
+    ) {
+        $row=@(Get-SkillTableRows $script:firstRun 'Setup condition' | Where-Object Key -CEQ $condition)
+        $row.Count | Should -Be 1
+        $row[0].Cells[1] | Should -Match $required
+        $script:plain | Should -Match 'Denied authorization, backup failure, source/destination change, copy failure or post-copy hash mismatch means STOP'
+    }
+    It 'SK43 recognition requires matching instructions and never silently expands setup authorization' {
+        $setup=ConvertTo-SkillPlainText $script:firstRun
+        $setup | Should -Match 'listed Skill name alone does not prove matching instructions are loaded'
+        $setup | Should -Match 'mismatch can invalidate version-specific UX acceptance'
+        $setup | Should -Match 'checkout SHA, matching hashes and recognition'
+        $setup | Should -Match 'No historical hash registry, automatic provenance inference, installer helper, automatic restoration or cleanup'
+        $script:plain | Should -Match 'Setup authorization is not observation authorization'
+        $script:plain | Should -Match 'Reload/new conversation.*confirm recognition and read the matching deployed instructions before observation'
+    }
+    It 'SK44 <document> launch example uses literal fixture paths and clears only a new invocation receipt' -ForEach @(
+        @{document='README';variable='readme'},@{document='FIRST_RUN';variable='firstRun'},@{document='Skill';variable='skill'}
+    ) {
+        $text=Get-Variable -Name $variable -Scope Script -ValueOnly
+        $plain=ConvertTo-SkillPlainText $text
+        $plain | Should -Match 'preserve any previous request.s complete safe tuple.*set new|preserve any previous request.s complete safe tuple.*then supplies'
+        $plain | Should -Match 'single-quoted.*apostrophes.*doubled|single-quoted.*doubling embedded apostrophes'
+        $plain | Should -Match 'Never clear \$receipt or replace the active \$OutputDirectory during STEP 2 correction, same-request troubleshooting, artifact reading or active'
+        $blocks=@([regex]::Matches($text,'(?ms)^```powershell\s*\r?\n(.*?)^```\s*$'))
+        $launch=@($blocks | Where-Object {$_.Groups[1].Value -match '\$receipt = &'})
+        $launch.Count | Should -Be 1
+        $code=$launch[0].Groups[1].Value
+        $code | Should -Match '\$receipt = \$null\s+\$receipt = & \(Join-Path \$RepoRoot ''scripts/Invoke-CraAiBridge.ps1''\) `\r?\n  -OutputDirectory \$OutputDirectory'
+        foreach ($block in $blocks) {$block.Groups[1].Value | Should -Not -Match 'C:\\Projects\\cra|C:\\CRA-Handoffs\\observation-001'}
+
+        # Execute the exact documented launch block against a harmless fixture,
+        # never the CRA bridge. Apostrophes/spaces/dollar signs remain literal data.
+        $fixture=Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        $fixtureRepo=Join-Path $fixture "operator's checkout"
+        $null=New-Item -ItemType Directory -Path (Join-Path $fixtureRepo 'scripts') -Force
+        Set-Content -LiteralPath (Join-Path $fixtureRepo 'scripts/Invoke-CraAiBridge.ps1') -Value 'param($OutputDirectory) [pscustomobject]@{directory=$OutputDirectory;request_id="new-request";candidate_set_id="new-set"}'
+        $receipt=[pscustomobject]@{request_id='old-request';candidate_set_id='old-set'}
+        $OutputDirectory=Join-Path $fixture 'old directory'
+        $previous=@($OutputDirectory,$receipt.request_id,$receipt.candidate_set_id)
+        $newDirectory=Join-Path $fixture "new's `$literal directory"
+        $assignments='$RepoRoot = ''' + $fixtureRepo.Replace("'","''") + "'`n" + '$OutputDirectory = ''' + $newDirectory.Replace("'","''") + "'`n"
+        . ([scriptblock]::Create($assignments + $code))
+        $receipt.directory | Should -BeExactly $newDirectory
+        $receipt.request_id | Should -BeExactly 'new-request'
+        $previous | Should -Be @((Join-Path $fixture 'old directory'),'old-request','old-set')
+        Test-Path -LiteralPath $newDirectory | Should -BeFalse
+    }
+    It 'SK45 reader and context guidance covers reuse, loss, capability and validation failure without a substitute' {
+        $script:plain | Should -Match 'Reuse the complete established tuple \(OutputDirectory, request_id, candidate_set_id\) within the same explicit request context'
+        foreach ($condition in 'missing','ambiguous','stale','mismatched') {
+            $script:plain | Should -Match "Ask again only when [^.]*$condition"
+        }
+        $script:plain | Should -Match 'Never combine isolated IDs from different runs'
+        $script:plain | Should -Match 'IDs are neither authentication nor authorization'
+        $script:plain | Should -Match 'When supported local execution/file access is available, use the existing safe reader yourself'
+        $script:plain | Should -Match 'Do not normally ask the operator to invoke Read-CraAiArtifact, parse JSON, format observed_context'
+        $script:plain | Should -Match 'If the client lacks this capability, state the limitation and do not claim validation occurred'
+        $script:plain | Should -Match 'No raw JSON fallback or private-artifact substitute is allowed'
+        $script:plain | Should -Match 'Reader failure makes that read.s output unavailable; do not reuse a variable holding a previous successful read'
+        $script:plain | Should -Match 'Never learn the expected IDs from an unvalidated artifact'
     }
 }

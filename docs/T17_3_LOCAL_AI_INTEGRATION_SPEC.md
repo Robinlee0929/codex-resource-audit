@@ -108,6 +108,31 @@ deletion, retry, refresh or rediscovery. An existing destination fails before
 Guided starts. Review absence can mean no review was reached; final absence can
 mean pending, interruption or delivery failure. Neither is zero activity.
 
+**Same-request input correction:** before STEP 2 accepts a review set in
+IncidentOnly/PassThru, an invalid string accepts nothing and publishes no review.
+The operator must submit the complete set again; no partial selection survives.
+The request, directory, IDs, discovery and candidate mapping remain unchanged.
+This is not execution restart, automatic retry, rediscovery or capture retry.
+The [Guided amendment](V0_1_1_GUIDED_DISCOVER_COMPARE_SELECT_VERIFY.md#same-request-input-correction-incidentonlypassthru)
+defines the bounded local diagnostic; rejected input never enters safe artifacts.
+
+After valid acceptance there is one review publication point and STEP 2 is never
+re-entered. Exactly one immutable review artifact exists WHEN delivery succeeds.
+The existing delivery-failure latch still suppresses further publication; failure
+does not trigger a publication retry. CRA execution remains separate from delivery.
+Human target selection and Observe still precede fresh O0, with no extra captures.
+Reader failures/malformed output, cancellation, unsupported PassThru Finder, later
+target/action failure and manual Guided/Session/Finder behavior are unchanged.
+
+The wrapper announces directory consumption immediately after request creation.
+An ended/aborted request requires a new directory, fresh IDs/discovery and fresh
+human choices for any new observation; STEP 2 correction needs none of these.
+`CRA_AI_DESTINATION_EXISTS` starts no new observation. Known pre-creation failure
+does not establish a created directory. `CRA_AI_DESTINATION_CREATE_FAILED` may
+follow partial creation: report uncertainty, invent no IDs and delete nothing.
+Fixed Information guidance never changes errors, receipts or result objects.
+Hard interruption does not guarantee exit guidance, a receipt or a final artifact.
+
 Only absolute local drive paths are accepted. UNC, device/provider/network paths,
 ADS, wildcard/control/format characters, dot components, trailing-dot/space
 aliases and reserved device components are rejected. Existing ancestors must be

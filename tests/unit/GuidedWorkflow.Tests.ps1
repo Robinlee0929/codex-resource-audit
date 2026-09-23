@@ -196,6 +196,36 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         $script:success.Count | Should -Be 0
         $script:inputQueue.Count | Should -Be 1
     }
+    It 'H05b rejected <label> displays only the first invalid token projection, never a subset' -ForEach @(
+        @{label='typo';token='d32';display='d32'},
+        @{label='unknown ID';token='C999';display='C999'},
+        @{label='empty';token='';display='value not displayed'},
+        @{label='word';token='PRIVATE_WORD';display='value not displayed'},
+        @{label='path';token='C:\Private\secret';display='value not displayed'},
+        @{label='punctuation';token='C*';display='value not displayed'},
+        @{label='control';token="X12`e[31m";display='value not displayed'},
+        @{label='Unicode lookalike';token="$([char]0xff23)2";display='value not displayed'},
+        @{label='oversized';token=('X' + ('1' * 1000));display='value not displayed'}
+    ) {
+        $inputResult=[pscustomobject]@{status='INPUT';text="C1,$token,X123"}
+        $before=$inputResult | ConvertTo-Json -Compress
+        $messages=@()
+        $result=@(Resolve-OperatorReviewSet $inputResult -Candidates $script:snapshot.processes[0..2] -ExplainInvalidInput -InformationVariable messages 6>$null)
+        $result.Count | Should -Be 1
+        $result[0].status | Should -BeExactly INVALID
+        $result[0].candidate_indices.Count | Should -Be 0
+        @($result[0].PSObject.Properties.Name) | Should -Be @('status','candidate_indices')
+        ($inputResult | ConvertTo-Json -Compress) | Should -BeExactly $before
+        $text=$messages -join "`n"
+        $text | Should -Match ([regex]::Escape("Invalid candidate ID at token 2: $display"))
+        $text | Should -Not -Match 'token 3|X123|PRIVATE|secret|\x1B|\p{Cf}|\uff23'
+        $text | Should -Match 'Nothing was accepted.*COMPLETE review set.*Q/QUIT'
+        $text | Should -Match 'Same active request, directory and IDs'
+        if ($display -eq 'value not displayed' -and $token.Length) {
+            $text | Should -Not -Match ([regex]::Escape($token))
+        }
+        Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
+    }
     It 'H07 Target must be exactly one captured ID inside the review set' {
         foreach ($target in '', 'C1,C3', 'C2', 'C4', 'C', '9003', 'C01', ' C1BAD', 'C1 BAD ', 'YES') {
             Set-GuidedTestInput @('C3,C1',$target,'YES')

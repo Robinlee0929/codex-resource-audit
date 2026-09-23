@@ -29,6 +29,14 @@ through beta.4 remain immutable historical prereleases with their documented
 scope. The existing `v0.2.0-beta.5` tag was not published as a GitHub prerelease
 and remains unchanged. A prerelease is not production readiness.
 
+**Unreleased implementation candidate:** this checkout's
+`FIRST_RUN_RECOVERY_BATCH` adds the first-run recovery behavior described below,
+including same-request STEP 2 input correction. Published beta.6 still ends an
+attempt on an invalid review submission. Beta.6 remains the external baseline
+until the complete batch passes offline tests, implementation Owner Review,
+exact-SHA Hosted Windows CI and Robin clean-clone acceptance. No next version is
+assigned here; use matching Skill and runtime from the checkout being tested.
+
 ## When to use CRA
 
 Use CRA when you can reproduce a process-behavior question or already have safe CRA evidence to interpret. A new observation cannot reconstruct a finished task without retained evidence. CRA does not automatically diagnose a hang, prove a Codex bug, or fix the problem.
@@ -85,9 +93,9 @@ guarantee about future commits on `main`.
 1. Open/work in the CRA checkout in local Codex, or explicitly provide its absolute repository root.
 2. **Setup request** — ask Codex to deploy the repository Skill (this does not start an observation):
 
-   > Install this checkout's skills/cra-incident/SKILL.md into your configured local user-Skill root. Use a normal copy, verify SHA-256 matches, and stop if an existing destination has different content. Do not modify global configuration.
+   > Set up this checkout's skills/cra-incident/SKILL.md in your configured local user-Skill root. If absent, install and verify SHA-256; if identical, do not replace. If different, stop ordinary installation and show the source/destination paths and hashes plus a proposed backup outside Skill discovery locations. Explain possible custom changes and ask for explicit replacement authorization. Follow FIRST_RUN's backup, recheck, replacement and recognition steps. Do not modify global configuration or start observation.
 
-3. On the next Codex turn, confirm `cra-incident` appears in its available Skill list. File existence alone is not recognition. If it is absent, use the [first-run guide](docs/FIRST_RUN.md#skill-deployment-and-recognition) before starting observation.
+3. On the next Codex turn, confirm `cra-incident` appears in its available Skill list and that the matching deployed instructions are in use. Reload or start a new conversation when needed. A listed name alone does not prove the replacement loaded. Use the [first-run guide](docs/FIRST_RUN.md#skill-deployment-and-recognition) before starting observation; a Skill mismatch invalidates version-specific UX acceptance.
 
 The [repository Skill](skills/cra-incident/SKILL.md) is canonical; the installed copy is deployment only. The installed directory is never used to infer the CRA repository root. Codex validates the current Git workspace or an explicit root against CRA's required files.
 
@@ -99,16 +107,34 @@ The [repository Skill](skills/cra-incident/SKILL.md) is canonical; the installed
 
 Codex explains the workflow and gives you a **complete copy/paste PowerShell command with your actual paths**. You do not need to compose the long bridge command. You run it manually in your own PowerShell 7 console.
 
-For example, after validating your checkout and agreeing on a new output directory, Codex might provide this command (paths are illustrative):
+For a genuinely new invocation, first preserve any previous request's complete
+safe tuple `(OutputDirectory, request_id, candidate_set_id)` if still needed.
+Codex then supplies single-quoted literal assignments for `$RepoRoot` and
+`$OutputDirectory` using your validated real checkout and agreed fresh destination;
+embedded apostrophes are doubled, and path text is never evaluated. Set these
+variables in your own PowerShell window, clear stale `$receipt`, then launch:
 
 This starts read-only evidence collection; it does not kill, suspend, restart,
 clean up or modify processes.
 
 ```powershell
-$receipt = & 'C:\Projects\cra\scripts\Invoke-CraAiBridge.ps1' -OutputDirectory 'C:\CRA-Handoffs\observation-001'
+$receipt = $null
+$receipt = & (Join-Path $RepoRoot 'scripts/Invoke-CraAiBridge.ps1') `
+  -OutputDirectory $OutputDirectory
 ```
 
-The output directory's parent must already exist, and `observation-001` must not exist. The fixed bridge creates that new request directory and generates the IDs; `OutputDirectory` is its only feature parameter. After launch, save the `CRA AI request_id=... candidate_set_id=...` line and your agreed `OutputDirectory`; Codex needs only this safe context for later artifact reading, not the full process table or terminal transcript. If you miss the line, no rerun is required: use the [first-run recovery instructions](docs/FIRST_RUN.md#keep-the-safe-request-context). See [first-run setup details](docs/FIRST_RUN.md#prepare-one-observation) if launch is blocked.
+The output directory's parent must already exist, and the per-request directory
+must not exist. The bridge creates it and generates the IDs; `OutputDirectory` is
+its only feature parameter. The directory permanently belongs to that request,
+even after cancellation/failure: do not delete or reuse it. A new observation
+requires a new directory, fresh IDs/discovery and new human choices.
+
+Share the `CRA AI request_id=... candidate_set_id=...` line and agreed directory
+with Codex once. Codex reuses that complete context for validated artifact reads.
+Never clear `$receipt` or replace the active `$OutputDirectory` during STEP 2
+correction, same-request troubleshooting, artifact reading or active recovery.
+If you miss the safe line, no rerun is required: use the
+[context recovery instructions](docs/FIRST_RUN.md#keep-the-safe-request-context).
 
 ## How the observation works
 
@@ -125,6 +151,13 @@ correct and does not authorize Observe.
 4. **Start or continue the activity, then enter `O1` while it is running.** This requests the during-activity capture. After O1 returns and the activity finishes, personally enter `ACTIVITY_END`.
 5. **CRA captures O2, waits 30 seconds, then captures O3.** These are the immediate and later follow-up observations; the wait is not a total-runtime guarantee.
 6. **Codex reads and explains the safe final result.** It describes recorded observations and unknowns, without turning them into ownership or leak claims.
+
+**STEP 2 typo recovery in the bridge/PassThru path:** an invalid string accepts
+nothing. Re-enter the COMPLETE review set at the same prompt, or Q/QUIT to cancel.
+The request, directory, IDs and discovery stay the same; no partial set is retained
+and no review artifact is published before acceptance. After valid acceptance,
+STEP 2 is not re-entered. Reader failures and later target/action failures retain
+their existing stop behavior. Manual Guided/Session/Finder behavior is unchanged.
 
 Codex can guide you, explain readiness and summarize safe evidence. It cannot drive interactive PowerShell, launch the wrapper, select a target, confirm on your behalf, enter O1/ACTIVITY_END, write back control commands, or kill/clean up processes. It cannot establish Incident ownership or decide that an observed process is residue or a leak.
 
@@ -143,6 +176,13 @@ your explicit request context and validates versions and correlation. Missing or
 invalid evidence stops interpretation; a delivered file alone is not observation
 success. Do not paste private process tables or terminal transcripts. [Reader and
 failure details](docs/FIRST_RUN.md#safe-artifact-reading).
+
+When local execution/file access permits, Codex runs the existing safe reader
+itself. You normally do not invoke `Read-CraAiArtifact`, parse JSON, format
+`observed_context`, or paste raw artifacts. If the client lacks that capability,
+Codex explains the limitation without claiming validation or using raw JSON as a
+fallback. It asks for context again only when missing, ambiguous, stale or mismatched;
+the IDs are correlation, not authentication or authorization.
 
 ## What the evidence means — and does not prove
 
