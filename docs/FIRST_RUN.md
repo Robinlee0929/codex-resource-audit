@@ -1,15 +1,16 @@
 # First-run setup and troubleshooting
 
-Start with the [README Quick Start](../README.md#quick-start) to get public main
+Start with the [README Quick Start](../README.md#quick-start) to get a fixed beta or public main
 and choose a workflow. The AI-assisted path is **Incident Observation only**.
 The standalone [CPU Activity Check](T18_2A_CPU_ACTIVITY_CHECK.md) is a separate
 human-operated workflow and does not require the `cra-incident` Skill. This guide
 covers setup and recovery; it does not add runtime capabilities.
 
-The same-request STEP 2 correction below belongs to the unreleased
-`FIRST_RUN_RECOVERY_BATCH` implementation candidate. Published beta.6 still stops
-on an invalid review string. Use matching checkout, runtime and Skill when testing
-the candidate; its documentation is not a release or acceptance claim.
+Version `v0.2.0-beta.7` includes the `FIRST_RUN_RECOVERY_BATCH` setup and recovery
+behavior below, including same-request STEP 2 correction before review acceptance.
+Use matching checkout, runtime and Skill. The
+[GitHub Releases page](https://github.com/Robinlee0929/codex-resource-audit/releases)
+is authoritative for publication state; see the [beta.7 release notes](RELEASE_NOTES_v0.2.0-beta.7.md).
 
 ## Skill deployment and recognition
 

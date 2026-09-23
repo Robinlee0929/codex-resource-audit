@@ -20,7 +20,7 @@ latest. This policy deliberately does not hardcode a "current published beta"
 sentence that becomes stale after the next release. Public `main` may contain
 later specifications, plans or implementations not included in a fixed beta.
 
-The fixed version described by this checkout is `v0.2.0-beta.6`. Its presence
+The fixed version described by this checkout is `v0.2.0-beta.7`. Its presence
 in documentation is not a publication claim; use
 the Releases page to determine whether the tag is available. Prerelease status
 does not establish production readiness, stable support or universal
@@ -35,12 +35,17 @@ compatibility.
 | [`v0.2.0-beta.3`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.3) | Target `b62b2be485826339c9c558b549f6920697b37f85`; first-run documentation correction with unchanged beta.2 runtime scope, as recorded in its release notes. It remains immutable. |
 | [`v0.2.0-beta.4`](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.4) | Target `8e17f415ba63b6e0421677d34eae49176fe92279`; first-run human-recognition guidance correction with unchanged beta.2 runtime scope, as recorded in its release notes. It remains immutable. |
 
-An immutable `v0.2.0-beta.5` tag targets
+An immutable annotated `v0.2.0-beta.5` tag targets
 `9ebb713bacac36c85474eb6869eef8d02198daad`, but Owner held publication after
 the STEP 2 terminal UX review. It was not published as a GitHub prerelease and
 remains unchanged. Version `v0.2.0-beta.6` follows that unpublished tag and
 contains the subsequent STEP 2 operator-guidance correction. The Releases page
 remains authoritative for beta.6 publication state.
+
+Preserve the beta.5 tag without deletion, movement, retargeting or retroactive
+publication. Beta.6 was the published predecessor at the beta.7 preparation
+checkpoint; its display-only correction and historical validation retain their
+original scope.
 
 These records preserve historical release scope; they do not identify which beta
 is currently latest. Use the selected beta's Skill, bridge and runtime together
@@ -102,7 +107,7 @@ and clarifies the single review-set / single local-comparison flow. It changes n
 runtime behavior, candidate model, AI artifact schema, private-field exposure,
 selection authority or ranking.
 
-Version `v0.2.0-beta.6` contains a display-only STEP 2 correction. Before input,
+Historical `v0.2.0-beta.6` contains a display-only STEP 2 correction. Before input,
 the terminal explains that STEP 2 forms one review set rather than choosing the
 final target, same-name candidates may be reviewed together, STEP 3 compares the
 set, STEP 4 requires one human target choice, candidate-by-candidate trials are
@@ -110,6 +115,19 @@ not needed, and `Q`/`QUIT` cancels safely. It does not change review grammar,
 review-set or target-selection semantics, candidate fields or model, readiness,
 trust, private-field exposure, AI artifact schema, grouping, ordering, or the
 human selection boundary. It adds no automatic target selection or ranking.
+
+Version `v0.2.0-beta.7` contains one consolidated `FIRST_RUN_RECOVERY_BATCH`:
+safe Skill replacement, same-request STEP 2 typo correction, copy-safe launch,
+OutputDirectory recovery guidance, direct AI safe-reader operation and safe
+request-context reuse. Its runtime change is limited to correcting invalid STRING
+review input within the same IncidentOnly / PassThru request before acceptance.
+Human selection, atomic rejection, discovery/IDs/directory, artifact schemas and
+delivery-failure semantics remain intact; no automatic selection, ranking or extra
+captures are added. See the [beta.7 release notes](RELEASE_NOTES_v0.2.0-beta.7.md)
+for the full scope and validation tied to product commit
+`996996e58056245e8784e4db3dc7abd248f407e9`. That acceptance does not certify a
+different documentation-preparation or final release-target SHA; the exact final
+target remains subject to the applicable review and validation below.
 
 ## Community Beta gate and Owner actions
 

@@ -22,20 +22,19 @@ When Codex feels stuck or process behavior looks unusual, CRA captures bounded p
 **Available now:** T17 and the standalone, live-validated T18.2A CPU Activity
 Check are implemented. Fixed tagged prereleases are authoritative through
 [GitHub Releases](https://github.com/Robinlee0929/codex-resource-audit/releases),
-while `main` is moving development/latest source. Version `v0.2.0-beta.6`
-contains this checkout's STEP 2 operator-guidance change; the Releases page
+while `main` is moving development/latest source. Version `v0.2.0-beta.7`
+contains the consolidated `FIRST_RUN_RECOVERY_BATCH`; the Releases page
 remains the authority for whether that tag has been published. Published beta.1
 through beta.4 remain immutable historical prereleases with their documented
 scope. The existing `v0.2.0-beta.5` tag was not published as a GitHub prerelease
 and remains unchanged. A prerelease is not production readiness.
 
-**Unreleased implementation candidate:** this checkout's
-`FIRST_RUN_RECOVERY_BATCH` adds the first-run recovery behavior described below,
-including same-request STEP 2 input correction. Published beta.6 still ends an
-attempt on an invalid review submission. Beta.6 remains the external baseline
-until the complete batch passes offline tests, implementation Owner Review,
-exact-SHA Hosted Windows CI and Robin clean-clone acceptance. No next version is
-assigned here; use matching Skill and runtime from the checkout being tested.
+**Beta.7 first-run recovery:** one milestone combines safe Skill replacement,
+same-request STEP 2 typo correction, copy-safe launch, OutputDirectory recovery
+guidance, direct AI safe-reader operation and safe request-context reuse. Human
+choices and the read-only safety model remain intact. Use matching Skill and
+runtime from the same checkout. See the
+[beta.7 release notes](docs/RELEASE_NOTES_v0.2.0-beta.7.md).
 
 ## When to use CRA
 
@@ -65,11 +64,11 @@ The AI-assisted path supports **Incident Observation only**. Finder and Session 
 
 ### Get the fixed beta or moving source
 
-When the Releases page provides `v0.2.0-beta.6`, use its matching fixed checkout.
+When the Releases page provides `v0.2.0-beta.7`, use its matching fixed checkout.
 Choose a parent directory in your own terminal and run:
 
 ```powershell
-git clone --branch v0.2.0-beta.6 `
+git clone --branch v0.2.0-beta.7 `
   https://github.com/Robinlee0929/codex-resource-audit.git
 cd codex-resource-audit
 ```
@@ -80,7 +79,14 @@ checkout; do not mix files from `main` or another fixed/archive version. Every
 published beta should be used with its matching checkout, while `main` continues
 to move. See the [version policy](docs/RELEASE_POLICY.md).
 
-**Validation provenance at this documentation update:** the T18.2A implementation
+**Product implementation acceptance:** `FIRST_RUN_RECOVERY_BATCH` at
+`996996e58056245e8784e4db3dc7abd248f407e9` passed **1900/1900** local offline tests
+and exact-SHA [Hosted Windows CI](https://github.com/Robinlee0929/codex-resource-audit/actions/runs/35838624062).
+Robin reported clean-clone acceptance PASS. These results belong to that product
+commit; they do not certify later documentation-only release-preparation bytes
+or a different release-target SHA. See the [validation record](docs/RELEASE_NOTES_v0.2.0-beta.7.md#validation).
+
+**Historical CPU validation baseline:** the T18.2A implementation
 baseline `ef450c2679e38eb380278861adc66e4c9ab0c50e` passed local and
 [Hosted Windows CI](https://github.com/Robinlee0929/codex-resource-audit/actions/runs/35603771750),
 **1859/1859** tests. Sanitized Windows live validation also passed its normal
@@ -231,7 +237,7 @@ Task Manager helps show what exists now; CRA records what changed in bounded CPU
 intervals for one process the human independently selected. Neither is an
 automatic diagnosis.
 
-The `v0.2.0-beta.6` version contains the same CPU Activity Check
+The `v0.2.0-beta.7` version contains the same CPU Activity Check
 runtime as beta.2. Every published beta should be used with its matching fixed
 checkout; `main` remains moving development/latest source. Published beta.3,
 beta.4 and earlier prereleases remain immutable with their recorded scopes. The
@@ -317,6 +323,7 @@ Read `result_type` first: `GUIDED_INCIDENT_REQUEST` means no Incident run was pr
 - [Session Task Delta](docs/V0_1_1_T6_9_TASK_DELTA_ISSUE_EVIDENCE.md) and [Process Branch Origin](docs/V0_1_1_T6_9_5_PROCESS_BRANCH_ORIGIN.md)
 - [Pipeline design](docs/STAGE0_PLAN.md#pipeline), [validation record](docs/STAGE0_VALIDATION.md), [synthetic examples](docs/EXAMPLES.md)
 - Historical [v0.1.0 release notes](docs/RELEASE_NOTES_v0.1.0.md), [v0.1.1 release notes](docs/RELEASE_NOTES_v0.1.1.md), [v0.2.0-beta.2 release notes](docs/RELEASE_NOTES_v0.2.0-beta.2.md), [v0.2.0-beta.3 release notes](docs/RELEASE_NOTES_v0.2.0-beta.3.md) and [v0.2.0-beta.4 release notes](docs/RELEASE_NOTES_v0.2.0-beta.4.md); unpublished-tag [v0.2.0-beta.5 notes](docs/RELEASE_NOTES_v0.2.0-beta.5.md); [v0.2.0-beta.6 release notes](docs/RELEASE_NOTES_v0.2.0-beta.6.md).
+- [v0.2.0-beta.7 release notes](docs/RELEASE_NOTES_v0.2.0-beta.7.md): consolidated first-run recovery milestone and acceptance provenance.
 
 <a id="current-limitations"></a>
 
@@ -341,7 +348,7 @@ The pipeline separates collection, attribution, lifecycle analysis and reporting
 pwsh -NoProfile -File .\scripts\Test-Stage0.ps1 -Offline
 ```
 
-The baseline recorded in Quick Start passed **1859/1859** locally and on Hosted Windows CI, with zero failed, skipped, inconclusive or NotRun tests. The beta.3, beta.4 and beta.5 preparation checkpoints reran the same full offline suite. For beta.6, one focused STEP 2 display regression was added and **1860/1860** offline tests passed before Owner review. These local reruns remain separate from the earlier exact-SHA baseline.
+The historical CPU baseline recorded in Quick Start passed **1859/1859** locally and on Hosted Windows CI, with zero failed, skipped, inconclusive or NotRun tests. The beta.3, beta.4 and beta.5 preparation checkpoints reran the same full offline suite. For beta.6, one focused STEP 2 display regression was added and **1860/1860** offline tests passed before Owner review. These local reruns remain separate from the earlier exact-SHA baseline. Beta.7 product implementation acceptance at `996996e58056245e8784e4db3dc7abd248f407e9` passed **1900/1900** locally and on exact-SHA Hosted Windows CI, with zero failed, skipped, inconclusive or not-run tests; Robin reported clean-clone acceptance PASS. Later documentation changes and release-target commits require their own applicable review and validation.
 
 T17.1, T17.2, T17.3 and standalone T18.2A are complete within their documented public-main scopes. T18.2A live validation passed L1/L2/L3; L4 is `NOT_EXPOSED` by design. Executable vectors remain 22/22 positive and 37/38 negative: N30 is intentionally `PARTIAL` because T18.1 has no executable parent external-state runtime seam. This does not implement T18.1 or T18.2B Memory Trend. Windows operator integration acceptance is not a universal host/client-version guarantee. Historical phase statements retain their own checkpoint scope.
 
