@@ -64,6 +64,9 @@ function Get-IncidentObservationView {
 
 function Format-IncidentObservation {
     param([Parameter(Mandatory)][object]$Run)
+    if ((Get-RootCandidateField $Run 'contract_version') -ceq 2) {
+        return '=== INCIDENT OBSERVATION ==='+"`n"+(Format-IncidentMarkdown (New-IncidentV2Result $Run) -Ceilings $Run.ceilings)
+    }
     $view=Get-IncidentObservationView $Run
     $lines=@(
         '=== INCIDENT OBSERVATION ==='
@@ -124,4 +127,89 @@ function Format-IncidentObservation {
         '  CONFIGURED_WAIT_BOUNDED != OVERALL_RUNTIME_BOUNDED; COUNTDOWN_COMPLETE != CAPTURE_COMPLETE'
     )
     return $lines -join [Environment]::NewLine
+}
+
+function Format-IncidentMarkdown {
+    param($Result,[AllowNull()]$Ceilings=$null)
+    # Load lazily after function definitions: no import cycle and no duplicate validator.
+    # Internal Guided runs supply independent prototype ceilings, never artifact policy.
+    try {
+        $validator=Import-Module (Join-Path $PSScriptRoot 'CraAiHandoff.psm1') -PassThru -ErrorAction Stop
+        & $validator {param($r,$c)
+            Assert-CraAiResult $r $c
+            if ($r.result_type -cne 'INCIDENT_OBSERVATION') {throw 'CRA_AI_INVALID_DATA'}
+        } $Result $Ceilings
+    } catch {throw 'CRA_AI_SUMMARY_REJECTED'}
+    $invariant=[cultureinfo]::InvariantCulture
+    $v2=$Result.contract_version -eq 2
+    $entries=@($Result.observed_context | Sort-Object {[bigint]::Parse($_.observation_process_id.Substring(1),$invariant)})
+    $lines=[Collections.Generic.List[string]]::new()
+    $lines.Add('# CRA Incident Evidence Summary');$lines.Add('')
+    $lines.Add('## Observation');$lines.Add('')
+    $lines.Add('Report format: 1. Source semantic version: '+$Result.contract_version.ToString($invariant)+'.')
+    $lines.Add('Derived from validated local incident evidence; this is not independent authentication.')
+    $lines.Add('Outcome: '+$Result.outcome+'.')
+    if ($null -ne $Result.reason) {$lines.Add('Reason: '+$Result.reason+'.')}
+    if ($v2) {$lines.Add('Execution: '+$Result.execution_status+'.')}
+    foreach ($t in $Result.timeline) {
+        $interval=if ($t.timing_availability -ceq 'AVAILABLE') {
+            ([double]$t.start_offset_seconds).ToString('R',$invariant)+' .. '+([double]$t.end_offset_seconds).ToString('R',$invariant)+' seconds relative to O0 end'
+        } else {'UNKNOWN timing'}
+        $lines.Add('- '+$t.stage+': '+$t.status+'; '+$interval+'.')
+    }
+    $lines.Add('');$lines.Add('## Selected target');$lines.Add('')
+    $lines.Add('P1: OPERATOR_SELECTED_UNVERIFIED. Ownership: UNKNOWN.')
+    foreach ($o in @($entries | Where-Object observation_process_id -CEQ P1 | ForEach-Object {$_.observations})) {
+        $lines.Add('- '+$o.stage+': '+$o.identity_continuity+' / '+$o.observation_state+'.')
+    }
+    $lines.Add('');$lines.Add('## Observed context');$lines.Add('')
+    foreach ($e in $entries) {foreach ($o in @($e.observations | Sort-Object stage)) {
+        $line='- '+$e.observation_process_id+' / '+$o.stage+': '+$o.display_name+' / '+$o.role_hint+'; '+$o.identity_continuity+' / '+$o.observation_state+'; '+$o.relationship_status
+        if ($null -ne $o.parent_reference) {$line+=' -> '+$o.parent_reference}
+        if ($v2) {
+            $line+='; '+$o.context_relation+'; depth '+$(if ($null -ne $o.depth) {$o.depth.ToString($invariant)} else {'NOT_APPLICABLE'})
+            if ($null -ne $o.relationship_reason) {$line+='; '+$o.relationship_reason}
+        }
+        $lines.Add($line+'.')
+    }}
+    $lines.Add('');$lines.Add('## Resource evidence');$lines.Add('')
+    $lines.Add('Working Set and Private Bytes may have different acquisition intervals.')
+    foreach ($e in $entries) {foreach ($o in @($e.observations | Sort-Object stage)) {
+        if ($v2) {
+            foreach ($kind in 'working_set','private_bytes') {
+                $r=$o.$kind;$line='- '+$e.observation_process_id+' / '+$o.stage+' / '+$kind+': '+$r.availability
+                if ($null -ne $r.value_bytes) {$line+='; '+$r.value_bytes.ToString($invariant)+' bytes'}
+                if ($null -ne $r.reason) {$line+='; '+$r.reason};$line+='; '+$r.source
+                if ($r.timing.timing_availability -ceq 'AVAILABLE') {
+                    $line+='; '+([double]$r.timing.start_offset_seconds).ToString('R',$invariant)+' .. '+([double]$r.timing.end_offset_seconds).ToString('R',$invariant)+' seconds'
+                } else {$line+='; UNKNOWN timing'}
+                $lines.Add($line+'.')
+            }
+        } else {
+            $line='- '+$e.observation_process_id+' / '+$o.stage+' / working_set: '+$o.working_set_availability
+            if ($null -ne $o.working_set_bytes) {$line+='; '+$o.working_set_bytes.ToString($invariant)+' bytes'}
+            $lines.Add($line+'.');$lines.Add('- '+$e.observation_process_id+' / '+$o.stage+' / private_bytes: NOT_COLLECTED.')
+        }
+    }}
+    $lines.Add('');$lines.Add('## Coverage');$lines.Add('')
+    if ($v2) {
+        $lines.Add('Scope: BOUNDED_STAGE_CONTEXT. Overall: '+$Result.coverage.overall_status+'.')
+        foreach ($field in Get-IncidentPolicyFields) {$lines.Add('- '+$field+': '+$Result.collection_policy.$field.ToString($invariant)+'.')}
+        foreach ($sc in $Result.coverage.stages) {
+            $lines.Add('- '+$sc.stage+': acquisition '+$sc.acquisition_status+'; population '+$sc.population_status+'; relationship '+$sc.relationship_status+'; overall '+$sc.overall_status+'.')
+            $lines.Add('  Retained '+$sc.retained_identity_count.ToString($invariant)+'; evaluated '+$sc.evaluated_identity_count.ToString($invariant)+'; not evaluated '+$sc.not_evaluated_identity_count.ToString($invariant)+'; unresolved '+$sc.unresolved_entry_count.ToString($invariant)+'; edges '+$sc.retained_edge_count.ToString($invariant)+'.')
+            foreach ($kind in 'working_set','private_bytes') {
+                $r=$sc.$kind
+                $lines.Add('  '+$kind+': '+$r.status+'; eligible '+$r.eligible_count.ToString($invariant)+'; available '+$r.available_count.ToString($invariant)+'; unavailable '+$r.unavailable_count.ToString($invariant)+'; unknown '+$r.unknown_count.ToString($invariant)+'; not collected '+$r.not_collected_count.ToString($invariant)+'; reasons '+($r.reasons -join ', ')+'.')
+            }
+            foreach ($field in 'acquisition_reasons','population_reasons','relationship_reasons','limits_hit') {$lines.Add('  '+$field+': '+($sc.$field -join ', ')+'.')}
+        }
+    } else {$lines.Add('Descendant extension and v2 coverage: NOT_SUPPORTED. Missing v1 fields do not establish complete coverage.')}
+    $lines.Add('');$lines.Add('## Limitations');$lines.Add('')
+    $lines.Add('Stage snapshots only. Omitted context is not proof of absence. No ownership, causation, process exit, residue, orphan, leak, task cost, task success or root-cause conclusion is established.')
+    $lines.Add('NEWLY_OBSERVED is first observed in this history. NO_LONGER_OBSERVED is not proof of exit. O3 presence is not leak evidence. Private Bytes is private committed memory.')
+    $lines.Add('Direct-parent upward ancestry is outside scope. No completeness beyond the disclosed coverage. Hard prompt, acquisition-call and overall wall-clock bounds are not established.')
+    $text=($lines -join "`n")+"`n"
+    if ([Text.Encoding]::UTF8.GetByteCount($text) -gt 4MB) {throw 'CRA_AI_SUMMARY_REJECTED'}
+    return $text
 }

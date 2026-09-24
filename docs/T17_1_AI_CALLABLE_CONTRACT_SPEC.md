@@ -651,3 +651,14 @@ Owner-supplied T17 completion remains separately attributed in section A. T17.1
 completion meant this contract was ready to guide separately authorized T17.2 work;
 that checkpoint alone did not establish a callable interface or execute T17.2.
 For subsequent implementation and validation status, use the README links above.
+
+
+## Incident v2 authority and coverage
+
+The [T17.2 incident-v2 contract](T17_2_POWERSHELL_RESULT_API_SPEC.md#incident-semantic-v2-process_context_evidence-v1-p0) is normative for new bounded descendant/resource evidence. Historical v1 behavior above remains unchanged. Candidate readiness and operator-selected P1 are not VERIFIED_ROOT or ownership proof. UNKNOWN != CODEX; descendants and reported edges do not establish ownership or causation. NEWLY_OBSERVED is a first sighting, NO_LONGER_OBSERVED is not exit, O3 presence is not residue/orphan/leak, resource bytes are not task cost, and COMPLETED is not issue resolution.
+
+Use exactly the closed eligibility, suppression, relationship, dimension-specific limit and coverage rules in T17.2. Coverage scope is BOUNDED_STAGE_CONTEXT. A zero denominator requires supported-empty proof for NOT_APPLICABLE. Every eligible identity requires Private Bytes; missing one prevents complete Private Bytes coverage. Finished schedules with incomplete requested evidence use execution_status COMPLETED, outcome PARTIAL, reason OBSERVATION_EVIDENCE_PARTIAL. Cancellation/terminal stopping preserve actual evidence and unattempted later stages.
+
+An otherwise admissible in-scope entry omitted before admission has no fabricated reference/count. Its producer emits the actual dimension loss declarations; the reader checks internal consistency without authenticating hidden OS rows. No target ranking, automatic selection, process control, lifecycle collection or CPU diagnostic authority is added.
+
+Release acceptance additionally requires one safe current reporter case yielding a useful previously unanswered nested-context or private-memory fact and a shareable summary. Production numerical values require measured Owner approval; finite injected test/prototype policies do not establish shipping defaults.

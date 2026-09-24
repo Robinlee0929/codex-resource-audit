@@ -1,9 +1,99 @@
 BeforeAll {
     $script:incidentRoot=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-    foreach ($name in 'Resolve-Attribution','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Resolve-IncidentObservation','Format-IncidentObservation','Format-GuidedCandidates') {
+    foreach ($name in 'Collect-ProcessSnapshot','New-IncidentResult','Resolve-Attribution','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Resolve-IncidentObservation','Format-IncidentObservation','Format-GuidedCandidates') {
         . (Join-Path $script:incidentRoot "src/$name.ps1")
     }
     . (Join-Path $script:incidentRoot 'tests/fixtures/IncidentObservation.Source.ps1')
+}
+
+Describe 'Incident P0 remediation: typed membership and admission deadline' {
+    BeforeEach {
+        $script:providerRow=[pscustomobject]@{ProcessId=[uint32]42;ParentProcessId=[uint32]10;
+            CreationDate=[datetime]'2026-01-01T00:00:01Z';Name='codex.exe';WorkingSetSize=[uint64]100}
+        Mock Get-CimInstance {$script:providerRow}
+    }
+    It 'F1 preserves provider UInt32 identifiers as Int64 and admits O0' {
+        $snapshot=Get-IncidentMembershipSnapshot synthetic-incident O0 (New-IncidentV2TestProfile).policy -Clock {1100L}
+        $row=$snapshot.processes[0]
+        $row.pid | Should -BeOfType ([long])
+        $row.ppid | Should -BeOfType ([long])
+        $row.pid | Should -Be 42L
+        $row.ppid | Should -Be 10L
+        Get-IncidentCaptureValidity $snapshot synthetic-incident WIN32_PROCESS_CIM | Should -BeExactly COMPLETE
+        $run=New-IncidentV2TestRun -Record $row
+        Resolve-IncidentV2Stage $run $snapshot O0 1000L 1100L {1100L} | Should -BeExactly MATCHED
+        $run.entries[0].public.observations[0].working_set.value_bytes | Should -Be 100L
+        $parent=New-IncidentTestRecord -Id 10 -Parent 1 -Time '2026-01-01T00:00:00Z' -Source WIN32_PROCESS_CIM
+        $snapshot.processes+=@($parent)
+        $entry=New-IncidentHistoryEntry (New-IncidentTestReference $parent) 2
+        (Get-IncidentRelationship $row $snapshot @($entry)).relationship_status | Should -BeExactly OBSERVED_PARENT_CHILD
+    }
+    It 'F1 rejects <field> provider coercion from <kind>' -ForEach @(
+        @{field='ProcessId';kind='Boolean';value=$true},@{field='ParentProcessId';kind='Boolean';value=$true},
+        @{field='ProcessId';kind='string';value='42'},@{field='ParentProcessId';kind='string';value='10'},
+        @{field='ProcessId';kind='fraction';value=42.5},@{field='ParentProcessId';kind='fraction';value=10.5},
+        @{field='ProcessId';kind='null';value=$null},@{field='ParentProcessId';kind='UInt64 overflow';value=[uint64]::MaxValue}
+    ) {
+        $script:providerRow.$field=$value
+        $s=Get-IncidentMembershipSnapshot synthetic-incident O0 (New-IncidentV2TestProfile).policy -Clock {1100L}
+        $s.capture_status | Should -BeExactly FAILED
+        $s.processes.Count | Should -Be 0
+        Get-IncidentCaptureValidity $s synthetic-incident WIN32_PROCESS_CIM | Should -BeExactly CAPTURE_INCOMPLETE
+    }
+    It 'F1 preserves <value> without wrapping and keeps existing PID range rejection' -ForEach @(
+        @{value=[uint32]::MaxValue},@{value=2147483648L},@{value=-1L}
+    ) {
+        $script:providerRow.ProcessId=$value;$script:providerRow.ParentProcessId=$value
+        $s=Get-IncidentMembershipSnapshot synthetic-incident O0 (New-IncidentV2TestProfile).policy -Clock {1100L}
+        $s.processes[0].pid | Should -Be ([long]$value)
+        $s.processes[0].ppid | Should -Be ([long]$value)
+        Test-IncidentPid $s.processes[0].pid -Membership | Should -BeFalse
+        Test-IncidentPid $s.processes[0].ppid | Should -BeFalse
+        Get-IncidentCaptureValidity $s synthetic-incident WIN32_PROCESS_CIM | Should -BeExactly CAPTURE_INCOMPLETE
+    }
+    It 'F2 stops unresolved admission at elapsed <elapsed> milliseconds without losing P1 evidence' -ForEach @(
+        @{elapsed=5000L},@{elapsed=5001L}
+    ) {
+        $root=New-IncidentTestRecord
+        $unknown=New-IncidentTestRecord -Id 43 -Parent 42 -Time '2026-01-01T00:00:02Z'
+        $unknown.creation_time_precision='UNKNOWN'
+        $exact=New-IncidentTestRecord -Id 44 -Parent 42 -Time '2026-01-01T00:00:03Z'
+        $run=New-IncidentV2TestRun
+        $s=New-IncidentTestSnapshot -Rows @($root,$unknown,$exact) -Stage O0 -Marker 1100L
+        $state=@{calls=0}
+        $clock={$state.calls++;if ($state.calls -le 2) {1100L} else {1000L+$elapsed}}.GetNewClosure()
+        Resolve-IncidentV2Stage $run $s O0 1000L 1100L $clock | Should -BeExactly MATCHED
+        $run.entries.Count | Should -Be 1
+        $run.entries[0].public.observation_process_id | Should -BeExactly P1
+        $run.entries[0].public.observations[0].identity_continuity | Should -BeExactly MATCHED
+        $run.entries[0].public.observations[0].working_set.value_bytes | Should -Be $root.working_set_bytes
+        $d=$run.declarations.O0
+        $d.limits_hit | Should -Be @('ACQUISITION_BUDGET_REACHED')
+        $d.population_reasons | Should -Be @('ACQUISITION_BUDGET_REACHED')
+        $d.relationship_reasons | Should -Be @('ACQUISITION_BUDGET_REACHED')
+        $t=[pscustomobject]@{stage='O0';status='CAPTURED';timing_availability='AVAILABLE';start_offset_seconds=0.0;end_offset_seconds=5.001}
+        $coverage=Get-IncidentStageCoverage @($run.entries[0].public) $t $d
+        $coverage.population_status | Should -BeExactly PARTIAL
+        $coverage.relationship_status | Should -BeExactly PARTIAL
+        $coverage.unresolved_entry_count | Should -Be 0
+    }
+    It 'F2 preserves an unresolved entry admitted before the deadline and omits the next' {
+        $rows=@((New-IncidentTestRecord))
+        foreach ($id in 43,44) {
+            $row=New-IncidentTestRecord -Id $id -Parent 42 -Time '2026-01-01T00:00:02Z'
+            $row.creation_time_precision='UNKNOWN';$rows+=@($row)
+        }
+        $run=New-IncidentV2TestRun
+        $s=New-IncidentTestSnapshot -Rows $rows -Stage O0 -Marker 1100L
+        $state=@{calls=0}
+        $clock={$state.calls++;if ($state.calls -le 3) {1100L} else {6000L}}.GetNewClosure()
+        $null=Resolve-IncidentV2Stage $run $s O0 1000L 1100L $clock
+        @($run.entries.public.observation_process_id) | Should -Be @('P1','P2')
+        $run.entries[1].public.identity_kind | Should -BeExactly STAGE_LOCAL
+        $run.entries[1].public.observations.Count | Should -Be 1
+        $run.declarations.O0.limits_hit | Should -Be @('ACQUISITION_BUDGET_REACHED')
+        $run.declarations.O0.relationship_reasons | Should -Be @('ACQUISITION_BUDGET_REACHED')
+    }
 }
 
 Describe 'T16 observation readiness and independent Session readiness' {
@@ -315,5 +405,214 @@ Describe 'T16 fixed role hints resources and private presentation' {
         $view.processes[0].observations[0].lifecycle_classification | Should -BeExactly NOT_APPLICABLE
         $view.processes[0].observations[0].display_name='mutated'
         $run.entries[0].observations[0].display_name | Should -BeExactly Process
+    }
+}
+
+Describe 'Incident v2 bounded same-capture resolution and coverage' {
+    BeforeEach {
+        $script:v2Root=New-IncidentTestRecord
+        $script:v2Child=New-IncidentTestRecord -Id 43 -Parent 42 -Name node.exe -Time '2026-01-01T00:00:02Z'
+        $script:v2Grandchild=New-IncidentTestRecord -Id 44 -Parent 43 -Name pwsh.exe -Time '2026-01-01T00:00:03Z'
+    }
+    It 'retains exact BFS chains and recomputes current ancestry without historical substitution' {
+        $run=New-IncidentV2TestRun
+        Add-IncidentV2TestStage $run @($script:v2Grandchild,$script:v2Root,$script:v2Child) O0
+        $r=New-IncidentV2Result $run
+        $r.observed_context.observation_process_id | Should -Be @('P1','P2','P3')
+        $r.observed_context[2].observations[0].depth | Should -Be 2
+        $r.observed_context[2].observations[0].parent_reference | Should -BeExactly P2
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Grandchild) O1
+        $r=New-IncidentV2Result $run
+        $r.observed_context[2].observations[0].context_relation | Should -BeExactly DESCENDANT
+        $r.observed_context[2].observations[1].context_relation | Should -BeExactly NOT_ESTABLISHED
+        $r.coverage.stages[1].relationship_status | Should -BeExactly PARTIAL
+        $r.observed_context[1].observations[1].working_set.availability | Should -BeExactly NOT_COLLECTED
+    }
+    It 'does not traverse an unresolved intermediate or admit its grandchild' {
+        $script:v2Child.creation_time_precision='UNKNOWN'
+        $run=New-IncidentV2TestRun
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child,$script:v2Grandchild)
+        $r=New-IncidentV2Result $run
+        $r.observed_context.Count | Should -Be 2
+        $r.observed_context[1].identity_kind | Should -BeExactly STAGE_LOCAL
+        $r.observed_context[1].observations[0].private_bytes_binding.status | Should -BeExactly NOT_ATTEMPTED
+    }
+    It 'orders each entire breadth-first frontier by private identity' {
+        $second=New-IncidentTestRecord -Id 60 -Parent 42 -Time '2026-01-01T00:00:02Z'
+        $firstLeaf=New-IncidentTestRecord -Id 80 -Parent 43 -Time '2026-01-01T00:00:03Z'
+        $secondLeaf=New-IncidentTestRecord -Id 70 -Parent 60 -Time '2026-01-01T00:00:03Z'
+        $run=New-IncidentV2TestRun
+        Add-IncidentV2TestStage $run @($firstLeaf,$second,$secondLeaf,$script:v2Root,$script:v2Child)
+        @($run.entries | ForEach-Object {$_.reference.pid}) | Should -Be @(42,43,60,70,80)
+        $run.entries[3].public.observations[0].parent_reference | Should -BeExactly P3
+    }
+    It 'does not claim depth loss through an unresolved or omitted intermediate' {
+        $script:v2Child.creation_time_precision='UNKNOWN'
+        $run=New-IncidentV2TestRun -Profile (New-IncidentV2TestProfile @{max_descendant_depth=1})
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child,$script:v2Grandchild)
+        (New-IncidentV2Result $run).coverage.stages[0].limits_hit | Should -Not -Contain DEPTH_LIMIT_REACHED
+        $script:v2Child.creation_time_precision='EXACT'
+        $run=New-IncidentV2TestRun -Profile (New-IncidentV2TestProfile @{max_descendant_depth=1;max_evaluated_identities_per_capture=1})
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child,$script:v2Grandchild)
+        (New-IncidentV2Result $run).coverage.stages[0].limits_hit | Should -Be @('STAGE_PROCESS_LIMIT_REACHED')
+    }
+    It 'depth loss affects population while retained relationship assessments remain complete' {
+        $run=New-IncidentV2TestRun -Profile (New-IncidentV2TestProfile @{max_descendant_depth=1})
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child,$script:v2Grandchild)
+        $s=(New-IncidentV2Result $run).coverage.stages[0]
+        $s.population_status | Should -BeExactly PARTIAL
+        $s.relationship_status | Should -BeExactly COMPLETE
+        $s.relationship_reasons.Count | Should -Be 0
+        $s.limits_hit | Should -Be @('DEPTH_LIMIT_REACHED')
+    }
+    It 'declares omitted-before-admission loss for <limit> without inventing a reference' -ForEach @(
+        @{limit='RUN_PROCESS_LIMIT_REACHED';policy=@{max_identities_per_run=1;max_evaluated_identities_per_capture=1;max_relationship_records_per_run=4}},
+        @{limit='STAGE_PROCESS_LIMIT_REACHED';policy=@{max_evaluated_identities_per_capture=1}},
+        @{limit='RELATIONSHIP_LIMIT_REACHED';policy=@{max_relationship_records_per_run=0}}
+    ) {
+        $run=New-IncidentV2TestRun -Profile (New-IncidentV2TestProfile $policy)
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child)
+        $r=New-IncidentV2Result $run;$s=$r.coverage.stages[0]
+        $r.observed_context.Count | Should -Be 1
+        # Stage evaluation is the first failed prerequisite when both bounds are exhausted.
+        $expected=if ($limit -ceq 'RUN_PROCESS_LIMIT_REACHED') {'STAGE_PROCESS_LIMIT_REACHED'} else {$limit}
+        $s.limits_hit | Should -Contain $expected
+        $s.population_status | Should -BeExactly PARTIAL
+        $s.relationship_status | Should -BeExactly PARTIAL
+        $s.relationship_reasons | Should -Contain $expected
+    }
+    It 'reserves context bytes and declares child loss before allocating P2' {
+        $run=New-IncidentV2TestRun
+        $run.policy.max_context_serialized_bytes=Get-IncidentContextReservation @($run.entries)
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child)
+        $r=New-IncidentV2Result $run
+        $r.observed_context.Count | Should -Be 1
+        $r.coverage.stages[0].population_reasons | Should -Contain CONTEXT_SIZE_LIMIT_REACHED
+        $r.coverage.stages[0].relationship_reasons | Should -Contain CONTEXT_SIZE_LIMIT_REACHED
+        $r.coverage.stages[0].relationship_status | Should -BeExactly PARTIAL
+    }
+    It 'does not flag exact capacity without another admissible item' {
+        $run=New-IncidentV2TestRun -Profile (New-IncidentV2TestProfile @{max_evaluated_identities_per_capture=2;max_identities_per_run=2;max_relationship_records_per_run=1})
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child)
+        (New-IncidentV2Result $run).coverage.stages[0].limits_hit.Count | Should -Be 0
+    }
+    It 'retains history when the edge quota prevents the next current edge' {
+        $run=New-IncidentV2TestRun -Profile (New-IncidentV2TestProfile @{max_relationship_records_per_run=1})
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child) O0
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child) O1
+        $r=New-IncidentV2Result $run;$s=$r.coverage.stages[1]
+        $s.population_status | Should -BeExactly COMPLETE
+        $s.relationship_status | Should -BeExactly PARTIAL
+        $s.relationship_reasons | Should -Be @('RELATIONSHIP_LIMIT_REACHED')
+        $r.observed_context[1].observations[0].parent_reference | Should -BeExactly P1
+        $r.observed_context[1].observations[1].parent_reference | Should -BeNullOrEmpty
+    }
+    It 'native-only budget loss keeps population and relationship complete' {
+        $run=New-IncidentV2TestRun
+        Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child) O0 -PrivateFailures @{P2='ACQUISITION_BUDGET_REACHED'}
+        $s=(New-IncidentV2Result $run).coverage.stages[0]
+        $s.population_status | Should -BeExactly COMPLETE
+        $s.relationship_status | Should -BeExactly COMPLETE
+        $s.relationship_reasons.Count | Should -Be 0
+        $s.private_bytes.status | Should -BeExactly PARTIAL
+        $s.working_set.status | Should -BeExactly COMPLETE
+    }
+    It 'a missing required native value keeps completed execution partial' {
+        $run=New-IncidentV2TestRun
+        foreach ($s in 'O0','O1','O2','O3') {
+            Add-IncidentV2TestStage $run @($script:v2Root,$script:v2Child) $s -PrivateFailures @{P2='ACCESS_DENIED'}
+        }
+        $r=New-IncidentV2Result $run
+        $r.execution_status | Should -BeExactly COMPLETED
+        $r.outcome | Should -BeExactly PARTIAL
+        $r.reason | Should -BeExactly OBSERVATION_EVIDENCE_PARTIAL
+        $r.coverage.stages.private_bytes.status | Should -Be @('PARTIAL','PARTIAL','PARTIAL','PARTIAL')
+    }
+    It 'exempts direct-parent upward ancestry without admitting a sibling or grandparent' {
+        $parent=New-IncidentTestRecord -Id 10 -Parent 9 -Time '2026-01-01T00:00:00Z'
+        $grand=New-IncidentTestRecord -Id 9 -Parent 8 -Time '2025-01-01T00:00:00Z'
+        $sibling=New-IncidentTestRecord -Id 50 -Parent 10
+        $run=New-IncidentV2TestRun
+        Add-IncidentV2TestStage $run @($script:v2Root,$parent,$grand,$sibling)
+        $r=New-IncidentV2Result $run
+        $r.observed_context.Count | Should -Be 2
+        $r.observed_context[1].observations[0].context_relation | Should -BeExactly DIRECT_PARENT
+        $r.observed_context[1].observations[0].relationship_reason | Should -BeExactly PARENT_OUTSIDE_CONTEXT
+        $r.coverage.stages[0].relationship_status | Should -BeExactly COMPLETE
+    }
+    It 'supports an empty denominator only after complete negative evaluation' {
+        $run=New-IncidentV2TestRun
+        Add-IncidentV2TestStage $run @($script:v2Root) O0
+        Add-IncidentV2TestStage $run @() O1
+        $s=(New-IncidentV2Result $run).coverage.stages[1]
+        $s.working_set.status | Should -BeExactly NOT_APPLICABLE
+        $s.private_bytes.status | Should -BeExactly NOT_APPLICABLE
+        Add-IncidentV2TestStage $run @() O2 PARTIAL
+        (New-IncidentV2Result $run).coverage.stages[2].private_bytes.status | Should -BeExactly UNAVAILABLE
+    }
+    It 'suppresses every ineligible identity and does not replace P1 on PID reuse' {
+        $run=New-IncidentV2TestRun
+        $replacement=New-IncidentTestRecord -Time '2026-02-01T00:00:00Z'
+        Add-IncidentV2TestStage $run @($replacement)
+        $r=New-IncidentV2Result $run
+        $r.target.identity_continuity | Should -BeExactly MISMATCH
+        $r.observed_context[0].observations[0].working_set.reason | Should -BeExactly IDENTITY_MISMATCH
+        $r.observed_context[1].admission_kind | Should -BeExactly MISMATCH_CONTEXT
+        $r.coverage.stages[0].private_bytes.eligible_count | Should -Be 1
+        $r.observed_context[1].observations[0].private_bytes.reason | Should -BeExactly OBSERVATION_TARGET_IDENTITY_MISMATCH
+    }
+}
+Describe 'Incident native resource binding with injected operations only' {
+    BeforeEach {
+        $script:nativeTrace=[Collections.Generic.List[string]]::new()
+        $script:nativeReference=New-IncidentTestReference
+        $script:nativeCreation=[datetime]::new($script:nativeReference.creation_ticks,[DateTimeKind]::Utc).ToFileTimeUtc()
+        $script:nativeClock=0L;$script:nativeValue=0L;$script:nativeWait=258;$script:nativeFault=$null
+        $script:nativeOps=@{
+            Open={param($access,$inherit,$processId) $script:nativeTrace.Add("open:$access/$inherit");[IntPtr]123}
+            Wait={param($handle) $script:nativeTrace.Add("wait:$handle");$script:nativeWait}
+            Creation={param($handle) $script:nativeTrace.Add("creation:$handle");$script:nativeCreation}
+            Memory={param($handle) $script:nativeTrace.Add("memory:$handle");if ($script:nativeFault) {throw $script:nativeFault};$script:nativeValue}
+            Close={param($handle) $script:nativeTrace.Add("close:$handle")}
+            Error={5}
+        }
+        $script:nativeClockOp={$script:nativeClock+=1L;$script:nativeClock}
+    }
+    It 'uses exact rights, one handle, both waits/creation checks and always closes; zero remains available' {
+        $r=Get-IncidentPrivateBytes $script:nativeReference $script:nativeOps $script:nativeClockOp 0L 1000.0 5000L
+        $r.availability | Should -BeExactly AVAILABLE
+        $r.value_bytes | Should -Be 0
+        $script:nativeTrace | Should -Be @('open:1052672/False','wait:123','creation:123','memory:123','creation:123','wait:123','close:123')
+    }
+    It 'refuses a native precision mismatch before any memory query' {
+        $script:nativeReference.source='WIN32_PROCESS_CIM'
+        $r=Get-IncidentPrivateBytes $script:nativeReference $script:nativeOps $script:nativeClockOp 0L 1000.0 5000L
+        $r.reason | Should -BeExactly IDENTITY_PRECISION_UNRESOLVED
+        $script:nativeTrace | Should -Not -Contain 'memory:123'
+        $script:nativeTrace[-1] | Should -BeExactly 'close:123'
+    }
+    It 'discards <case> without fallback and closes' -ForEach @(
+        @{case='mismatch';expected='IDENTITY_MISMATCH'},
+        @{case='signaled';expected='PROCESS_UNAVAILABLE_DURING_READ'},
+        @{case='overflow';expected='COUNTER_OVERFLOW'},
+        @{case='failure';expected='OBSERVATION_EXECUTION_FAILED'}
+    ) {
+        switch ($case) {
+            mismatch {$script:nativeCreation+=1L}
+            signaled {$script:nativeWait=0}
+            overflow {$script:nativeValue=[uint64]::MaxValue}
+            failure {$script:nativeFault='PRIVATE_NATIVE_EXCEPTION'}
+        }
+        $r=Get-IncidentPrivateBytes $script:nativeReference $script:nativeOps $script:nativeClockOp 0L 1000.0 5000L
+        $r.reason | Should -BeExactly $expected
+        $r.value_bytes | Should -BeNullOrEmpty
+        $script:nativeTrace[-1] | Should -BeExactly 'close:123'
+    }
+    It 'stops before opening once the budget is exhausted' {
+        $script:nativeClock=5000L
+        $r=Get-IncidentPrivateBytes $script:nativeReference $script:nativeOps $script:nativeClockOp 0L 1000.0 5000L
+        $r.binding_status | Should -BeExactly NOT_ATTEMPTED
+        $r.reason | Should -BeExactly ACQUISITION_BUDGET_REACHED
+        $script:nativeTrace.Count | Should -Be 0
     }
 }

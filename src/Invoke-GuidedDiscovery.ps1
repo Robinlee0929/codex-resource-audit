@@ -189,6 +189,7 @@ function Invoke-GuidedDiscovery {
     if ($action -ceq 'INVALID') {$outcome.reason_code='GUIDED_ACTION_INVALID';return $outcome}
     if ($IncidentOnly -and $action -ceq 'SESSION') {$outcome.reason_code='PASSTHRU_SESSION_UNSUPPORTED';return $outcome}
     if ($action -ceq 'OBSERVE') {
+        Write-Information 'Observe uses bounded stage descendant context, CIM Working Set and separately timed Private Bytes. Missing evidence is reported explicitly; no ownership, exit or leak conclusion is established. Incident v2 remains release-gated pending measured policy approval.' -InformationAction Continue
         if ($selected.observation_readiness.status -cne 'READY') {$outcome.reason_code='OBSERVATION_TARGET_BLOCKED';return $outcome}
         $outcome.status='INCIDENT_ACTION_SELECTED'
         $outcome.incident_action='OBSERVE'

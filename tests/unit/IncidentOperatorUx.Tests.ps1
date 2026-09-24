@@ -2,7 +2,7 @@ BeforeAll {
     $script:uxRoot=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle',
         'Format-AuditReport','Format-RootCandidates','Format-OperatorView','Read-OperatorInput',
-        'Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Invoke-GuidedSession','Invoke-SessionExecution','Write-IssueEvidencePackage') {
+        'New-IncidentResult','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Invoke-GuidedSession','Invoke-SessionExecution','Write-IssueEvidencePackage') {
         . (Join-Path $script:uxRoot "src/$name.ps1")
     }
     . (Join-Path $script:uxRoot 'tests/fixtures/IncidentObservation.Source.ps1')
@@ -101,6 +101,12 @@ Describe 'T16.1 synchronous Incident prompt clarity' {
             incident_target=(New-IncidentTestReference $row);incident_discovery_marker=0L}
         $script:uxClock=10L;$script:uxStages=[Collections.Generic.List[string]]::new();$script:uxAtO2=$null
         Mock Get-IncidentClock {$script:uxClock+=10L;$script:uxClock}
+        Mock Get-IncidentCollectionProfile {New-IncidentV2TestProfile}
+        Mock Get-IncidentMembershipSnapshot {
+            param($AuditRunId,$SnapshotId)
+            Get-ProcessSnapshot -AuditRunId $AuditRunId -SnapshotId $SnapshotId
+        }
+        Mock Get-IncidentPrivateBytes {param($StageStart) New-IncidentTestNativeValue -StartMarker $StageStart}
         Mock Get-ProcessSnapshot {
             param($AuditRunId,$SnapshotId)
             $script:uxStages.Add($SnapshotId)

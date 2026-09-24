@@ -355,6 +355,12 @@ Describe 'T16.3 synchronous acquisition and manual Guided handoff' {
         $script:finderFault=''
         Set-FinderAnswers @('F','CAPTURE_ACTIVITY','Q')
         Mock Test-OperatorInteractiveHost {$true}
+        Mock Get-IncidentCollectionProfile {New-IncidentV2TestProfile}
+        Mock Get-IncidentMembershipSnapshot {
+            param($AuditRunId,$SnapshotId)
+            Get-ProcessSnapshot -AuditRunId $AuditRunId -SnapshotId $SnapshotId
+        }
+        Mock Get-IncidentPrivateBytes {param($StageStart) New-IncidentTestNativeValue -StartMarker $StageStart}
         Mock Read-Host {
             param($Prompt)
             $script:finderPrompts.Add($Prompt)
@@ -510,7 +516,7 @@ Describe 'T16.3 synchronous acquisition and manual Guided handoff' {
         $script:finderCaptures | Should -Be @('CANDIDATES','F1','O0','O1','O2','O3')
         $r.captures.stage | Should -Be @('O0','O1','O2','O3')
         foreach ($entry in $r.entries) {
-            foreach ($observation in $entry.observations) {
+            foreach ($observation in $entry.public.observations) {
                 $observation.ownership | Should -BeExactly UNKNOWN
                 $observation.lifecycle_classification | Should -BeExactly NOT_APPLICABLE
             }

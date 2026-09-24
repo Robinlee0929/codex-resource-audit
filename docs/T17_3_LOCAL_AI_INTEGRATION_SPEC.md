@@ -317,3 +317,16 @@ observation is run from Codex's execution environment.
 Collection, identity and timing engines are unchanged. Prompt presentation changes
 do not require a new engine live revalidation. Gate 2 false-positive prevention
 remains a hard stop.
+
+
+## Incident v2 reader and derived Markdown
+
+Dispatch incident payloads by exact (result_type, contract_version): INCIDENT_OBSERVATION 1 uses the unchanged historical validator; INCIDENT_OBSERVATION 2 uses the [complete closed v2 contract](T17_2_POWERSHELL_RESULT_API_SPEC.md#incident-semantic-v2-process_context_evidence-v1-p0). GUIDED_INCIDENT_REQUEST remains 1. Reject unknown combinations, mixed shapes and CPU results. Transport remains 1 with unchanged correlation, immutable filenames/receipts, strict UTF-8, duplicate/case-conflicting key rejection, depth 16, arrays 16384 and 4 MiB envelope limit.
+
+Read-CraAiIncidentSummary accepts the same explicit directory, request ID and candidate-set ID as Read-CraAiArtifact and reads final_result through that safe reader. It returns one deterministic Markdown string, without automatic persistence, upload or posting. No raw JSON, caller validated=true assertion, candidate/review artifact or CPU result is accepted. Internal prototype readers require independently injected finite policy ceilings; artifact values never enlarge authority.
+
+Exact report section order: CRA Incident Evidence Summary; Observation; Selected target; Observed context; Resource evidence; Coverage; Limitations. Include report format version 1, source semantic version, actual schedule/relative intervals, execution/outcome, P1 trust/continuity, numeric P order, current stage context/depth, each integer-byte resource/status/reason/source/timing, actual coverage counts and policy limits/hits, and the fixed trust limitations. Historical v1 unsupported fields are displayed NOT_COLLECTED/NOT_SUPPORTED without changing the original object or implying complete descendants.
+
+Use fixed labels, closed safe display names/roles, validated references/enums and invariant numeric formatting (round-trip offsets), LF and canonical ordering only. No raw PID/PPID, creation backing, handles, paths, command lines, owner/SID, environment, transport IDs, provider/exception prose, dynamic URLs or HTML. Derivation from validated local evidence is not independent authentication. Working Set and Private Bytes may have different acquisition intervals.
+
+Validate before formatting. Preflight actual context/envelope UTF-8 bytes including LF and bounded Markdown output. Oversize rejects with a fixed safe error; no truncation, split, overwrite, downgrade or raw fallback. Production release remains gated on measured numerical policies, useful native binding, privacy/performance and reporter acceptance.

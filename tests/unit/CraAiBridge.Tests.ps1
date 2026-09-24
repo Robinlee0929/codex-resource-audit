@@ -50,6 +50,18 @@ Describe 'T17.3 fixed bridge with real Guided orchestration and synthetic collec
         Set-IncidentInputs @('C1','C1','O','O1','ACTIVITY_END')
         Mock Test-OperatorInteractiveHost {$true}
         Mock Get-IncidentClock {$script:igClock+=10L;return $script:igClock}
+        Mock Get-IncidentCollectionProfile {New-IncidentV2TestProfile}
+        Mock Get-IncidentCollectionProfile -ModuleName CraAiHandoff {
+            $p=[pscustomobject]@{max_descendant_depth=3;max_evaluated_identities_per_capture=16;max_identities_per_run=16;
+                max_relationship_records_per_run=64;max_unresolved_entries_per_run=8;max_context_serialized_bytes=1000000;
+                max_source_rows=128;max_stage_acquisition_milliseconds=5000}
+            [pscustomobject]@{policy=$p;ceilings=$p.PSObject.Copy()}
+        }
+        Mock Get-IncidentMembershipSnapshot {
+            param($AuditRunId,$SnapshotId)
+            Get-ProcessSnapshot -AuditRunId $AuditRunId -SnapshotId $SnapshotId
+        }
+        Mock Get-IncidentPrivateBytes {param($StageStart) New-IncidentTestNativeValue -StartMarker $StageStart}
         Mock Get-ProcessSnapshot {
             param($AuditRunId,$SnapshotId)
             $script:igCaptures.Add($SnapshotId);$script:igTrace.Add($SnapshotId)
@@ -116,7 +128,10 @@ Describe 'T17.3 fixed bridge with real Guided orchestration and synthetic collec
         (Read-BridgeTestArtifact candidate).payload.candidates.candidate_id | Should -Be @('C1')
         (Read-BridgeTestArtifact review).payload.candidates.candidate_id | Should -Be @('C1')
         ($info -join "`n") | Should -Match 'INCIDENT OBSERVATION'
-        (Get-Content -Raw (Join-Path $script:bridgeDir 'final_result.json')) | Should -Not -Match 'PRIVATE|SYNTHETIC|creation_time|executable_path|"pid"|INCIDENT OBSERVATION'
+        $artifactText=Get-Content -Raw (Join-Path $script:bridgeDir 'final_result.json')
+        # Exact public v2 tokens are not privacy canaries; every other string keeps the original check.
+        ($artifactText -creplace '"(?:private_bytes|private_bytes_binding|PROCESS_MEMORY_COUNTERS_EX_PRIVATE_USAGE|PRIVATE_COMMIT_NOT_LEAK_EVIDENCE)"','""') |
+            Should -Not -Match 'PRIVATE|SYNTHETIC|creation_time|executable_path|"pid"|INCIDENT OBSERVATION'
         @(Get-ChildItem $script:bridgeDir).Name | Should -Be @('candidate.json','final_result.json','review.json')
     }
     It 'AB02 multiple candidates preserve capture-local order and explicit review/selection' {
@@ -138,7 +153,7 @@ Describe 'T17.3 fixed bridge with real Guided orchestration and synthetic collec
         @{case='Finder';fault=$null;inputs=@('F');outcome='BLOCKED';reason='PASSTHRU_FINDER_UNSUPPORTED';captures=1},
         @{case='Session';fault=$null;inputs=@('C1','C1','S');outcome='BLOCKED';reason='PASSTHRU_SESSION_UNSUPPORTED';captures=1},
         @{case='O0 continuity';fault='O0';inputs=@('C1','C1','O');outcome='STOPPED';reason='OBSERVATION_TARGET_IDENTITY_MISMATCH';captures=2},
-        @{case='partial';fault='partial';inputs=@('C1','C1','O','O1','ACTIVITY_END');outcome='PARTIAL';reason='OBSERVATION_CAPTURE_INCOMPLETE';captures=5},
+        @{case='partial';fault='partial';inputs=@('C1','C1','O','O1','ACTIVITY_END');outcome='PARTIAL';reason='OBSERVATION_EVIDENCE_PARTIAL';captures=5},
         @{case='O1 requires human';fault=$null;inputs=@('C1','C1','O','Q');outcome='CANCELLED';reason='OBSERVATION_OPERATOR_CANCELLED';captures=2},
         @{case='end requires human';fault=$null;inputs=@('C1','C1','O','O1','QUIT');outcome='CANCELLED';reason='OBSERVATION_OPERATOR_CANCELLED';captures=3}
     ) {

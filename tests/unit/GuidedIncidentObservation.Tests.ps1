@@ -5,9 +5,17 @@ BeforeAll {
     }
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle','Read-LifecycleContract','Format-AuditReport','Format-RootCandidates',
         'Format-OperatorView','Select-RootCandidates','Read-OperatorInput','Wait-GuidedObservation','Send-SessionProgress','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults',
-        'Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution',
+        'New-IncidentResult','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Invoke-GuidedDiscovery','Invoke-GuidedSession','Invoke-SessionExecution',
         'Write-IssueEvidencePackage','Invoke-GuidedIssueEvidenceExport') {. (Join-Path $script:igRoot "src/$name.ps1")}
     . (Join-Path $script:igRoot 'tests/fixtures/IncidentObservation.Source.ps1')
+    function Remove-GuidedTestSchemaLiterals([string]$Text) {
+        # Whole, case-sensitive fixed vocabulary only; retain the broad privacy check.
+        $fixedLines=@(
+            'Working Set and Private Bytes may have different acquisition intervals.',
+            'NEWLY_OBSERVED is first observed in this history. NO_LONGER_OBSERVED is not proof of exit. O3 presence is not leak evidence. Private Bytes is private committed memory.'
+        )
+        (($Text -split '\r?\n' | Where-Object {$_ -cnotin $fixedLines}) -join "`n") -creplace '\b(?:private_bytes|PROCESS_MEMORY_COUNTERS_EX_PRIVATE_USAGE)\b',''
+    }
     $tokens=$null;$errors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:igRoot 'codex-resource-audit.ps1'),[ref]$tokens,[ref]$errors)
     $entry=$ast.Extent.Text
@@ -28,6 +36,54 @@ BeforeAll {
     }
 }
 
+Describe 'Incident P0 remediation: validated Guided Markdown and privacy canaries' {
+    It 'F4 validates valid v2 Guided output before reporting validated evidence' {
+        $run=New-IncidentV2TestRun
+        foreach ($stage in 'O0','O1','O2','O3') {Add-IncidentV2TestStage $run @((New-IncidentTestRecord)) $stage}
+        $text=Format-IncidentObservation $run
+        $text | Should -Match '# CRA Incident Evidence Summary'
+        $text | Should -Match 'Derived from validated local incident evidence'
+    }
+    It 'F4 rejects <case> before emitting any Markdown or validation claim' -ForEach @(
+        @{case='arbitrary name'},@{case='relationship'},@{case='resource'}
+    ) {
+        $run=New-IncidentV2TestRun
+        foreach ($stage in 'O0','O1','O2','O3') {Add-IncidentV2TestStage $run @((New-IncidentTestRecord)) $stage}
+        $o=$run.entries[0].public.observations[0]
+        switch ($case) {
+            'arbitrary name' {$o.display_name='SYNTHETIC_PRIVATE_COMMAND'}
+            relationship {$o.parent_reference='P1'}
+            resource {$o.private_bytes_binding.status='NOT_ATTEMPTED'}
+        }
+        $output=[Collections.Generic.List[object]]::new()
+        {Format-IncidentObservation $run | ForEach-Object {$output.Add($_)}} | Should -Throw '*CRA_AI_SUMMARY_REJECTED*'
+        $output.Count | Should -Be 0
+    }
+    It 'F4 preserves validated historical v1 presentation without changing its result' {
+        $run=New-IncidentTestRun;Add-IncidentTestStage $run @((New-IncidentTestRecord))
+        $result=New-IncidentResult $run;$before=ConvertTo-Json $result -Depth 16 -Compress
+        $text=Format-IncidentMarkdown $result
+        $text | Should -Match 'Source semantic version: 1'
+        $text | Should -Match 'Descendant extension and v2 coverage: NOT_SUPPORTED'
+        (ConvertTo-Json $result -Depth 16 -Compress) | Should -BeExactly $before
+    }
+    It 'F5 excludes only the approved literal <literal>' -ForEach @(
+        @{literal='private_bytes'},@{literal='PROCESS_MEMORY_COUNTERS_EX_PRIVATE_USAGE'},
+        @{literal='Working Set and Private Bytes may have different acquisition intervals.'},
+        @{literal='NEWLY_OBSERVED is first observed in this history. NO_LONGER_OBSERVED is not proof of exit. O3 presence is not leak evidence. Private Bytes is private committed memory.'}
+    ) {
+        Remove-GuidedTestSchemaLiterals $literal | Should -BeExactly ''
+    }
+    It 'F5 still catches <canary> after exact vocabulary exclusions' -ForEach @(
+        @{canary='SYNTHETIC_PRIVATE_COMMAND'},@{canary='PRIVATE_ARBITRARY_PROVIDER_TEXT'},@{canary='SecretPerson'},
+        @{canary='PRIVATE_BYTES'},@{canary='private_bytes_SECRET'},@{canary='PROCESS_MEMORY_COUNTERS_EX_PRIVATE_USAGE_SECRET'},
+        @{canary='Working Set and Private Bytes may have different acquisition intervals. SecretPerson'}
+    ) {
+        Remove-GuidedTestSchemaLiterals ('private_bytes '+$canary+' PROCESS_MEMORY_COUNTERS_EX_PRIVATE_USAGE') |
+            Should -Match 'PRIVATE|SecretPerson'
+    }
+}
+
 Describe 'T16 Guided action and Incident execution use synthetic captures only' {
     BeforeEach {
         $script:igRow=New-IncidentTestRecord -Source WIN32_PROCESS_CIM
@@ -39,6 +95,12 @@ Describe 'T16 Guided action and Incident execution use synthetic captures only' 
         Set-IncidentInputs @('C1','C1','O','O1','ACTIVITY_END')
         Mock Test-OperatorInteractiveHost {$true}
         Mock Get-IncidentClock {$script:igClock+=10L;return $script:igClock}
+        Mock Get-IncidentCollectionProfile {New-IncidentV2TestProfile}
+        Mock Get-IncidentMembershipSnapshot {
+            param($AuditRunId,$SnapshotId)
+            Get-ProcessSnapshot -AuditRunId $AuditRunId -SnapshotId $SnapshotId
+        }
+        Mock Get-IncidentPrivateBytes {param($StageStart) New-IncidentTestNativeValue -StartMarker $StageStart}
         Mock Get-ProcessSnapshot {
             param($AuditRunId,$SnapshotId)
             $script:igCaptures.Add($SnapshotId);$script:igTrace.Add($SnapshotId)
@@ -90,7 +152,7 @@ Describe 'T16 Guided action and Incident execution use synthetic captures only' 
         $script:igRun.outcome | Should -BeExactly COMPLETED
         $script:igTrace | Should -Be @('CANDIDATES','O0','O1','ACTIVITY_END','O2','WAIT:30','O3')
         $script:igRun.captures.Count | Should -Be 4
-        $script:igRun.entries[0].observations.observation_state | Should -Be @('PRESENT','PRESENT','PRESENT','PRESENT')
+        $script:igRun.entries[0].public.observations.observation_state | Should -Be @('PRESENT','PRESENT','PRESENT','PRESENT')
         $script:igSelection.incident_target_trust | Should -BeExactly OPERATOR_SELECTED_UNVERIFIED
         $script:igSelection.operator_assertion_recorded | Should -BeFalse
         $script:igSelection.identity | Should -BeNullOrEmpty
@@ -115,8 +177,8 @@ Describe 'T16 Guided action and Incident execution use synthetic captures only' 
         $script:igCaptures | Should -Be @('CANDIDATES','O0')
         $script:igPrompts.Count | Should -Be 3
         foreach ($stage in 'O1','ACTIVITY_END','O2','O3') {$script:igRun.schedule[$stage].status | Should -BeExactly NOT_STARTED}
-        $script:igRun.entries[0].first_observed_stage | Should -BeNullOrEmpty
-        Format-IncidentObservation $script:igRun | Should -Not -Match 'PRIVATE|SecretPerson|C:\\Users'
+        $script:igRun.entries[0].public.first_observed_stage | Should -BeNullOrEmpty
+        Remove-GuidedTestSchemaLiterals (Format-IncidentObservation $script:igRun) | Should -Not -Match 'PRIVATE|SecretPerson|C:\\Users'
         Should -Invoke Start-Sleep -Times 0 -Exactly
     }
     It 'IG03 <token> at prompt <stage> leaves the event absent and later captures unattempted' -ForEach @(
@@ -130,7 +192,7 @@ Describe 'T16 Guided action and Incident execution use synthetic captures only' 
         $script:igRun.schedule.O2.status | Should -BeExactly NOT_STARTED
         $script:igRun.schedule.O3.status | Should -BeExactly NOT_STARTED
         $script:igRun.captures.Count | Should -Be $(if ($stage -eq 'O1') {1} else {2})
-        Format-IncidentObservation $script:igRun | Should -Not -Match 'PRIVATE|SecretPerson'
+        Remove-GuidedTestSchemaLiterals (Format-IncidentObservation $script:igRun) | Should -Not -Match 'PRIVATE|SecretPerson'
     }
     It 'IG04 blank and invalid stage input do not fabricate actions and may be corrected synchronously' {
         Set-IncidentInputs @('C1','C1','observe','','RANDOM','o1','','RANDOM','activity_end')
@@ -152,7 +214,7 @@ Describe 'T16 Guided action and Incident execution use synthetic captures only' 
         $script:igFaultStage='O1';$script:igFault='partial';Invoke-IncidentTestFlow
         $script:igRun.captures.Count | Should -Be 4
         $script:igRun.outcome | Should -BeExactly PARTIAL
-        $script:igRun.entries[0].observations[1].observation_state | Should -BeExactly UNKNOWN
+        $script:igRun.entries[0].public.observations[1].observation_state | Should -BeExactly UNKNOWN
     }
     It 'IG07 Observe with export stops before O0 and does not create the requested directory' {
         $destination=Join-Path $TestDrive 'incident-package'
@@ -215,7 +277,7 @@ Describe 'T16 Guided action and Incident execution use synthetic captures only' 
         $script:igRun=Invoke-IncidentObservation $script:igSelection 6>$null
         $script:igRun.outcome | Should -BeExactly PARTIAL
         $script:igRun.captures.Count | Should -Be 4
-        $script:igRun.entries[0].observations[1].identity_continuity | Should -BeExactly UNKNOWN
+        $script:igRun.entries[0].public.observations[1].identity_continuity | Should -BeExactly UNKNOWN
         ($script:igSelection | ConvertTo-Json -Depth 10 -Compress) | Should -BeExactly $before
         [object]::ReferenceEquals($script:igRun.target,$script:igSelection.incident_target) | Should -BeFalse
     }
@@ -252,11 +314,14 @@ Describe 'T16 static interaction and trust isolation' {
             $null=$pipeline.AddScript({
                 param($root,$boundary)
                 foreach ($name in 'Resolve-Attribution','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Read-OperatorInput',
-                    'Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation') {
+                    'New-IncidentResult','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation') {
                     . (Join-Path $root "src/$name.ps1")
                 }
                 . (Join-Path $root 'tests/fixtures/IncidentObservation.Source.ps1')
                 function Test-OperatorInteractiveHost {$true}
+                function Get-IncidentCollectionProfile {New-IncidentV2TestProfile}
+                function Get-IncidentMembershipSnapshot {param($AuditRunId,$SnapshotId) Get-ProcessSnapshot $AuditRunId $SnapshotId}
+                function Get-IncidentPrivateBytes {param($StageStart) New-IncidentTestNativeValue $StageStart}
                 $script:clock=100L;$script:attempts=0
                 function Get-IncidentClock {$script:clock+=10L;$script:clock}
                 function Get-ProcessSnapshot {

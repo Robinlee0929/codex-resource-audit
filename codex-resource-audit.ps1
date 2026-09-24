@@ -25,8 +25,9 @@ if ($PSBoundParameters.ContainsKey('AiHandoffId')) {
     if ($Mode -ne 'Guided' -or -not $PassThru -or [string]::IsNullOrWhiteSpace($AiHandoffId)) {throw 'CRA_AI_REQUEST_UNAVAILABLE'}
     CraAiHandoff\Assert-CraAiRequest -Handle $AiHandoffId -Claim
 }
+# Incident execution and rendering share these pure helpers in both Guided paths.
+. (Join-Path $projectRoot 'src\New-IncidentResult.ps1')
 if ($PassThru) {
-    . (Join-Path $projectRoot 'src\New-IncidentResult.ps1')
     # Reject unsupported combinations before collection, export setup or prompts.
     $unsupported=@('FixturePath','RootPid','RootCreationTimeUtc','RootExecutablePath','OperatorVerifiedKnownCodexInstance',
         'FollowUpSeconds','LifecycleContractPath','IncludeEvidenceSummary','IncludeSessionTemplate','IncludeCandidateGroups',

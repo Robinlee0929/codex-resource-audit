@@ -700,3 +700,18 @@ further contract decision is requested by this amendment.
 T16's optional acquisition-wait mechanism is an implementation
 decision within these limits, not authority to weaken them. If implementation
 evidence contradicts any finding above, stop with OWNER_DECISION_REQUIRED = YES.
+
+
+## Incident v2 bounded context
+
+For incident v2, the canonical closed contract is [T17.2](T17_2_POWERSHELL_RESULT_API_SPEC.md#incident-semantic-v2-process_context_evidence-v1-p0). Earlier direct-neighbor-only and Working-Set-only rules describe historical v1. V2 retains the same human gates, immutable operator-selected P1, four O0/O1/O2/O3 attempts, ACTIVITY_END and 30-second O2-to-O3 wait.
+
+One stage comprises a minimal CIM membership capture, pure bounded same-capture resolution and sequential native enrichment. Request only ProcessId, ParentProcessId, CreationDate, Name and WorkingSetSize. Discovery's broad snapshot is separate. No between-stage sampling, events, subscriptions, ETW, background work or lifecycle runtime.
+
+Evaluate P1, prior exact P references in numeric order, new direct parent, then breadth-first descendants sorted by private PID and exact creation. Admit new descendants only with complete retained same-stage chains to matched P1; missing intermediates stop traversal. Parent context never seeds upward or sibling expansion. Recompute current ancestry; retain earlier evidence only under its original stage. Same-PID replacements never substitute for P1 or seed expansion. Allocate P references only after successful admission; unresolved entries are stage-local and processed after exact identities.
+
+Private Bytes is PROCESS_MEMORY_COUNTERS_EX.PrivateUsage, private commit in nullable nonnegative Int64 bytes. Open one non-inheritable handle with exactly PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE; wait(0), GetProcessTimes creation, checked lossless exact comparison, GetProcessMemoryInfo, creation again, wait(0), always close. No retry, reopen, broader rights, elevation, rounded/truncated/padded/tolerant timestamp or PID-only match. Unestablished native/CIM comparability returns unavailable, including IDENTITY_PRECISION_UNRESOLVED. Discard incidental CPU/exit outputs and pending unverified measurements.
+
+Keep independently valid CIM Working Set with its membership timing; native failure does not erase it. Separate timing/source/availability, no ratios, deltas, totals, leak interpretation or implied simultaneous sample. No handles survive stages/prompts. Budgets stop further work and reject late native results; they do not guarantee OS-call interruption or a wall-clock/prompt hard timeout.
+
+Finite prototype policies require explicit injection. Production policy, platform, useful native binding availability, performance, privacy, disposal and size measurements remain release-blocking. Live validation belongs only to an operator-owned PowerShell 7 session after offline tests and exact implementation review/CI.

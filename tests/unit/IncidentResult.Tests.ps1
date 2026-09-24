@@ -39,6 +39,12 @@ Describe 'T17.2 PowerShell in-process Incident result' {
         Set-IncidentInputs @('C1','C1','O','O1','ACTIVITY_END')
         Mock Test-OperatorInteractiveHost {$true}
         Mock Get-IncidentClock {$script:igClock+=10L;return $script:igClock}
+        Mock Get-IncidentCollectionProfile {New-IncidentV2TestProfile}
+        Mock Get-IncidentMembershipSnapshot {
+            param($AuditRunId,$SnapshotId)
+            Get-ProcessSnapshot -AuditRunId $AuditRunId -SnapshotId $SnapshotId
+        }
+        Mock Get-IncidentPrivateBytes {param($StageStart) New-IncidentTestNativeValue -StartMarker $StageStart}
         Mock Get-ProcessSnapshot {
             param($AuditRunId,$SnapshotId)
             $script:igCaptures.Add($SnapshotId);$script:igTrace.Add($SnapshotId)
@@ -92,7 +98,7 @@ Describe 'T17.2 PowerShell in-process Incident result' {
         $result.Count | Should -Be 1
         $r=$result[0]
         $r | Should -BeOfType ([pscustomobject])
-        $r.contract_version | Should -Be 1
+        $r.contract_version | Should -Be 2
         $r.result_type | Should -BeExactly INCIDENT_OBSERVATION
         $r.outcome | Should -BeExactly COMPLETED
         $r.reason | Should -BeNullOrEmpty
@@ -134,7 +140,7 @@ Describe 'T17.2 PowerShell in-process Incident result' {
         $script:igCaptures | Should -Be @('CANDIDATES','O0')
     }
     It 'MR03 preserves later <fault> at <stage>' -ForEach @(
-        @{fault='partial';stage='O1';outcome='PARTIAL';reason='OBSERVATION_CAPTURE_INCOMPLETE'},
+        @{fault='partial';stage='O1';outcome='PARTIAL';reason='OBSERVATION_EVIDENCE_PARTIAL'},
         @{fault='throw';stage='O1';outcome='STOPPED';reason='OBSERVATION_COLLECTION_FAILED'},
         @{fault='throw';stage='O2';outcome='STOPPED';reason='OBSERVATION_COLLECTION_FAILED'},
         @{fault='throw';stage='O3';outcome='STOPPED';reason='OBSERVATION_COLLECTION_FAILED'}

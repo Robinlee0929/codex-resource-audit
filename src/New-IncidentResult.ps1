@@ -30,6 +30,7 @@ function New-IncidentResultBoundaries {
 function New-IncidentResult {
     # Both renderers use Get-IncidentObservationView. Never copy the private run.
     param([Parameter(Mandatory)][object]$Run)
+    if ((Get-RootCandidateField $Run 'contract_version') -ceq 2) {return New-IncidentV2Result $Run}
     $view=Get-IncidentObservationView $Run
     $targets=@($view.processes | Where-Object observation_process_id -CEQ 'P1')
     $latest=$null
@@ -93,4 +94,66 @@ function ConvertTo-IncidentRequestError {
         }
     }
     New-IncidentRequestResult -Reason $reason
+}
+
+function New-IncidentV2Boundaries {
+    $boundaries=New-IncidentResultBoundaries
+    foreach ($pair in @(@('context_scope','BOUNDED_STAGE_CONTEXT'),@('descendant','NOT_OWNERSHIP_OR_CAUSATION'),
+        @('private_bytes','PRIVATE_COMMIT_NOT_LEAK_EVIDENCE'),@('resource_timing','SEPARATE_ACQUISITION_INTERVALS'),
+        @('observation_sampling','STAGE_SNAPSHOTS_ONLY'),@('omitted_context','NOT_PROOF_OF_ABSENCE'))) {
+        $boundaries | Add-Member -NotePropertyName $pair[0] -NotePropertyValue $pair[1]
+    }
+    return $boundaries
+}
+
+function New-IncidentV2Result {
+    param($Run)
+    # Only closed public entries enter serialization; private references and source rows never do.
+    $entries=@(foreach ($entry in $Run.entries) {$entry.public})
+    $timeline=@(foreach ($stage in 'O0','O1','ACTIVITY_END','O2','O3') {
+        $t=$Run.schedule[$stage]
+        [pscustomobject][ordered]@{stage=$stage;status=$t.status;timing_availability=$t.timing_availability;
+            start_offset_seconds=$t.start_offset_seconds;end_offset_seconds=$t.end_offset_seconds}
+    })
+    $stages=@(foreach ($stage in 'O0','O1','O2','O3') {
+        Get-IncidentStageCoverage $entries ($timeline | Where-Object stage -CEQ $stage) $Run.declarations[$stage]
+    })
+    $overall=Get-IncidentRunCoverage $stages $timeline[2]
+    $execution=$Run.execution_status;$outcome=$Run.outcome;$reason=$Run.reason
+    if ($execution -ceq 'COMPLETED') {
+        $outcome=if ($overall -ceq 'COMPLETE') {'COMPLETED'} else {'PARTIAL'}
+        $reason=if ($outcome -ceq 'PARTIAL') {'OBSERVATION_EVIDENCE_PARTIAL'} else {$null}
+    }
+    $latest=if ($entries[0].observations.Count) {$entries[0].observations[-1]} else {$null}
+    $changes=@(foreach ($entry in $entries) {foreach ($o in $entry.observations) {
+        if ($o.observation_state -cin @('NEWLY_OBSERVED','NO_LONGER_OBSERVED')) {
+            [pscustomobject][ordered]@{observation_process_id=$entry.observation_process_id;stage=$o.stage;
+                observation_state=$o.observation_state;relationship_status=$o.relationship_status;parent_reference=$o.parent_reference}
+        }
+    }})
+    $result=[pscustomobject][ordered]@{contract_version=2;result_type='INCIDENT_OBSERVATION';outcome=$outcome;reason=$reason;
+        reference_scope='THIS_RESULT_ONLY';target=[pscustomobject][ordered]@{observation_process_id='P1';target_trust='OPERATOR_SELECTED_UNVERIFIED';
+            stage=$(if ($null -ne $latest) {$latest.stage} else {$null});identity_continuity=$(if ($null -ne $latest) {$latest.identity_continuity} else {'UNKNOWN'});
+            observation_state=$(if ($null -ne $latest) {$latest.observation_state} else {'UNKNOWN'});ownership='UNKNOWN';lifecycle_classification='NOT_APPLICABLE'};
+        timeline=$timeline;observed_context=$entries;activity_changes=$changes;boundaries=(New-IncidentV2Boundaries);
+        capture_attempt_limit=4;o2_to_o3_wait_seconds=30;execution_status=$execution;collection_policy=$Run.policy;
+        coverage=[pscustomobject][ordered]@{scope='BOUNDED_STAGE_CONTEXT';overall_status=$overall;stages=$stages}}
+    # Fresh data-only result, without aliases into retained history.
+    Copy-IncidentPublicData $result
+}
+
+function Copy-IncidentPublicData {
+    param([AllowNull()]$Value)
+    if ($null -eq $Value) {return $null}
+    if ($Value -is [string] -or $Value -is [int] -or $Value -is [long] -or $Value -is [double] -or $Value -is [bool]) {return $Value}
+    if ($Value -is [array]) {return ,@(foreach ($item in $Value) {Copy-IncidentPublicData $item})}
+    if ($Value -is [pscustomobject]) {
+        $copy=[ordered]@{}
+        foreach ($p in $Value.PSObject.Properties) {
+            if ($p.MemberType -ne 'NoteProperty') {throw 'INCIDENT_PUBLIC_DATA_INVALID'}
+            $copy[$p.Name]=Copy-IncidentPublicData $p.Value
+        }
+        return [pscustomobject]$copy
+    }
+    throw 'INCIDENT_PUBLIC_DATA_INVALID'
 }
