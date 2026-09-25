@@ -98,3 +98,35 @@ Describe 'Incident native declaration and minimal collection boundaries' {
         $invoke | Should -Match 'INCIDENT_POLICY_RELEASE_GATED'
     }
 }
+
+Describe 'Gate 4.5 benchmark-only static boundaries' {
+    It 'keeps production null and puts all eight benchmark values in the sole closed resolver' {
+        . (Join-Path $script:projectRoot 'src/Resolve-IncidentObservation.ps1')
+        Get-IncidentCollectionProfile | Should -BeNullOrEmpty
+        $source=Get-Content (Join-Path $script:projectRoot 'src/Resolve-IncidentObservation.ps1') -Raw
+        $source | Should -Match 'function Get-IncidentCollectionProfile \{ return \$null \}'
+        $tokens=$null;$errors=$null
+        $ast=[Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors)
+        $resolver=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-IncidentBenchmarkProfile'},$true)
+        $resolver.Extent.Text | Should -Not -Match 'GetEnvironmentVariable|Get-Content|Import-Clixml|Invoke-Expression|script:'
+        $resolver.Extent.Text | Should -Match 'NOT_PRODUCTION_DEFAULT'
+    }
+    It 'compiles native declarations without opening or querying any process' {
+        $tokens=$null;$errors=$null
+        $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:projectRoot 'src/Collect-ProcessSnapshot.ps1'),[ref]$tokens,[ref]$errors)
+        $definition=$ast.Find({param($n) $n -is [Management.Automation.Language.StringConstantExpressionAst] -and $n.Value -match 'public static class CraIncidentNative'},$true)
+        $definition | Should -Not -BeNullOrEmpty
+        if ($null -eq ('CraIncidentNative' -as [type])) {Add-Type -TypeDefinition $definition.Value -ErrorAction Stop}
+        ('CraIncidentNative' -as [type]) | Should -Not -BeNullOrEmpty
+        $definition.Value | Should -Not -Match 'TerminateProcess|OpenProcessToken|SetLastError\('
+        $definition.Value | Should -Match 'benchmark\[2\]\+\+;\s*bool success = GetProcessMemoryInfo'
+    }
+    It 'has no new background observer or measurement publication path' {
+        $text=Get-Content (Join-Path $script:projectRoot 'src/Invoke-IncidentObservation.ps1') -Raw
+        $text | Should -Not -Match 'Register-(Cim|Wmi|Object)Event|Start-(Job|ThreadJob)|ETW|Stop-Process|WriteAllText|Export-Clixml|Set-Content|Out-File'
+        $text | Should -Match 'Copy-IncidentPublicData \$measurements'
+        $entry=Get-Content (Join-Path $script:projectRoot 'codex-resource-audit.ps1') -Raw
+        $entry | Should -Match 'Mode -cne ''Guided'''
+        $entry | Should -Match 'Assert-CraAiRequest.*-Claim.*-BenchmarkProfile'
+    }
+}

@@ -330,3 +330,97 @@ Exact report section order: CRA Incident Evidence Summary; Observation; Selected
 Use fixed labels, closed safe display names/roles, validated references/enums and invariant numeric formatting (round-trip offsets), LF and canonical ordering only. No raw PID/PPID, creation backing, handles, paths, command lines, owner/SID, environment, transport IDs, provider/exception prose, dynamic URLs or HTML. Derivation from validated local evidence is not independent authentication. Working Set and Private Bytes may have different acquisition intervals.
 
 Validate before formatting. Preflight actual context/envelope UTF-8 bytes including LF and bounded Markdown output. Oversize rejects with a fixed safe error; no truncation, split, overwrite, downgrade or raw fallback. Production release remains gated on measured numerical policies, useful native binding, privacy/performance and reporter acceptance.
+
+## Gate 4.5 benchmark-only enablement (not Gate 5 execution authorization)
+
+`-BenchmarkProfile B1|B2|B3` is an explicit local API opt-in on
+`scripts/Invoke-CraAiBridge.ps1`, `Read-CraAiArtifact`, and
+`Read-CraAiIncidentSummary`. Labels are case-sensitive and closed. These profiles
+are **BENCHMARK_ONLY / NOT_PRODUCTION_DEFAULT**. The normal production profile
+remains null/release-gated. Omitting the option preserves the historical path.
+No environment, configuration file, scriptblock, numeric policy, artifact, or
+runtime setter can supply benchmark authority.
+
+The sole resolver `Get-IncidentBenchmarkProfile` returns detached policy and
+ceiling copies. B1/B2/B3 have descendant depths 1/2/3 respectively; all have
+32 evaluated identities per capture, 64 exact identities per run, 256 relationship
+records per run, 16 unresolved entries per run, 1,048,576 context bytes, 1,024
+retained source rows and a 5,000 ms stage acquisition budget. These are experimental
+bounds, not shipping defaults or hard OS-call timeouts. The normal context
+reservation and policy feasibility checks still apply.
+
+The bridge fixes authority before discovery. Request-local state binds the
+selected profile; the internal CLI accepts it only with Guided, PassThru and a
+matching unclaimed AiHandoff request. Wrong or missing request/profile authority
+rejects before collection. Publisher checks and public readers use the same
+resolver. In benchmark mode, incident v2 collection_policy must equal the selected
+profile across all eight fields; merely fitting under ceilings is insufficient.
+A B3 reader rejects a B1 artifact. Readers receive their label from the operator's
+local run context, never by reading authority from the artifact. Candidate,
+review and request-failure shapes remain unchanged. Historical v1 stays v1 and
+is not promoted to benchmark v2 evidence.
+
+The bridge also accepts optional `[ref] -BenchmarkMeasurements`, only with a valid
+benchmark profile. This is output-only. A legal invocation clears its prior value;
+cancellation before measurement may leave null, never a stale previous result.
+The ref receives a detached data-only snapshot. No measurements enter the receipt
+success stream, Incident result, envelope, immutable publication or Markdown.
+There is no automatic telemetry file output. The caller may keep only the local
+benchmark-safe record for Owner review; no automatic sharing is authorized.
+
+The closed measurement shape (no additional properties) is:
+
+- Root: measurement_version=1, purpose=BENCHMARK_ONLY, production_default=false,
+  profile_label=B1|B2|B3, status=COMPLETE|PARTIAL|INVALID,
+  reason=NONE|NOT_STARTED|INTERRUPTED|MEASUREMENT_UNAVAILABLE|MEASUREMENT_INVALID,
+  stages=exactly O0,O1,O2,O3 records.
+- Stage: stage, status=NOT_ATTEMPTED|COMPLETE|PARTIAL|INVALID, membership,
+  resolution, native_enrichment, total_stage, source_rows, native_totals,
+  native_observations.
+- Each timing: availability=AVAILABLE|UNAVAILABLE|NOT_ATTEMPTED,
+  start_offset_ms, end_offset_ms, duration_ms (finite nonnegative values or null).
+  Offsets are relative to that stage start, not UTC or raw clock ticks.
+- source_rows: availability=AVAILABLE|UNAVAILABLE|NOT_ATTEMPTED,
+  retained_count=integer|null, completeness=COMPLETE|PARTIAL|UNKNOWN|NOT_ATTEMPTED.
+  At most 1,024 actually retained snapshot rows; truncation remains PARTIAL and
+  never establishes a complete host population.
+- Each native observation: stage, observation_process_id (existing result-local P
+  reference), status=COMPLETE|PARTIAL|NOT_ATTEMPTED, counters. At most 32 per stage,
+  128 per run. No new identity key is allocated.
+- Each counter set: availability=AVAILABLE|UNAVAILABLE|NOT_ATTEMPTED;
+  open_attempts, open_successes, memory_calls, memory_successes, memory_failures,
+  close_invocations, close_successes, close_failures (integers or null).
+  Each operation counter per observation is at most one. Stage totals are exact
+  sums only when observations are sufficiently complete; unknown is never zero.
+
+Resolution brackets the actual resolver. Enrichment brackets the complete native
+loop, including waits, identity checks and disposal. Total-stage timing excludes
+later public serialization. Native counters are attached to actual call boundaries,
+not inferred from eligibility. Synthetic injected-operation tests are not live
+operation-count evidence. Telemetry adds cost that remains within the existing
+budget; no compensating time extension is permitted.
+
+The Open failure critical window remains native Open, existing Error/
+GetLastWin32Error read, original failure classification. No telemetry callback,
+clock read, logging, allocation or export is inserted into this window; there is
+no new error cache. Memory and Close bools only inform local telemetry. Close false
+never causes a retry, new public reason or changed product outcome. The existing
+0x00101000 non-inheritable access, native API set, call ordering and finally disposal
+remain unchanged. Incomplete telemetry is PARTIAL/INVALID or null, without changing
+product evidence or swallowing cancellation/product exceptions.
+
+Private discovery retains its historical transient operator boundary. Local
+transport retains required correlation IDs. Shareable incident payload/Markdown
+and benchmark measurements never gain raw PID/PPID, creation evidence, handles,
+paths, commands, usernames, SID, environment, provider/exception prose or transport
+IDs. Benchmark measurements may identify observations only by existing P reference.
+No public Incident schema or transport wire-schema change is introduced. The
+4 MiB/depth/array/publication restrictions remain unchanged.
+
+All human review, target choice, Observe, O1 and ACTIVITY_END gates and the four
+stage/30-second schedule remain mandatory. No automated prompt input, P1 polling,
+process events, ETW, lifecycle observer, control or remediation is enabled. External
+helpers, live Gate 5 execution and Skill setup/replacement need their separate
+approved scope. Gate 4.5 implementation requires focused and full offline checks,
+Implementation Owner Review, then a new checkpoint and exact-SHA Hosted CI before
+returning to Gate 5 Owner Review. This interface is not permission to run Gate 5.

@@ -393,7 +393,7 @@ Describe 'T17.3C command examples are parsed only, never executed' {
         $tokens = $null; $errors = $null
         $wrapper = [Management.Automation.Language.Parser]::ParseFile((Join-Path $script:skillRoot 'scripts/Invoke-CraAiBridge.ps1'), [ref]$tokens, [ref]$errors)
         $errors.Count | Should -Be 0
-        $wrapper.ParamBlock.Parameters.Name.VariablePath.UserPath | Should -Be $parameters
+        $wrapper.ParamBlock.Parameters.Name.VariablePath.UserPath | Should -Be @('OutputDirectory','BenchmarkProfile','BenchmarkMeasurements')
     }
     It 'SK14 every artifact type is read with the same explicit correlation and stop-on-error' {
         $reads = @($script:commands | Where-Object { $_.GetCommandName() -eq 'CraAiHandoff\Read-CraAiArtifact' })

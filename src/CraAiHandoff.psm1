@@ -531,7 +531,7 @@ function Assert-CraAiIncidentV2 {
 
 function Assert-CraAiResult {
     # V1 validation below remains unchanged; v2 is an exact separate dispatch.
-    param($Result,[AllowNull()]$Ceilings=$null)
+    param($Result,[AllowNull()]$Ceilings=$null,[AllowNull()]$BenchmarkAuthority=$null)
     if ($Result -isnot [pscustomobject] -or $null -eq $Result.PSObject.Properties['result_type']) {throw 'CRA_AI_INVALID_DATA'}
     foreach ($p in $Result.PSObject.Properties) {if ($p.MemberType -ne 'NoteProperty') {throw 'CRA_AI_INVALID_DATA'}}
     if ($Result.result_type -ceq 'GUIDED_INCIDENT_REQUEST') {
@@ -539,6 +539,10 @@ function Assert-CraAiResult {
         if ($Result.timeline.Count -or $Result.observed_context.Count -or $Result.activity_changes.Count) {throw 'CRA_AI_INVALID_DATA'}
     } elseif ($Result.result_type -ceq 'INCIDENT_OBSERVATION') {
         if ($Result.PSObject.Properties['contract_version'] -and $Result.contract_version -ceq 2) {
+            if ($null -ne $BenchmarkAuthority) {
+                Assert-CraAiEqualData $Result.collection_policy $BenchmarkAuthority.policy
+                $Ceilings=$BenchmarkAuthority.ceilings
+            }
             Assert-CraAiIncidentV2 $Result $Ceilings
             return
         }
@@ -567,7 +571,7 @@ function Assert-CraAiResult {
 }
 
 function Assert-CraAiEnvelope {
-    param($Envelope,[string]$RequestId,[string]$CandidateSetId,[string]$MessageType)
+    param($Envelope,[string]$RequestId,[string]$CandidateSetId,[string]$MessageType,[AllowNull()]$BenchmarkAuthority=$null)
     Assert-CraAiValue $RequestId $script:guidRule
     Assert-CraAiValue $CandidateSetId $script:guidRule
     $payloadRule=switch -CaseSensitive ($MessageType) {
@@ -575,7 +579,7 @@ function Assert-CraAiEnvelope {
         review {$script:reviewRule}
         final_result {
             if ($Envelope -isnot [pscustomobject] -or $null -eq $Envelope.PSObject.Properties['payload']) {throw 'CRA_AI_INVALID_DATA'}
-            Assert-CraAiResult $Envelope.payload
+            Assert-CraAiResult $Envelope.payload -BenchmarkAuthority $BenchmarkAuthority
             if ($Envelope.payload.result_type -ceq 'INCIDENT_OBSERVATION') {
                 if ($Envelope.payload.contract_version -ceq 2) {Get-CraAiIncidentV2Rule} else {$script:incidentRule}
             } else {$script:requestRule}
@@ -677,23 +681,28 @@ function Write-CraAiBytes {
 
 function New-CraAiRequest {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$OutputDirectory)
+    param([Parameter(Mandatory)][string]$OutputDirectory,[AllowNull()]$BenchmarkProfile=$null)
+    $authority=$null
+    if ($PSBoundParameters.ContainsKey('BenchmarkProfile')) {$authority=Get-IncidentBenchmarkProfile $BenchmarkProfile}
     $path=Resolve-CraAiDirectory $OutputDirectory -New
     try {$null=New-Item -ItemType Directory -Path $path -ErrorAction Stop;Assert-CraAiDirectoryChain $path}
     catch [Management.Automation.PipelineStoppedException] {throw}
     catch {throw 'CRA_AI_DESTINATION_CREATE_FAILED'}
     $id=[guid]::NewGuid().ToString();$set=[guid]::NewGuid().ToString();$handle=[guid]::NewGuid().ToString()
-    $script:requests[$handle]=@{directory=$path;request_id=$id;candidate_set_id=$set;failure=$null;candidate=$null;review=$false;final=$false;claimed=$false}
+    $script:requests[$handle]=@{directory=$path;request_id=$id;candidate_set_id=$set;failure=$null;candidate=$null;review=$false;final=$false;claimed=$false;benchmark_label=$BenchmarkProfile;benchmark_authority=$authority}
     [pscustomobject]@{handle=$handle;request_id=$id;candidate_set_id=$set}
 }
 function Assert-CraAiRequest {
     # One in-process invocation only. This handle is NOT authentication and carries
     # no target, command, operator input, trust assertion or process identity.
-    param([string]$Handle,[switch]$Claim)
+    param([string]$Handle,[switch]$Claim,[AllowNull()]$BenchmarkProfile=$null,[switch]$PassBenchmarkProfile)
     if (-not $script:requests.ContainsKey($Handle)) {throw 'CRA_AI_REQUEST_UNAVAILABLE'}
     if ($Claim) {
+        if ($PSBoundParameters.ContainsKey('BenchmarkProfile') -and $null -ne $BenchmarkProfile) {$null=Get-IncidentBenchmarkProfile $BenchmarkProfile}
+        if ($script:requests[$Handle].benchmark_label -cne $BenchmarkProfile) {throw 'CRA_AI_BENCHMARK_PROFILE_MISMATCH'}
         if ($script:requests[$Handle].claimed) {throw 'CRA_AI_REQUEST_UNAVAILABLE'}
         $script:requests[$Handle].claimed=$true
+        if ($PassBenchmarkProfile) {Copy-IncidentPublicData $script:requests[$Handle].benchmark_authority}
     }
 }
 function Publish-CraAiMessage {
@@ -701,7 +710,7 @@ function Publish-CraAiMessage {
     if ($null -ne $Context.failure) {return}
     $envelope=[pscustomobject][ordered]@{transport_version=1;request_id=$Context.request_id;candidate_set_id=$Context.candidate_set_id;
         message_type=$MessageType;delivery_status='DELIVERED';reason='ARTIFACT_PUBLISHED';payload=$Payload}
-    Assert-CraAiEnvelope $envelope $Context.request_id $Context.candidate_set_id $MessageType
+    Assert-CraAiEnvelope $envelope $Context.request_id $Context.candidate_set_id $MessageType -BenchmarkAuthority $Context.benchmark_authority
     $bytes=ConvertTo-CraAiBytes $envelope
     Write-CraAiBytes $Context.directory $MessageType $bytes
 }
@@ -741,7 +750,7 @@ function Complete-CraAiRequest {
     if ($null -eq $c.failure) {
         try {
             if ($c.final) {throw 'ORDER'}
-            Assert-CraAiResult $Result
+            Assert-CraAiResult $Result -BenchmarkAuthority $c.benchmark_authority
             Publish-CraAiMessage $c 'final_result' $Result
             $c.final=$true
         } catch [Management.Automation.PipelineStoppedException] {throw}
@@ -760,8 +769,11 @@ function Read-CraAiArtifact {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Directory,
         [Parameter(Mandatory)][string]$RequestId,[Parameter(Mandatory)][string]$CandidateSetId,
-        [Parameter(Mandatory)][ValidateSet('candidate','review','final_result')][string]$MessageType)
+        [Parameter(Mandatory)][ValidateSet('candidate','review','final_result')][string]$MessageType,
+        [AllowNull()]$BenchmarkProfile=$null)
     try {
+        $authority=$null
+        if ($PSBoundParameters.ContainsKey('BenchmarkProfile')) {$authority=Get-IncidentBenchmarkProfile $BenchmarkProfile}
         $directoryPath=Resolve-CraAiDirectory $Directory
         $path=[IO.Path]::Combine($directoryPath,$MessageType+'.json')
         $attributes=[IO.File]::GetAttributes($path)
@@ -777,7 +789,7 @@ function Read-CraAiArtifact {
             }
         } finally {$s.Dispose()}
         $envelope=ConvertFrom-CraAiBytes $bytes
-        Assert-CraAiEnvelope $envelope $RequestId $CandidateSetId $MessageType
+        Assert-CraAiEnvelope $envelope $RequestId $CandidateSetId $MessageType -BenchmarkAuthority $authority
         return $envelope
     } catch [Management.Automation.PipelineStoppedException] {throw}
     catch {throw 'CRA_AI_ARTIFACT_REJECTED'}
@@ -785,10 +797,16 @@ function Read-CraAiArtifact {
 
 function Read-CraAiIncidentSummary {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Directory,[Parameter(Mandatory)][string]$RequestId,[Parameter(Mandatory)][string]$CandidateSetId)
-    $envelope=Read-CraAiArtifact -Directory $Directory -RequestId $RequestId -CandidateSetId $CandidateSetId -MessageType final_result
+    param([Parameter(Mandatory)][string]$Directory,[Parameter(Mandatory)][string]$RequestId,[Parameter(Mandatory)][string]$CandidateSetId,
+        [AllowNull()]$BenchmarkProfile=$null)
+    $benchmarkArgs=@{};$ceilings=$null
+    if ($PSBoundParameters.ContainsKey('BenchmarkProfile')) {
+        $authority=Get-IncidentBenchmarkProfile $BenchmarkProfile
+        $benchmarkArgs.BenchmarkProfile=$BenchmarkProfile;$ceilings=$authority.ceilings
+    }
+    $envelope=Read-CraAiArtifact -Directory $Directory -RequestId $RequestId -CandidateSetId $CandidateSetId -MessageType final_result @benchmarkArgs
     if ($envelope.payload.result_type -cne 'INCIDENT_OBSERVATION') {throw 'CRA_AI_SUMMARY_REJECTED'}
-    Format-IncidentMarkdown $envelope.payload
+    Format-IncidentMarkdown $envelope.payload -Ceilings $ceilings
 }
 
 Export-ModuleMember -Function New-CraAiRequest,Assert-CraAiRequest,Publish-CraAiDiscovery,Complete-CraAiRequest,Close-CraAiRequest,Read-CraAiArtifact,Read-CraAiIncidentSummary

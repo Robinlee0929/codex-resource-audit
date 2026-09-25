@@ -616,3 +616,136 @@ Describe 'Incident native resource binding with injected operations only' {
         $script:nativeTrace.Count | Should -Be 0
     }
 }
+
+Describe 'Gate 4.5 bounded measurement and native semantic equivalence' {
+    BeforeAll {
+        . (Join-Path $script:incidentRoot 'src/Read-OperatorInput.ps1')
+        . (Join-Path $script:incidentRoot 'src/Invoke-IncidentObservation.ps1')
+        function Invoke-G45SyntheticRun([bool]$On,[string]$Case='success') {
+            $script:g45Case=$Case;$script:g45Time=100000L
+            $script:g45Trace=[Collections.Generic.List[string]]::new();$script:g45Counters=$null
+            $profile=Get-IncidentBenchmarkProfile B3
+            $row=New-IncidentTestRecord -Source WIN32_PROCESS_CIM -Time '2026-01-01T00:00:01.1234560Z'
+            $script:g45Row=$row
+            $script:g45Creation=[datetime]::new((Get-IncidentExactTime $row),[DateTimeKind]::Utc).ToFileTimeUtc()
+            $outcome=[pscustomobject]@{status='INCIDENT_ACTION_SELECTED';incident_action='OBSERVE';incident_target_trust='OPERATOR_SELECTED_UNVERIFIED';
+                operator_assertion_recorded=$false;incident_target=(New-IncidentTestReference $row);incident_discovery_marker=0L}
+            $m='STALE';$args=@{}
+            if ($On) {$args.BenchmarkProfile='B3';$args.BenchmarkMeasurements=[ref]$m}
+            $run=Invoke-IncidentObservation $outcome -Profile $profile @args 6>$null
+            [pscustomobject]@{run=$run;result=(New-IncidentV2Result $run);measurement=$m;trace=@($script:g45Trace)}
+        }
+    }
+    BeforeEach {
+        Mock Test-OperatorInteractiveHost {$true}
+        Mock Read-IncidentAction {if ($script:g45Case -ceq 'cancel') {'CANCELLED'} else {'ACCEPTED'}}
+        Mock Start-Sleep {}
+        Mock Get-IncidentClock {$script:g45Trace.Add('clock');$script:g45Time}
+        Mock Get-IncidentMembershipSnapshot {
+            param($AuditRunId,$SnapshotId)
+            $begin=$script:g45Time;$script:g45Time+=100L
+            if ($script:g45Case -ceq 'budget') {$script:g45Time+=[long]([Diagnostics.Stopwatch]::Frequency*5)}
+            $s=New-IncidentTestSnapshot -Rows @($script:g45Row) -Scope $AuditRunId -Stage $SnapshotId -Marker $script:g45Time
+            $s | Add-Member membership_start $begin;$s | Add-Member membership_end $script:g45Time
+            if ($script:g45Case -ceq 'partial') {$s.capture_status='PARTIAL'}
+            $s
+        }
+        Mock New-IncidentNativeOperations {
+            param($BenchmarkCounters)
+            $script:g45Counters=$BenchmarkCounters
+            @{
+                Open={param($access,$inherit,$processId)
+                    $script:g45Trace.Add('open');$script:g45Time+=10L
+                    if ($null -ne $script:g45Counters) {$script:g45Counters[0]++}
+                    if ($script:g45Case -cin @('open5','open87')) {[IntPtr]::Zero} else {[IntPtr]123}
+                }
+                Error={$script:g45Trace.Add('error');if ($script:g45Case -ceq 'open5') {5} else {87}}
+                Wait={param($handle) $script:g45Trace.Add('wait');$script:g45Time+=10L;if ($script:g45Case -ceq 'signaled') {0} else {258}}
+                Creation={param($handle) $script:g45Trace.Add('creation');$script:g45Time+=10L;if ($script:g45Case -ceq 'creation') {$null} else {$script:g45Creation}}
+                Memory={param($handle)
+                    $script:g45Trace.Add('memory');$script:g45Time+=10L
+                    if ($null -ne $script:g45Counters) {$script:g45Counters[2]++}
+                    if ($script:g45Case -ceq 'memory') {if ($null -ne $script:g45Counters) {$script:g45Counters[4]++};return $null}
+                    if ($script:g45Case -ceq 'exception') {throw 'SYNTHETIC_PRIVATE_ERROR'}
+                    if ($null -ne $script:g45Counters) {$script:g45Counters[3]++};return 200L
+                }
+                Close={param($handle)
+                    $script:g45Trace.Add('close');$script:g45Time+=10L
+                    if ($null -ne $script:g45Counters) {
+                        $script:g45Counters[5]++
+                        if ($script:g45Case -ceq 'closefalse') {$script:g45Counters[7]++} else {$script:g45Counters[6]++}
+                    }
+                }
+            }
+        }
+    }
+    It 'preserves full public result and operation order ON/OFF for <_>' -ForEach @('success','open5','open87','creation','memory','signaled','closefalse','cancel','budget','exception') {
+        $case=$_;$off=Invoke-G45SyntheticRun $false $case;$on=Invoke-G45SyntheticRun $true $case
+        (ConvertTo-Json $on.result -Depth 16 -Compress) | Should -BeExactly (ConvertTo-Json $off.result -Depth 16 -Compress)
+        @($on.trace | Where-Object {$_ -cne 'clock'}) | Should -Be @($off.trace | Where-Object {$_ -cne 'clock'})
+        $off.measurement | Should -BeExactly STALE
+        $on.measurement.measurement_version | Should -Be 1
+        if ($case -cin @('open5','open87')) {
+            for ($i=0;$i -lt $on.trace.Count;$i++) {if ($on.trace[$i] -ceq 'open') {$on.trace[$i+1] | Should -BeExactly error}}
+            $on.result.observed_context[0].observations[0].private_bytes.reason | Should -BeExactly $(if ($case -ceq 'open5') {'ACCESS_DENIED'} else {'SOURCE_UNAVAILABLE'})
+        }
+        if ($case -ceq 'closefalse') {
+            $on.measurement.stages[0].native_totals.close_invocations | Should -Be 1
+            $on.measurement.stages[0].native_totals.close_successes | Should -Be 0
+            $on.measurement.stages[0].native_totals.close_failures | Should -Be 1
+            $on.result.observed_context[0].observations[0].private_bytes.availability | Should -BeExactly AVAILABLE
+        }
+    }
+    It 'returns the exact closed detached shape with actual complete stage brackets and counts' {
+        $a=Invoke-G45SyntheticRun $true
+        $m=$a.measurement
+        $m.status | Should -BeExactly COMPLETE
+        $m.PSObject.Properties.Name | Should -Be @('measurement_version','purpose','production_default','profile_label','status','reason','stages')
+        $m.stages.stage | Should -Be @('O0','O1','O2','O3')
+        $counterFields=@('availability','open_attempts','open_successes','memory_calls','memory_successes','memory_failures','close_invocations','close_successes','close_failures')
+        foreach ($stage in $m.stages) {
+            $stage.PSObject.Properties.Name | Should -Be @('stage','status','membership','resolution','native_enrichment','total_stage','source_rows','native_totals','native_observations')
+            $stage.source_rows.PSObject.Properties.Name | Should -Be @('availability','retained_count','completeness')
+            $stage.source_rows.retained_count | Should -Be 1
+            $stage.source_rows.completeness | Should -BeExactly COMPLETE
+            foreach ($kind in 'membership','resolution','native_enrichment','total_stage') {
+                $stage.$kind.PSObject.Properties.Name | Should -Be @('availability','start_offset_ms','end_offset_ms','duration_ms')
+                $stage.$kind.availability | Should -BeExactly AVAILABLE
+                $stage.$kind.duration_ms | Should -Be ($stage.$kind.end_offset_ms-$stage.$kind.start_offset_ms)
+            }
+            $stage.native_enrichment.duration_ms | Should -BeGreaterThan 0
+            $stage.native_enrichment.end_offset_ms | Should -Be $stage.total_stage.end_offset_ms
+            $stage.native_enrichment.start_offset_ms | Should -BeGreaterOrEqual $stage.resolution.end_offset_ms
+            $stage.native_observations.Count | Should -Be 1
+            $o=$stage.native_observations[0]
+            $o.PSObject.Properties.Name | Should -Be @('stage','observation_process_id','status','counters')
+            $o.observation_process_id | Should -BeExactly P1
+            $o.counters.PSObject.Properties.Name | Should -Be $counterFields
+            $stage.native_totals.PSObject.Properties.Name | Should -Be $counterFields
+            @($o.counters.PSObject.Properties.Value) | Should -Be @('AVAILABLE',1L,1L,1L,1L,0L,1L,1L,0L)
+        }
+        $text=ConvertTo-Json $m -Depth 16 -Compress
+        $text | Should -Not -Match '"(?:pid|ppid|handle|creation_time|request_id|candidate_set_id|candidate_id|command_line|executable_path)"|SYNTHETIC_PRIVATE|scriptblock'
+        $m.stages[0].native_observations[0].counters.open_attempts=99
+        $a.run.benchmark_measurements.stages[0].native_observations[0].counters.open_attempts | Should -Be 1
+        (ConvertTo-Json $a.result -Depth 16 -Compress) | Should -Not -Match 'measurement_version|native_totals|open_attempts'
+    }
+    It 'keeps truncated membership counts partial instead of full host claims' {
+        $a=Invoke-G45SyntheticRun $true partial
+        $a.measurement.stages[0].source_rows.retained_count | Should -Be 1
+        $a.measurement.stages[0].source_rows.completeness | Should -BeExactly PARTIAL
+        $a.result.outcome | Should -Not -BeExactly COMPLETED
+    }
+    It 'does not manufacture zero native results after an interrupted operation' {
+        $a=Invoke-G45SyntheticRun $true exception
+        $a.measurement.stages[0].native_totals.availability | Should -BeExactly UNAVAILABLE
+        $a.measurement.stages[0].native_totals.memory_calls | Should -BeNullOrEmpty
+        $a.measurement.stages[1].status | Should -BeExactly NOT_ATTEMPTED
+        $a.measurement.reason | Should -BeExactly INTERRUPTED
+    }
+    It 'rejects counter overflow or incomplete close without changing product data' {
+        foreach ($values in @(@(2,1,1,1,0,1,1,0,1),@(1,1,1,1,0,0,0,0,1))) {
+            (ConvertTo-IncidentBenchmarkCounters ([long[]]$values) $true).availability | Should -BeExactly UNAVAILABLE
+        }
+    }
+}

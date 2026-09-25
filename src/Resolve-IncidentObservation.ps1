@@ -265,6 +265,17 @@ function Add-IncidentStageEvidence {
 # No production profile exists until the measured release gate is approved.
 function Get-IncidentCollectionProfile { return $null }
 
+function Get-IncidentBenchmarkProfile {
+    param([Parameter(Mandatory)][AllowNull()]$BenchmarkProfile)
+    if ($BenchmarkProfile -isnot [string] -or $BenchmarkProfile -cnotin @('B1','B2','B3')) {throw 'INCIDENT_BENCHMARK_PROFILE_INVALID'}
+    # BENCHMARK_ONLY / NOT_PRODUCTION_DEFAULT. No shared mutable authority.
+    $policy=[pscustomobject][ordered]@{max_descendant_depth=[int]$BenchmarkProfile.Substring(1);
+        max_evaluated_identities_per_capture=32;max_identities_per_run=64;
+        max_relationship_records_per_run=256;max_unresolved_entries_per_run=16;
+        max_context_serialized_bytes=1048576;max_source_rows=1024;max_stage_acquisition_milliseconds=5000}
+    [pscustomobject]@{policy=$policy;ceilings=$policy.PSObject.Copy()}
+}
+
 function Get-IncidentPolicyFields {
     @('max_descendant_depth','max_evaluated_identities_per_capture','max_identities_per_run',
       'max_relationship_records_per_run','max_unresolved_entries_per_run','max_context_serialized_bytes',

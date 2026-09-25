@@ -121,6 +121,7 @@ function Get-IncidentMembershipSnapshot {
 }
 
 function New-IncidentNativeOperations {
+    param([AllowNull()][long[]]$BenchmarkCounters=$null)
     # Loading declarations does not open a process. Only the explicit resource seam calls them.
     if ($null -eq ('CraIncidentNative' -as [type])) {
         Add-Type -TypeDefinition @'
@@ -147,21 +148,38 @@ public static class CraIncidentNative {
         if (!GetProcessTimes(handle, out creation, out ignoredExit, out ignoredKernel, out ignoredUser)) return null;
         return creation >= 0 ? (long?)creation : null;
     }
-    public static ulong? PrivateBytes(IntPtr handle) {
+    public static ulong? PrivateBytes(IntPtr handle, long[] benchmark = null) {
         MemoryCounters counters = new MemoryCounters();
         counters.cb = checked((uint)Marshal.SizeOf(typeof(MemoryCounters)));
-        if (!GetProcessMemoryInfo(handle, ref counters, counters.cb)) return null;
+        if (benchmark != null) benchmark[2]++;
+        bool success = GetProcessMemoryInfo(handle, ref counters, counters.cb);
+        if (benchmark != null) { if (success) benchmark[3]++; else benchmark[4]++; }
+        if (!success) return null;
         return counters.PrivateUsage.ToUInt64();
     }
 }
 '@ -ErrorAction Stop
     }
     @{
-        Open={param($access,$inherit,$processId) [CraIncidentNative]::OpenProcess($access,$inherit,$processId)}
+        Open={param($access,$inherit,$processId)
+            if ($null -ne $BenchmarkCounters) {$BenchmarkCounters[0]++}
+            # Native call is last: no telemetry between failed Open and the existing Error read.
+            [CraIncidentNative]::OpenProcess($access,$inherit,$processId)
+        }.GetNewClosure()
         Wait={param($handle) [CraIncidentNative]::WaitForSingleObject($handle,0)}
         Creation={param($handle) [CraIncidentNative]::Creation($handle)}
-        Memory={param($handle) [CraIncidentNative]::PrivateBytes($handle)}
-        Close={param($handle) $null=[CraIncidentNative]::CloseHandle($handle)}
+        Memory={param($handle)
+            if ($null -eq $BenchmarkCounters) {[CraIncidentNative]::PrivateBytes($handle)}
+            else {[CraIncidentNative]::PrivateBytes($handle,$BenchmarkCounters)}
+        }.GetNewClosure()
+        Close={param($handle)
+            if ($null -eq $BenchmarkCounters) {$null=[CraIncidentNative]::CloseHandle($handle)}
+            else {
+                $BenchmarkCounters[5]++
+                $closed=[CraIncidentNative]::CloseHandle($handle)
+                if ($closed) {$BenchmarkCounters[6]++} else {$BenchmarkCounters[7]++}
+            }
+        }.GetNewClosure()
         Error={ [Runtime.InteropServices.Marshal]::GetLastWin32Error() }
     }
 }
@@ -169,7 +187,7 @@ public static class CraIncidentNative {
 function Get-IncidentPrivateBytes {
     [CmdletBinding()]
     param($Reference,[AllowNull()]$Operations=$null,[scriptblock]$Clock={ [Diagnostics.Stopwatch]::GetTimestamp() },
-        [long]$StageStart,[double]$Frequency,[long]$BudgetMilliseconds)
+        [long]$StageStart,[double]$Frequency,[long]$BudgetMilliseconds,[AllowNull()][long[]]$BenchmarkCounters=$null)
     $result=[pscustomobject]@{value_bytes=$null;availability='UNAVAILABLE';reason='SOURCE_UNAVAILABLE';
         binding_status='UNAVAILABLE';binding_reason='SOURCE_UNAVAILABLE';query_start=$null;query_end=$null}
     $handle=[IntPtr]::Zero
@@ -179,13 +197,14 @@ function Get-IncidentPrivateBytes {
             $result.availability='NOT_COLLECTED';$result.binding_status='NOT_ATTEMPTED';$result.reason='ACQUISITION_BUDGET_REACHED';$result.binding_reason=$result.reason
             return $result
         }
-        if ($null -eq $Operations) {$Operations=New-IncidentNativeOperations}
+        if ($null -eq $Operations) {$Operations=New-IncidentNativeOperations -BenchmarkCounters $BenchmarkCounters}
         # PROCESS_QUERY_LIMITED_INFORMATION (0x1000) | SYNCHRONIZE (0x100000), no fallback.
         $handle=& $Operations.Open ([uint32]0x00101000) $false ([uint32]$Reference.pid)
         if ($handle -eq [IntPtr]::Zero) {
             if ((& $Operations.Error) -eq 5) {$result.reason='ACCESS_DENIED';$result.binding_reason=$result.reason}
             return $result
         }
+        if ($null -ne $BenchmarkCounters) {$BenchmarkCounters[1]++}
         if ((& $Operations.Wait $handle) -ne 258) {$result.reason='PROCESS_UNAVAILABLE_DURING_READ';$result.binding_reason=$result.reason;return $result}
         $creation=& $Operations.Creation $handle
         if ($creation -isnot [long] -or $creation -lt 0) {return $result}
@@ -222,8 +241,10 @@ function Get-IncidentPrivateBytes {
         $result.value_bytes=[long]$value;$result.availability='AVAILABLE';$result.reason=$null
         return $result
     } catch [Management.Automation.PipelineStoppedException] {
+        if ($null -ne $BenchmarkCounters) {$BenchmarkCounters[8]=0}
         $result.reason='OBSERVATION_OPERATOR_CANCELLED';$result.binding_reason=$result.reason;return $result
     } catch {
+        if ($null -ne $BenchmarkCounters) {$BenchmarkCounters[8]=0}
         $result.reason='OBSERVATION_EXECUTION_FAILED';$result.binding_reason=$result.reason;return $result
     } finally {if ($handle -ne [IntPtr]::Zero -and $null -ne $Operations) {& $Operations.Close $handle}}
 }

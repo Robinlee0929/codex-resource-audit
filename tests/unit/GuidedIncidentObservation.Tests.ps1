@@ -296,12 +296,22 @@ Describe 'T16 static interaction and trust isolation' {
         }
     }
     It 'IS02 cancellation uses typed rethrow through reader capture and orchestration' {
+        $expectedCounts=@{'Read-IncidentAction'=1;'Invoke-IncidentCapture'=2;'Invoke-IncidentObservation'=2}
         foreach ($name in 'Read-IncidentAction','Invoke-IncidentCapture','Invoke-IncidentObservation') {
             $body=(Get-Command $name).ScriptBlock.Ast
             $catches=@($body.FindAll({param($n) $n -is [Management.Automation.Language.CatchClauseAst] -and
                 @($n.CatchTypes | Where-Object {$_.TypeName.FullName -ceq 'Management.Automation.PipelineStoppedException'}).Count -eq 1},$true))
-            $catches.Count | Should -Be 1
-            @($catches[0].Body.FindAll({param($n) $n -is [Management.Automation.Language.ThrowStatementAst] -and $null -eq $n.Pipeline},$true)).Count | Should -Be 1
+            $catches.Count | Should -Be $expectedCounts[$name]
+            foreach ($catch in $catches) {
+                $throws=@($catch.Body.FindAll({param($n) $n -is [Management.Automation.Language.ThrowStatementAst]},$true))
+                $throws.Count | Should -Be 1
+                $throws[0].Pipeline | Should -BeNullOrEmpty
+                $catch.Body.Statements[-1] | Should -Be $throws[0]
+                @($catch.Body.FindAll({param($n) $n -is [Management.Automation.Language.ReturnStatementAst] -or
+                    $n -is [Management.Automation.Language.ContinueStatementAst] -or $n -is [Management.Automation.Language.BreakStatementAst] -or
+                    $n -is [Management.Automation.Language.ExitStatementAst]},$true)).Count | Should -Be 0
+                $catch.Body.Traps | Should -BeNullOrEmpty
+            }
         }
     }
     It 'IS03 synchronous cancellation at <boundary> produces no completion or synthetic event' -ForEach @(

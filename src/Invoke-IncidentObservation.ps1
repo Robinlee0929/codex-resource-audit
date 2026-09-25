@@ -34,11 +34,87 @@ function Read-IncidentAction {
     }
 }
 
+function New-IncidentBenchmarkTiming {
+    param([string]$Availability='NOT_ATTEMPTED')
+    [pscustomobject][ordered]@{availability=$Availability;start_offset_ms=$null;end_offset_ms=$null;duration_ms=$null}
+}
+function New-IncidentBenchmarkCounters {
+    param([string]$Availability='NOT_ATTEMPTED')
+    $v=if ($Availability -ceq 'UNAVAILABLE') {$null} else {0L}
+    [pscustomobject][ordered]@{availability=$Availability;open_attempts=$v;open_successes=$v;memory_calls=$v;
+        memory_successes=$v;memory_failures=$v;close_invocations=$v;close_successes=$v;close_failures=$v}
+}
+function New-IncidentBenchmarkMeasurements {
+    param([string]$Label)
+    [pscustomobject][ordered]@{measurement_version=1;purpose='BENCHMARK_ONLY';production_default=$false;profile_label=$Label;
+        status='PARTIAL';reason='NOT_STARTED';stages=@(foreach ($stage in 'O0','O1','O2','O3') {
+            [pscustomobject][ordered]@{stage=$stage;status='NOT_ATTEMPTED';membership=(New-IncidentBenchmarkTiming);
+                resolution=(New-IncidentBenchmarkTiming);native_enrichment=(New-IncidentBenchmarkTiming);total_stage=(New-IncidentBenchmarkTiming);
+                source_rows=[pscustomobject][ordered]@{availability='NOT_ATTEMPTED';retained_count=$null;completeness='NOT_ATTEMPTED'};
+                native_totals=(New-IncidentBenchmarkCounters);native_observations=@()}
+        })}
+}
+function ConvertTo-IncidentBenchmarkTiming {
+    param($Start,$End,[long]$Origin,[double]$Frequency)
+    $r=New-IncidentBenchmarkTiming UNAVAILABLE
+    if ($null -eq $Start -or $null -eq $End -or $Start -lt $Origin -or $End -lt $Start -or $Frequency -le 0) {return $r}
+    $a=($Start-$Origin)*1000.0/$Frequency;$b=($End-$Origin)*1000.0/$Frequency
+    if (-not [double]::IsFinite($a) -or -not [double]::IsFinite($b)) {return $r}
+    $r.availability='AVAILABLE';$r.start_offset_ms=$a;$r.end_offset_ms=$b;$r.duration_ms=$b-$a
+    return $r
+}
+function ConvertTo-IncidentBenchmarkCounters {
+    param([long[]]$Values,[bool]$Returned)
+    if (-not $Returned -or $Values.Count -ne 9 -or $Values[8] -ne 1 -or
+        @($Values[0..7] | Where-Object {$_ -lt 0 -or $_ -gt 1}).Count -or
+        $Values[1] -gt $Values[0] -or $Values[2] -gt $Values[1] -or
+        $Values[3]+$Values[4] -ne $Values[2] -or $Values[5] -ne $Values[1] -or
+        $Values[6]+$Values[7] -ne $Values[5]) {return (New-IncidentBenchmarkCounters UNAVAILABLE)}
+    $r=New-IncidentBenchmarkCounters $(if ($Values[0] -eq 0) {'NOT_ATTEMPTED'} else {'AVAILABLE'})
+    $i=0;foreach ($p in $r.PSObject.Properties) {if ($p.Name -cne 'availability') {$p.Value=$Values[$i];$i++}}
+    return $r
+}
+function Complete-IncidentBenchmarkStage {
+    param($Measurement,$Snapshot,$Start,$Finish,$ResolutionStart,$ResolutionEnd,$EnrichmentStart,[double]$Frequency)
+    # Telemetry never supplies product evidence or changes product outcome.
+    try {
+        $Measurement.total_stage=ConvertTo-IncidentBenchmarkTiming $Start $Finish $Start $Frequency
+        $Measurement.resolution=ConvertTo-IncidentBenchmarkTiming $ResolutionStart $ResolutionEnd $Start $Frequency
+        $Measurement.native_enrichment=ConvertTo-IncidentBenchmarkTiming $EnrichmentStart $Finish $Start $Frequency
+        $Measurement.membership=ConvertTo-IncidentBenchmarkTiming (Get-RootCandidateField $Snapshot 'membership_start') (Get-RootCandidateField $Snapshot 'membership_end') $Start $Frequency
+        $rows=Get-RootCandidateField $Snapshot 'processes';$capture=Get-RootCandidateField $Snapshot 'capture_status'
+        $Measurement.source_rows.availability='UNAVAILABLE';$Measurement.source_rows.completeness='UNKNOWN'
+        if ($rows -is [Collections.IList] -and $rows.Count -le 1024 -and $capture -cin @('COMPLETE','PARTIAL')) {
+            $Measurement.source_rows.availability='AVAILABLE';$Measurement.source_rows.retained_count=[long]$rows.Count
+            $Measurement.source_rows.completeness=$capture
+        }
+        $totals=New-IncidentBenchmarkCounters
+        if (@($Measurement.native_observations | Where-Object {$_.counters.availability -ceq 'UNAVAILABLE'}).Count) {
+            $totals=New-IncidentBenchmarkCounters UNAVAILABLE
+        } else {
+            foreach ($o in $Measurement.native_observations) {
+                if ($o.counters.availability -ceq 'AVAILABLE') {$totals.availability='AVAILABLE'}
+                foreach ($p in $totals.PSObject.Properties) {if ($p.Name -cne 'availability') {$p.Value+=$o.counters.($p.Name)}}
+            }
+        }
+        $Measurement.native_totals=$totals
+        $Measurement.status='COMPLETE'
+        if (@($Measurement.membership,$Measurement.resolution,$Measurement.native_enrichment,$Measurement.total_stage | Where-Object availability -CNE AVAILABLE).Count -or
+            $Measurement.source_rows.availability -cne 'AVAILABLE' -or $totals.availability -ceq 'UNAVAILABLE') {$Measurement.status='PARTIAL'}
+    } catch [Management.Automation.PipelineStoppedException] {throw}
+    catch {$Measurement.status='INVALID'}
+}
 function Invoke-IncidentCapture {
     # Acquisition adapter owns local source/scope and monotonic capture interval.
     # Snapshot completeness comes only from the returned capture, never a clock.
     param([object]$Run, [ValidateSet('O0','O1','O2','O3')][string]$Stage)
+    $measurement=$null
+    if ($Run.PSObject.Properties['benchmark_measurements'] -and $null -ne $Run.benchmark_measurements) {
+        $measurement=$Run.benchmark_measurements.stages[[int]$Stage.Substring(1)]
+    }
+    $resolutionStart=$null;$resolutionEnd=$null;$enrichmentStart=$null;$finish=$null;$snapshot=$null
     $start=Get-IncidentClock
+    try {
     $Run.schedule[$Stage].status='PENDING'
     $snapshot=$null;$failed=$false
     try {$snapshot=Get-IncidentMembershipSnapshot -AuditRunId $Run.target.scope_id -SnapshotId $Stage -Policy $Run.policy -Clock {Get-IncidentClock} -ErrorAction Stop}
@@ -46,10 +122,13 @@ function Invoke-IncidentCapture {
     catch {$failed=$true}
     $end=Get-IncidentClock
     $Run.stage_reserved_edges=0
+    if ($null -ne $measurement) {$resolutionStart=Get-IncidentClock}
     $continuity=Resolve-IncidentV2Stage $Run $snapshot $Stage $start $end {Get-IncidentClock}
+    if ($null -ne $measurement) {$resolutionEnd=Get-IncidentClock}
     $d=$Run.declarations[$Stage]
     $failed=$failed -or $d.acquisition_status -ceq 'FAILED'
     $interruption=$null
+    if ($null -ne $measurement) {$enrichmentStart=Get-IncidentClock}
     foreach ($entry in $Run.entries) {
         if (-not $entry.public.observations.Count -or $entry.public.observations[-1].stage -cne $Stage) {continue}
         $o=$entry.public.observations[-1]
@@ -58,8 +137,27 @@ function Invoke-IncidentCapture {
             $o.private_bytes=New-IncidentResource private_bytes -Reason $interruption
             $o.private_bytes_binding=[pscustomobject]@{status='NOT_ATTEMPTED';reason=$interruption};continue
         }
+        $nativeArgs=@{};$counterValues=$null;$nativeObservation=$null;$nativeReturned=$false
+        if ($null -ne $measurement -and $measurement.native_observations.Count -lt 32) {
+            $counterValues=[long[]]::new(9);$counterValues[8]=1
+            $nativeArgs.BenchmarkCounters=$counterValues
+            $nativeObservation=[pscustomobject][ordered]@{stage=$Stage;observation_process_id=$entry.public.observation_process_id;
+                status='PARTIAL';counters=(New-IncidentBenchmarkCounters UNAVAILABLE)}
+            $measurement.native_observations+=@($nativeObservation)
+        }
+        try {
         $native=Get-IncidentPrivateBytes -Reference $entry.reference -Operations $Run.native_operations -Clock {Get-IncidentClock} `
-            -StageStart $start -Frequency $Run.frequency -BudgetMilliseconds $Run.policy.max_stage_acquisition_milliseconds
+            -StageStart $start -Frequency $Run.frequency -BudgetMilliseconds $Run.policy.max_stage_acquisition_milliseconds @nativeArgs
+        $nativeReturned=$true
+        } finally {
+            if ($null -ne $nativeObservation) {
+                try {
+                    $nativeObservation.counters=ConvertTo-IncidentBenchmarkCounters $counterValues $nativeReturned
+                    $nativeObservation.status=switch ($nativeObservation.counters.availability) {AVAILABLE {'COMPLETE'} NOT_ATTEMPTED {'NOT_ATTEMPTED'} default {'PARTIAL'}}
+                } catch [Management.Automation.PipelineStoppedException] {throw}
+                catch {$nativeObservation.status='PARTIAL';$nativeObservation.counters=New-IncidentBenchmarkCounters UNAVAILABLE}
+            }
+        }
         $entry.native[$Stage]=$native
         $o.private_bytes=New-IncidentResource private_bytes $native.availability $native.reason $native.value_bytes
         $o.private_bytes_binding=[pscustomobject]@{status=$native.binding_status;reason=$native.binding_reason}
@@ -108,6 +206,9 @@ function Invoke-IncidentCapture {
         $Run.outcome=$Run.execution_status;$Run.reason=$interruption
     }
     [pscustomobject]@{failed=$failed;continuity=$continuity;interrupted=($null -ne $interruption)}
+    } finally {
+        if ($null -ne $measurement) {Complete-IncidentBenchmarkStage $measurement $snapshot $start $finish $resolutionStart $resolutionEnd $enrichmentStart $Run.frequency}
+    }
 }
 
 function Invoke-IncidentObservation {
@@ -115,7 +216,8 @@ function Invoke-IncidentObservation {
     [CmdletBinding()]
     param([Parameter(Mandatory)][object]$GuidedOutcome,
         [AllowNull()][scriptblock]$Reader=$null, [switch]$ExportIssueEvidence,
-        [Parameter(DontShow)][AllowNull()]$Profile=$null,[Parameter(DontShow)][AllowNull()]$NativeOperations=$null)
+        [Parameter(DontShow)][AllowNull()]$Profile=$null,[Parameter(DontShow)][AllowNull()]$NativeOperations=$null,
+        [Parameter(DontShow)][AllowNull()]$BenchmarkProfile=$null,[Parameter(DontShow)][ref]$BenchmarkMeasurements)
     $ErrorActionPreference='Stop'
     if (-not (Test-OperatorInteractiveHost)) {throw 'GUIDED_INTERACTION_REQUIRED'}
     if (-not (Test-RootCandidateCode $GuidedOutcome 'status' 'INCIDENT_ACTION_SELECTED') -or
@@ -131,6 +233,13 @@ function Invoke-IncidentObservation {
         Write-Information 'Incident v2 is release-gated pending measured policy approval.' -InformationAction Continue
         throw 'INCIDENT_POLICY_RELEASE_GATED'
     }
+    $measurements=$null
+    if ($PSBoundParameters.ContainsKey('BenchmarkMeasurements')) {
+        $BenchmarkMeasurements.Value=$null
+        $approved=Get-IncidentBenchmarkProfile $BenchmarkProfile
+        foreach ($field in Get-IncidentPolicyFields) {if ($Profile.policy.$field -cne $approved.policy.$field -or $Profile.ceilings.$field -cne $approved.ceilings.$field) {throw 'INCIDENT_BENCHMARK_PROFILE_INVALID'}}
+        $measurements=New-IncidentBenchmarkMeasurements $BenchmarkProfile
+    }
     Assert-IncidentCollectionPolicy $Profile.policy $Profile.ceilings
     # Copy just immutable identity scalars. No caller object is mutated.
     $reference=[pscustomobject]@{scope_id=$scope;source='WIN32_PROCESS_CIM';pid=(Get-RootCandidateField $target 'pid');
@@ -140,7 +249,7 @@ function Invoke-IncidentObservation {
         $schedule[$stage]=[pscustomobject]@{status='NOT_STARTED';timing_availability='UNKNOWN';start_offset_seconds=$null;end_offset_seconds=$null}
     }
     $run=[pscustomobject]@{contract_version=2;execution_status='STOPPED';outcome='STOPPED';reason='OBSERVATION_TARGET_CONTINUITY_UNKNOWN';target=$reference;
-        policy=(Copy-IncidentPublicData $Profile.policy);ceilings=(Copy-IncidentPublicData $Profile.ceilings);native_operations=$NativeOperations;edge_count=0;stage_reserved_edges=0;declarations=@{};
+        policy=(Copy-IncidentPublicData $Profile.policy);ceilings=(Copy-IncidentPublicData $Profile.ceilings);native_operations=$NativeOperations;benchmark_measurements=$measurements;edge_count=0;stage_reserved_edges=0;declarations=@{};
         discovery_marker=(Get-RootCandidateField $GuidedOutcome 'incident_discovery_marker');last_snapshot_marker=$null;
         frequency=[double][Diagnostics.Stopwatch]::Frequency;origin_marker=$null;activity_end_marker=$null;schedule=$schedule;
         captures=[Collections.Generic.List[object]]::new();entries=[Collections.Generic.List[object]]::new()}
@@ -207,5 +316,18 @@ function Invoke-IncidentObservation {
     catch {
         $run.outcome='STOPPED';$run.reason='OBSERVATION_EXECUTION_FAILED'
         return $run
+    }
+    finally {
+        if ($null -ne $measurements) {
+            try {
+                if (@($measurements.stages | Where-Object status -CEQ INVALID).Count) {$measurements.status='INVALID';$measurements.reason='MEASUREMENT_INVALID'}
+                elseif (@($measurements.stages | Where-Object status -CNE COMPLETE).Count) {
+                    $measurements.status='PARTIAL'
+                    $measurements.reason=if ($run.execution_status -cin @('CANCELLED','STOPPED')) {'INTERRUPTED'} else {'MEASUREMENT_UNAVAILABLE'}
+                } else {$measurements.status='COMPLETE';$measurements.reason='NONE'}
+                $BenchmarkMeasurements.Value=Copy-IncidentPublicData $measurements
+            } catch [Management.Automation.PipelineStoppedException] {throw}
+            catch {$BenchmarkMeasurements.Value=$null}
+        }
     }
 }

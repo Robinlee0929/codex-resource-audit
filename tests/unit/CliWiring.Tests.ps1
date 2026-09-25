@@ -42,6 +42,13 @@ Describe 'Stage 0 CLI module wiring' {
         $bridgeAddition = '    [Parameter(DontShow)] [AllowNull()] [string] $AiHandoffId = $null,'
         ([regex]::Matches($legacyParameters, [regex]::Escape($bridgeAddition))).Count | Should -Be 1
         $legacyParameters = $legacyParameters.Replace($bridgeAddition + "`n", '')
+        foreach ($benchmarkAddition in @(
+            '    [Parameter(DontShow)] [AllowNull()] $BenchmarkProfile = $null,',
+            '    [Parameter(DontShow)] [ref] $BenchmarkMeasurements,'
+        )) {
+            ([regex]::Matches($legacyParameters, '(?m)^' + [regex]::Escape($benchmarkAddition + "`n"))).Count | Should -Be 1
+            $legacyParameters = $legacyParameters.Replace($benchmarkAddition + "`n", '')
+        }
         $exportAddition = @'
     [switch] $ExportIssueEvidence,
     [AllowNull()] [AllowEmptyString()] [string] $IssueEvidenceOutputDirectory,

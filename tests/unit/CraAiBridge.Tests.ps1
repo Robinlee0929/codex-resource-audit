@@ -25,8 +25,11 @@ BeforeAll {
     $bridge=$bridge.Replace("& (Join-Path `$root 'codex-resource-audit.ps1')",'Invoke-AiTestEntry')
     $script:bridgeEntry=[scriptblock]::Create($bridge)
     function Invoke-AiTestEntry {
-        param($Mode,[switch]$PassThru,$AiHandoffId)
-        & $script:igEntry -Mode $Mode -PassThru:$PassThru -AiHandoffId $AiHandoffId
+        param($Mode,[switch]$PassThru,$AiHandoffId,$BenchmarkProfile,[ref]$BenchmarkMeasurements)
+        $args=@{}
+        if ($PSBoundParameters.ContainsKey('BenchmarkProfile')) {$args.BenchmarkProfile=$BenchmarkProfile}
+        if ($PSBoundParameters.ContainsKey('BenchmarkMeasurements')) {$args.BenchmarkMeasurements=$BenchmarkMeasurements}
+        & $script:igEntry -Mode $Mode -PassThru:$PassThru -AiHandoffId $AiHandoffId @args
     }
     function Read-BridgeTestArtifact([string]$Type) {
         Read-CraAiArtifact -Directory $script:bridgeDir -RequestId $script:receipt.request_id -CandidateSetId $script:receipt.candidate_set_id -MessageType $Type
@@ -165,30 +168,35 @@ Describe 'T17.3 fixed bridge with real Guided orchestration and synthetic collec
         $r.reason | Should -BeExactly $reason
         $script:igCaptures.Count | Should -Be $captures
     }
-    It 'AB04 fixed wrapper has one metadata input and only the fixed same-process CLI invocation' {
+    It 'AB04 wrapper has only the closed benchmark metadata and fixed validation/CLI invocations' {
         $tokens=$null;$errors=$null
         $ast=[Management.Automation.Language.Parser]::ParseInput($script:bridgeSource,[ref]$tokens,[ref]$errors)
         $errors.Count | Should -Be 0
-        $ast.ParamBlock.Parameters.Name.VariablePath.UserPath | Should -Be @('OutputDirectory')
+        $ast.ParamBlock.Parameters.Name.VariablePath.UserPath | Should -Be @('OutputDirectory','BenchmarkProfile','BenchmarkMeasurements')
         $calls=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.CommandAst] -and $n.InvocationOperator -eq 'Ampersand'},$true))
-        $calls.Count | Should -Be 1
-        $calls[0].Extent.Text | Should -BeExactly "& (Join-Path `$root 'codex-resource-audit.ps1') -Mode Guided -PassThru -AiHandoffId `$request.handle"
+        $calls.Count | Should -Be 2
+        $calls[0].Extent.Text | Should -BeExactly '& (Get-Module CraAiHandoff) {param($label) Get-IncidentBenchmarkProfile $label} $BenchmarkProfile'
+        $calls[1].Extent.Text | Should -BeExactly "& (Join-Path `$root 'codex-resource-audit.ps1') -Mode Guided -PassThru -AiHandoffId `$request.handle @benchmarkArgs @measurementArgs"
         $script:bridgeSource | Should -Not -Match 'Start-Process|Invoke-Expression|Read-CraAiArtifact|Get-Content|6>&1|\*>&1'
         {& $script:bridgeEntry -OutputDirectory $script:bridgeDir -Command 'bad'} | Should -Throw
         Test-Path $script:bridgeDir | Should -BeFalse
     }
     It 'AB11 same-request correction preserves gates and evidence for <case>' -ForEach @(
-        @{case='typo then valid';inputs=@('C1,d32,C2','C2','C2','O','O1','ACTIVITY_END');review=@('C2');outcome='COMPLETED';reason=$null;captures=5;prompts=2;fault=$null},
-        @{case='repeated invalid then valid';inputs=@('C1,d32','PRIVATE_WORD',' c2 , C2 ','C2','O','O1','ACTIVITY_END');review=@('C2');outcome='COMPLETED';reason=$null;captures=5;prompts=3;fault=$null},
-        @{case='invalid then Q';inputs=@('C1,d32','Q');review=@();outcome='CANCELLED';reason='GUIDED_OPERATOR_CANCELLED';captures=1;prompts=2;fault=$null},
-        @{case='invalid then EOF';inputs=@('C1,d32',$null);review=@();outcome='CANCELLED';reason='GUIDED_OPERATOR_CANCELLED';captures=1;prompts=2;fault=$null},
-        @{case='invalid then reader error';inputs=@('C1,d32','READER_ERROR');review=@();outcome='BLOCKED';reason='GUIDED_INPUT_FAILED';captures=1;prompts=2;fault=$null},
-        @{case='invalid then malformed reader';inputs=@('C1,d32',42);review=@();outcome='BLOCKED';reason='GUIDED_REVIEW_INVALID';captures=1;prompts=2;fault=$null},
-        @{case='invalid then Finder';inputs=@('C1,d32','F');review=@();outcome='BLOCKED';reason='PASSTHRU_FINDER_UNSUPPORTED';captures=1;prompts=2;fault=$null},
-        @{case='rejected subset cannot supply target';inputs=@('C1,d32,C2','C2','C1');review=@('C2');outcome='BLOCKED';reason='GUIDED_TARGET_INVALID';captures=1;prompts=2;fault=$null},
-        @{case='invalid action unchanged';inputs=@('C1,d32','C2','C2','O2');review=@('C2');outcome='BLOCKED';reason='GUIDED_ACTION_INVALID';captures=1;prompts=2;fault=$null},
-        @{case='O0 still checks original identity';inputs=@('C1,d32','C1','C1','O');review=@('C1');outcome='STOPPED';reason='OBSERVATION_TARGET_IDENTITY_MISMATCH';captures=2;prompts=2;fault='O0'}
+        @{case='typo then valid';inputs=@('C1,CRA_PRIVACY_CANARY_XQZ_NOT_GUID,C2','C2','C2','O','O1','ACTIVITY_END');review=@('C2');outcome='COMPLETED';reason=$null;captures=5;prompts=2;fault=$null},
+        @{case='repeated invalid then valid';inputs=@('C1,CRA_PRIVACY_CANARY_XQZ_NOT_GUID','PRIVATE_WORD',' c2 , C2 ','C2','O','O1','ACTIVITY_END');review=@('C2');outcome='COMPLETED';reason=$null;captures=5;prompts=3;fault=$null},
+        @{case='invalid then Q';inputs=@('C1,CRA_PRIVACY_CANARY_XQZ_NOT_GUID','Q');review=@();outcome='CANCELLED';reason='GUIDED_OPERATOR_CANCELLED';captures=1;prompts=2;fault=$null},
+        @{case='invalid then EOF';inputs=@('C1,CRA_PRIVACY_CANARY_XQZ_NOT_GUID',$null);review=@();outcome='CANCELLED';reason='GUIDED_OPERATOR_CANCELLED';captures=1;prompts=2;fault=$null},
+        @{case='invalid then reader error';inputs=@('C1,CRA_PRIVACY_CANARY_XQZ_NOT_GUID','READER_ERROR');review=@();outcome='BLOCKED';reason='GUIDED_INPUT_FAILED';captures=1;prompts=2;fault=$null},
+        @{case='invalid then malformed reader';inputs=@('C1,CRA_PRIVACY_CANARY_XQZ_NOT_GUID',42);review=@();outcome='BLOCKED';reason='GUIDED_REVIEW_INVALID';captures=1;prompts=2;fault=$null},
+        @{case='invalid then Finder';inputs=@('C1,CRA_PRIVACY_CANARY_XQZ_NOT_GUID','F');review=@();outcome='BLOCKED';reason='PASSTHRU_FINDER_UNSUPPORTED';captures=1;prompts=2;fault=$null},
+        @{case='rejected subset cannot supply target';inputs=@('C1,CRA_PRIVACY_CANARY_XQZ_NOT_GUID,C2','C2','C1');review=@('C2');outcome='BLOCKED';reason='GUIDED_TARGET_INVALID';captures=1;prompts=2;fault=$null},
+        @{case='invalid action unchanged';inputs=@('C1,CRA_PRIVACY_CANARY_XQZ_NOT_GUID','C2','C2','O2');review=@('C2');outcome='BLOCKED';reason='GUIDED_ACTION_INVALID';captures=1;prompts=2;fault=$null},
+        @{case='O0 still checks original identity';inputs=@('C1,CRA_PRIVACY_CANARY_XQZ_NOT_GUID','C1','C1','O');review=@('C1');outcome='STOPPED';reason='OBSERVATION_TARGET_IDENTITY_MISMATCH';captures=2;prompts=2;fault='O0'}
     ) {
+        $canary='CRA_PRIVACY_CANARY_XQZ_NOT_GUID'
+        $canary | Should -Match '[^0-9a-fA-F-]'
+        ([guid]'ee48137d-7fe2-4f75-ad32-fa1eb9c897f7').ToString() | Should -Not -Match ([regex]::Escape($canary))
+        $inputs[0].Contains($canary) | Should -BeTrue
         $script:multiple=$true;$script:fault=$fault
         Set-IncidentInputs @($inputs + @('UNCONSUMED'))
         $messages=@()
@@ -219,9 +227,9 @@ Describe 'T17.3 fixed bridge with real Guided orchestration and synthetic collec
             @(Get-ChildItem -LiteralPath $script:bridgeDir -Filter review.json).Count | Should -Be 1
         } else {Test-Path (Join-Path $script:bridgeDir 'review.json') | Should -BeFalse}
         foreach ($file in Get-ChildItem -LiteralPath $script:bridgeDir -Filter '*.json') {
-            (Get-Content -LiteralPath $file.FullName -Raw) | Should -Not -Match 'd32|PRIVATE_WORD|READER_ERROR|Invalid candidate|UNCONSUMED'
+            (Get-Content -LiteralPath $file.FullName -Raw) | Should -Not -Match ([regex]::Escape($canary)+'|PRIVATE_WORD|READER_ERROR|Invalid candidate|UNCONSUMED')
         }
-        ($script:receipt | ConvertTo-Json) | Should -Not -Match 'd32|PRIVATE|Invalid candidate'
+        ($script:receipt | ConvertTo-Json) | Should -Not -Match ([regex]::Escape($canary)+'|PRIVATE|Invalid candidate')
         ($messages -join "`n") | Should -Match 'Same active request, directory and IDs'
         ($messages -join "`n") | Should -Match 'permanently belongs to this request'
         ($messages -join "`n") | Should -Match 'new OutputDirectory, fresh IDs, fresh discovery and fresh human choices'
@@ -389,5 +397,54 @@ Describe 'T17.3 fixed bridge with real Guided orchestration and synthetic collec
             Test-Path (Join-Path $script:bridgeDir 'final_result.json') | Should -BeFalse
         } finally {$pipeline.Dispose()}
         $script:igCaptures.Count | Should -Be 0
+    }
+    It 'G45 bridge propagates <_> while preserving all five human prompts and one receipt' -ForEach @('B1','B2','B3') {
+        $label=$_;$measurement='STALE'
+        $output=@(& $script:bridgeEntry -OutputDirectory $script:bridgeDir -BenchmarkProfile $label -BenchmarkMeasurements ([ref]$measurement) 6>$null)
+        $output.Count | Should -Be 1
+        $receipt=$output[0];$receipt.delivery_status | Should -BeExactly DELIVERED
+        $script:igPrompts.Count | Should -Be 5
+        $script:igCaptures | Should -Be @('CANDIDATES','O0','O1','O2','O3')
+        $measurement.profile_label | Should -BeExactly $label
+        $measurement.stages.stage | Should -Be @('O0','O1','O2','O3')
+        # The fixture mock has no native counters: these must remain unavailable, not fabricated.
+        $measurement.status | Should -BeExactly PARTIAL
+        $e=Read-CraAiArtifact $script:bridgeDir $receipt.request_id $receipt.candidate_set_id final_result -BenchmarkProfile $label
+        $e.payload.collection_policy.max_source_rows | Should -Be 1024
+        (ConvertTo-Json $output -Depth 16 -Compress) | Should -Not -Match 'measurement_version|open_attempts|profile_label'
+    }
+    It 'G45 clears a stale ref when the human cancels before Observe' {
+        Set-IncidentInputs @('Q');$measurement='STALE'
+        $receipt=& $script:bridgeEntry -OutputDirectory $script:bridgeDir -BenchmarkProfile B1 -BenchmarkMeasurements ([ref]$measurement) 6>$null
+        $measurement | Should -BeNullOrEmpty
+        $script:igCaptures | Should -Be @('CANDIDATES')
+        (Read-CraAiArtifact $script:bridgeDir $receipt.request_id $receipt.candidate_set_id final_result -BenchmarkProfile B1).payload.outcome | Should -BeExactly CANCELLED
+    }
+    It 'G45 rejects measurement-only and non-label input before discovery' {
+        $measurement='STALE'
+        {& $script:bridgeEntry -OutputDirectory $script:bridgeDir -BenchmarkMeasurements ([ref]$measurement)} | Should -Throw
+        foreach ($label in @(3,'B4',@{max_source_rows=1024})) {
+            {& $script:bridgeEntry -OutputDirectory $script:bridgeDir -BenchmarkProfile $label} | Should -Throw
+        }
+        $script:igCaptures.Count | Should -Be 0
+        Test-Path $script:bridgeDir | Should -BeFalse
+    }
+    It 'G45 rejects absent or mismatched request authority before discovery' {
+        {& $script:igEntry -Mode Guided -PassThru -BenchmarkProfile B1} | Should -Throw
+        $request=New-CraAiRequest $script:bridgeDir -BenchmarkProfile B1
+        try {
+            {& $script:igEntry -Mode Guided -PassThru -AiHandoffId $request.handle -BenchmarkProfile B3} | Should -Throw '*MISMATCH*'
+            {& $script:igEntry -Mode Guided -PassThru -AiHandoffId $request.handle} | Should -Throw '*MISMATCH*'
+            $script:igCaptures.Count | Should -Be 0
+        } finally {Close-CraAiRequest $request.handle}
+    }
+    It 'G45 no-profile keeps the production release gate without fixture profile mocks' {
+        Mock Get-IncidentCollectionProfile {$null}
+        Mock Get-IncidentCollectionProfile -ModuleName CraAiHandoff {$null}
+        $receipt=& $script:bridgeEntry -OutputDirectory $script:bridgeDir 6>$null
+        $script:igCaptures | Should -Be @('CANDIDATES')
+        $e=Read-CraAiArtifact $script:bridgeDir $receipt.request_id $receipt.candidate_set_id final_result
+        $e.payload.result_type | Should -BeExactly GUIDED_INCIDENT_REQUEST
+        $e.payload.outcome | Should -Not -BeExactly COMPLETED
     }
 }

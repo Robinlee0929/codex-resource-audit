@@ -384,3 +384,87 @@ Describe 'Incident v2 safe reader and deterministic summary' {
         } finally {Close-CraAiRequest $request.handle}
     }
 }
+
+Describe 'Gate 4.5 independent benchmark authority' {
+    BeforeEach {
+        $script:g45Dir=Join-Path $TestDrive ([guid]::NewGuid().ToString())
+        $script:g45Request=$null
+    }
+    AfterEach {if ($null -ne $script:g45Request) {Close-CraAiRequest $script:g45Request.handle}}
+    It 'maps <label> to detached finite benchmark data' -ForEach @(@{label='B1';depth=1},@{label='B2';depth=2},@{label='B3';depth=3}) {
+        $p=Get-IncidentBenchmarkProfile $label
+        $p.policy.max_descendant_depth | Should -Be $depth
+        @($p.policy.PSObject.Properties.Value) | Should -Be @($depth,32,64,256,16,1048576,1024,5000)
+        Assert-IncidentCollectionPolicy $p.policy $p.ceilings
+        $run=New-IncidentV2TestRun -Profile $p
+        (Get-IncidentContextReservation @($run.entries)) | Should -BeLessThan $p.policy.max_context_serialized_bytes
+        $p.policy.max_source_rows=1;$p.ceilings.max_source_rows=2
+        (Get-IncidentBenchmarkProfile $label).policy.max_source_rows | Should -Be 1024
+        Get-IncidentCollectionProfile | Should -BeNullOrEmpty
+    }
+    It 'rejects noncanonical authority <case>' -ForEach @(
+        @{case='number';value=3},@{case='hashtable';value=@{max_source_rows=1024}},
+        @{case='scriptblock';value={ 'B1' }},@{case='unknown';value='B4'},@{case='lowercase';value='b1'},@{case='null';value=$null}) {
+        {Get-IncidentBenchmarkProfile $value} | Should -Throw '*INCIDENT_BENCHMARK_PROFILE_INVALID*'
+        {New-CraAiRequest $script:g45Dir -BenchmarkProfile $value} | Should -Throw
+        Test-Path $script:g45Dir | Should -BeFalse
+    }
+    It 'round trips <_> through publisher public reader and public summary without telemetry' -ForEach @('B1','B2','B3') {
+        $label=$_
+        $script:g45Request=New-CraAiRequest $script:g45Dir -BenchmarkProfile $label
+        $run=New-IncidentV2TestRun -Profile (Get-IncidentBenchmarkProfile $label)
+        foreach ($stage in 'O0','O1','O2','O3') {Add-IncidentV2TestStage $run @((New-IncidentTestRecord)) $stage}
+        $r=New-IncidentV2Result $run
+        Publish-CraAiDiscovery $script:g45Request.handle candidate (New-AiTestView)
+        $receipt=Complete-CraAiRequest $script:g45Request.handle $r
+        $receipt.delivery_status | Should -BeExactly DELIVERED
+        $read=@{Directory=$script:g45Dir;RequestId=$script:g45Request.request_id;CandidateSetId=$script:g45Request.candidate_set_id;BenchmarkProfile=$label}
+        $e=Read-CraAiArtifact @read -MessageType final_result
+        (ConvertTo-Json $e.payload -Depth 16 -Compress) | Should -BeExactly (ConvertTo-Json $r -Depth 16 -Compress)
+        $markdown=Read-CraAiIncidentSummary @read
+        $markdown | Should -Match 'Source semantic version: 2'
+        $candidate=Read-CraAiArtifact @read -MessageType candidate
+        $candidate.payload.PSObject.Properties.Name | Should -Be @('available','capture_status','candidates')
+        foreach ($text in @((ConvertTo-Json $e -Depth 16 -Compress),$markdown,(ConvertTo-Json $receipt -Compress))) {
+            $text | Should -Not -Match '(?<![A-Za-z0-9_])(?:measurement_version|profile_label|BENCHMARK_ONLY|native_totals|open_attempts|source_rows)(?![A-Za-z0-9_])'
+        }
+        foreach ($wrong in @('B1','B2','B3') | Where-Object {$_ -cne $label}) {
+            $read.BenchmarkProfile=$wrong
+            {Read-CraAiArtifact @read -MessageType final_result} | Should -Throw '*CRA_AI_ARTIFACT_REJECTED*'
+            {Read-CraAiIncidentSummary @read} | Should -Throw
+        }
+        $read.Remove('BenchmarkProfile')
+        {Read-CraAiArtifact @read -MessageType final_result} | Should -Throw '*CRA_AI_ARTIFACT_REJECTED*'
+        $path=Join-Path $script:g45Dir 'final_result.json';$hash=(Get-FileHash $path).Hash
+        (Complete-CraAiRequest $script:g45Request.handle $r).delivery_status | Should -BeExactly FAILED
+        (Get-FileHash $path).Hash | Should -BeExactly $hash
+    }
+    It 'rejects artifact policy mutation of <_> even when below ceilings' -ForEach @(
+        'max_descendant_depth','max_evaluated_identities_per_capture','max_identities_per_run',
+        'max_relationship_records_per_run','max_unresolved_entries_per_run','max_context_serialized_bytes','max_source_rows','max_stage_acquisition_milliseconds') {
+        $script:g45Request=New-CraAiRequest $script:g45Dir -BenchmarkProfile B3
+        $r=New-IncidentV2CompleteResult;$r.collection_policy=(Get-IncidentBenchmarkProfile B3).policy
+        (Complete-CraAiRequest $script:g45Request.handle $r).delivery_status | Should -BeExactly DELIVERED
+        $path=Join-Path $script:g45Dir 'final_result.json'
+        $e=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -Depth 16
+        $e.payload.collection_policy.$_--
+        [IO.File]::WriteAllText($path,(ConvertTo-Json $e -Depth 16 -Compress))
+        {Read-CraAiArtifact $script:g45Dir $script:g45Request.request_id $script:g45Request.candidate_set_id final_result -BenchmarkProfile B3} | Should -Throw
+    }
+    It 'rejects producer policy mismatch and retains the request authority after detached-copy mutation' {
+        $script:g45Request=New-CraAiRequest $script:g45Dir -BenchmarkProfile B1
+        $copy=Assert-CraAiRequest $script:g45Request.handle -Claim -BenchmarkProfile B1 -PassBenchmarkProfile
+        $copy.policy.max_source_rows=99999;$copy.ceilings.max_source_rows=99999
+        $r=New-IncidentV2CompleteResult;$r.collection_policy=(Get-IncidentBenchmarkProfile B3).policy
+        (Complete-CraAiRequest $script:g45Request.handle $r).delivery_status | Should -BeExactly FAILED
+        Test-Path (Join-Path $script:g45Dir 'final_result.json') | Should -BeFalse
+    }
+    It 'preserves historical v1 under optional reader metadata without converting it' {
+        $script:g45Request=New-CraAiRequest $script:g45Dir -BenchmarkProfile B1
+        $run=New-IncidentTestRun;Add-IncidentTestStage $run @((New-IncidentTestRecord));$r=New-IncidentResult $run
+        (Complete-CraAiRequest $script:g45Request.handle $r).delivery_status | Should -BeExactly DELIVERED
+        $e=Read-CraAiArtifact $script:g45Dir $script:g45Request.request_id $script:g45Request.candidate_set_id final_result -BenchmarkProfile B1
+        $e.payload.contract_version | Should -Be 1
+        (ConvertTo-Json $e.payload -Depth 16 -Compress) | Should -BeExactly (ConvertTo-Json $r -Depth 16 -Compress)
+    }
+}

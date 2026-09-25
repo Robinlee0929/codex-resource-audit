@@ -13,6 +13,8 @@ param(
     [switch] $IncludeCandidateGroups,
     [switch] $PassThru,
     [Parameter(DontShow)] [AllowNull()] [string] $AiHandoffId = $null,
+    [Parameter(DontShow)] [AllowNull()] $BenchmarkProfile = $null,
+    [Parameter(DontShow)] [ref] $BenchmarkMeasurements,
     [switch] $ExportIssueEvidence,
     [AllowNull()] [AllowEmptyString()] [string] $IssueEvidenceOutputDirectory,
     # Internal presentation transport used by Guided; no input or evidence policy.
@@ -21,10 +23,16 @@ param(
 
 Set-StrictMode -Version Latest
 $projectRoot = $PSScriptRoot
+$incidentBenchmarkProfile=$null
+if ($PSBoundParameters.ContainsKey('BenchmarkProfile') -or $PSBoundParameters.ContainsKey('BenchmarkMeasurements')) {
+    if (-not $PSBoundParameters.ContainsKey('BenchmarkProfile') -or $null -eq $BenchmarkProfile -or
+        $Mode -cne 'Guided' -or -not $PassThru -or -not $PSBoundParameters.ContainsKey('AiHandoffId')) {throw 'CRA_AI_REQUEST_UNAVAILABLE'}
+}
 if ($PSBoundParameters.ContainsKey('AiHandoffId')) {
     if ($Mode -ne 'Guided' -or -not $PassThru -or [string]::IsNullOrWhiteSpace($AiHandoffId)) {throw 'CRA_AI_REQUEST_UNAVAILABLE'}
-    CraAiHandoff\Assert-CraAiRequest -Handle $AiHandoffId -Claim
+    $incidentBenchmarkProfile=CraAiHandoff\Assert-CraAiRequest -Handle $AiHandoffId -Claim -BenchmarkProfile $BenchmarkProfile -PassBenchmarkProfile
 }
+if ($PSBoundParameters.ContainsKey('BenchmarkMeasurements')) {$BenchmarkMeasurements.Value=$null}
 # Incident execution and rendering share these pure helpers in both Guided paths.
 . (Join-Path $projectRoot 'src\New-IncidentResult.ps1')
 if ($PassThru) {
@@ -186,7 +194,13 @@ switch ($Mode) {
         try {
             $guidedResult = Invoke-GuidedDiscovery -IncidentOnly:$PassThru -AiHandoffId $AiHandoffId
             if ($guidedResult.status -ceq 'INCIDENT_ACTION_SELECTED') {
-                $incidentResult=Invoke-IncidentObservation -GuidedOutcome $guidedResult -ExportIssueEvidence:$ExportIssueEvidence
+                $incidentArgs=@{}
+                if ($null -ne $incidentBenchmarkProfile) {
+                    $incidentArgs.Profile=$incidentBenchmarkProfile
+                    $incidentArgs.BenchmarkProfile=$BenchmarkProfile
+                    if ($PSBoundParameters.ContainsKey('BenchmarkMeasurements')) {$incidentArgs.BenchmarkMeasurements=$BenchmarkMeasurements}
+                }
+                $incidentResult=Invoke-IncidentObservation -GuidedOutcome $guidedResult -ExportIssueEvidence:$ExportIssueEvidence @incidentArgs
                 Write-Information (Format-IncidentObservation $incidentResult) -InformationAction Continue
                 if ($PassThru) {New-IncidentResult -Run $incidentResult}
             }

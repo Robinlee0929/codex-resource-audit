@@ -1,15 +1,27 @@
 #requires -Version 7.0
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$OutputDirectory)
+param([Parameter(Mandatory)][string]$OutputDirectory,
+    [AllowNull()]$BenchmarkProfile=$null,[ref]$BenchmarkMeasurements)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+$benchmarkArgs=@{};$measurementArgs=@{}
+if ($PSBoundParameters.ContainsKey('BenchmarkMeasurements') -and -not $PSBoundParameters.ContainsKey('BenchmarkProfile')) {throw 'CRA_AI_BENCHMARK_PROFILE_REQUIRED'}
 $root=Split-Path -Parent $PSScriptRoot
 . (Join-Path $root 'src/Read-OperatorInput.ps1')
 if (-not (Test-OperatorInteractiveHost)) {throw 'CRA_AI_OPERATOR_HOST_REQUIRED'}
 Import-Module (Join-Path $root 'src/CraAiHandoff.psm1') -ErrorAction Stop
+if ($PSBoundParameters.ContainsKey('BenchmarkProfile')) {
+    # Validation before destination creation or discovery. This ref is output only.
+    $null=& (Get-Module CraAiHandoff) {param($label) Get-IncidentBenchmarkProfile $label} $BenchmarkProfile
+    $benchmarkArgs.BenchmarkProfile=$BenchmarkProfile
+    if ($PSBoundParameters.ContainsKey('BenchmarkMeasurements')) {
+        $BenchmarkMeasurements.Value=$null
+        $measurementArgs.BenchmarkMeasurements=$BenchmarkMeasurements
+    }
+}
 try {
-    $request=CraAiHandoff\New-CraAiRequest -OutputDirectory $OutputDirectory
+    $request=CraAiHandoff\New-CraAiRequest -OutputDirectory $OutputDirectory @benchmarkArgs
 } catch [Management.Automation.PipelineStoppedException] {throw}
 catch {
     # Recognize fixed error IDs, never disclose exception text or supplied paths.
@@ -30,7 +42,7 @@ try {
     Write-Information ("CRA AI request_id={0} candidate_set_id={1}" -f $request.request_id,$request.candidate_set_id) -InformationAction Continue
     Write-Information 'This directory permanently belongs to this request. Preserve the safe ID line and OutputDirectory; do not delete or reuse the directory. STEP 2 input correction stays in this same request and directory.' -InformationAction Continue
     # Same-process result capture, without stream merging or transcript parsing.
-    $result=& (Join-Path $root 'codex-resource-audit.ps1') -Mode Guided -PassThru -AiHandoffId $request.handle
+    $result=& (Join-Path $root 'codex-resource-audit.ps1') -Mode Guided -PassThru -AiHandoffId $request.handle @benchmarkArgs @measurementArgs
     CraAiHandoff\Complete-CraAiRequest -Handle $request.handle -Result $result
 } catch [Management.Automation.PipelineStoppedException] {throw}
 catch {throw 'CRA_AI_BRIDGE_FAILED'}
