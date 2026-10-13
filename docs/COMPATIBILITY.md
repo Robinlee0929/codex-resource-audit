@@ -4,6 +4,32 @@ Requirements describe what a workflow needs. Validation records describe what wa
 actually exercised. **Unverified != supported.** Product maturity remains
 EXPERIMENTAL regardless of a passing test result.
 
+## Version capability boundary
+
+The recommended fixed entry is the published
+[v0.2.0-beta.7 prerelease](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.7).
+On 2026-10-13, GitHub's release record confirmed `draft=false`,
+`prerelease=true`, publication at `2026-09-23T17:17:17Z`, and target commit
+`8beed2d0824a7bfcd464dc810359f5e9ac73f1a7`; the remote annotated tag resolves
+to that same commit. Publication was verified from the release record, not
+inferred from a local tag. Beta.7 contains the historical T17 Incident v1
+workflow and standalone T18.2A CPU Activity Check.
+
+At reviewed main `9633113e74756661d8a9d98ba0676716e0dbdaf6`, **Incident v2
+is RELEASE_GATED**. [Get-IncidentCollectionProfile](../src/Resolve-IncidentObservation.ps1)
+returns no production profile, and [Invoke-IncidentObservation](../src/Invoke-IncidentObservation.ps1)
+rejects ordinary new observation before O0. The
+[v2 contract](T17_2_POWERSHELL_RESULT_API_SPEC.md#incident-semantic-v2-process_context_evidence-v1-p0)
+preserves historical v1 compatibility without a new-run v1 fallback. B1/B2/B3
+are benchmark-only, not production substitutes. Passing offline CI does not
+release this gate.
+
+The five standalone CPU runtime files are unchanged between beta.7 and this
+reviewed main commit. Manual candidates, Finder and Session remain separate
+workflows with their own eligibility and verification rules. See the
+[capability comparison](../README.md#choose-a-version-before-starting) before
+setup or candidate selection; later main commits require their own review.
+
 ## Requirements
 
 - Windows for live collection and an operator-owned interactive PowerShell 7
@@ -27,9 +53,9 @@ every Windows build, PowerShell 7 minor version or Codex client version works.
 
 ## Validated combinations and evidence limits
 
-The current public [T17.3 acceptance record](T17_3_LOCAL_AI_INTEGRATION_SPEC.md#verification-and-integration-status)
-records a passed local Windows operator workflow. It does not publish a complete
-versioned environment tuple:
+The historical [T17.3 acceptance record](T17_3_LOCAL_AI_INTEGRATION_SPEC.md#verification-and-integration-status)
+records a passed local Windows operator workflow. It does not validate main's
+new Incident v2 or publish a complete versioned environment tuple:
 
 | Field | What the cited T17.3 record establishes |
 | --- | --- |
@@ -78,13 +104,15 @@ Windows Codex CLI support is not asserted by the existing release documentation.
 WSL and native Linux live collection remain unsupported; no macOS live support
 is claimed. ChatGPT cloud direct control of a local PC is not supported.
 
-Manual Guided has separate Finder/Session/Observation eligibility. The
-PassThru/bridge/Skill AI path supports Incident Observation only; Finder and
-Session are not AI-callable. The fixed published `v0.2.0-beta.1` remains the
-existing T17-capable CRA workflow. Public `main` now contains the standalone
-live-validated T18.2A CPU Activity Check, but still does not provide T18 automatic
-triage runtime, T18.2B Memory Trend, automatic target selection, automatic
-diagnostic execution, persistent CPU artifacts or AI consumption of CPU results.
+Manual Guided has separate Finder/Session/Observation eligibility; reviewed
+main's Incident release gate still applies to Observe. The PassThru/bridge/Skill
+AI path supports Incident Observation only; Finder and Session are not
+AI-callable. Fixed beta.7 provides historical T17 v1 and standalone T18.2A CPU;
+historical beta.1 provides T17 but has no CPU runtime. Main retains the standalone
+CPU Activity Check. Neither beta.7 nor reviewed main provides T18 automatic
+triage/runtime ingestion, T18.2B Memory Trend, T18.3 AI interpretation, automatic
+target selection, automatic diagnostic execution, persistent CPU artifacts or
+AI consumption of CPU results.
 Review the exact selected beta target; see the
 [beta capability boundary](RELEASE_POLICY.md#beta-capability-boundary).
 

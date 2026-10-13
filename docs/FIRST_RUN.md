@@ -12,6 +12,27 @@ Use matching checkout, runtime and Skill. The
 [GitHub Releases page](https://github.com/Robinlee0929/codex-resource-audit/releases)
 is authoritative for publication state; see the [beta.7 release notes](RELEASE_NOTES_v0.2.0-beta.7.md).
 
+## Check the version before setup or candidate selection
+
+For a new AI-assisted Incident observation, use the published
+[v0.2.0-beta.7 prerelease](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.7),
+commit `8beed2d0824a7bfcd464dc810359f5e9ac73f1a7`, with its matching Skill,
+bridge and runtime. The observation steps below describe that historical v1
+workflow; see the [version selection and verification commands](../README.md#quick-start).
+
+At reviewed main `9633113e74756661d8a9d98ba0676716e0dbdaf6`, new Incident v2
+is **RELEASE_GATED** because no production collection profile is selected.
+Do not launch the bridge or go through candidate selection expecting Observe
+to work. This is not a Skill recognition problem. Benchmark B1/B2/B3 cannot be
+used as production defaults, and historical v1 reader support is not a runtime
+fallback. Choosing fixed beta.7 means a separate matching checkout and a new
+request, never reuse or migration of an existing request directory.
+
+The standalone CPU Activity Check and eligible manual Finder/Session workflows
+remain available independently. Memory Trend, T18.3 AI interpretation and T18.1
+runtime ingestion remain unimplemented; see the
+[capability comparison](../README.md#choose-a-version-before-starting).
+
 ## Skill deployment and recognition
 
 **SETUP REQUEST:** ask Codex to install/deploy and recognize `cra-incident`, using
@@ -257,6 +278,7 @@ Delivery does not imply observation success. See the
 
 | What you see | What it means | Safe next action and retry boundary |
 | --- | --- | --- |
+| `INCIDENT_POLICY_RELEASE_GATED` / `CRA_AI_INCIDENT_POLICY_RELEASE_GATED` | Reviewed main has no approved production Incident v2 profile. Candidate readiness or successful Skill setup does not open the gate. | Stop this Incident path and preserve any existing request evidence. Do not insert a policy, use a benchmark profile or retry expecting v1 fallback. For historical Incident v1, explicitly choose fixed beta.7 with matching files and a fresh request; independent CPU/Finder/Session workflows retain their own rules. |
 | Skill not recognized | Codex has not loaded the deployed instructions. A file on disk alone is insufficient. | Verify the configured Skill root and matching content, then check the next turn/reloaded client. No CRA attempt is needed just to resolve recognition. Start only after it succeeds. |
 | Different installed Skill | It may contain custom changes; provenance can remain UNKNOWN. | Follow the authorized backup/recheck/replacement flow above; never silently overwrite it. |
 | STEP 2 invalid string | Nothing was accepted; the same request is still open. | Re-enter the COMPLETE set or Q/QUIT. Keep the same directory and IDs; no fresh attempt is needed. |

@@ -19,15 +19,29 @@ Codex Resource Audit (CRA) is a **Windows-first, read-only evidence tool for obs
 
 When Codex feels stuck or process behavior looks unusual, CRA captures bounded process evidence around an activity. It gives you evidence before conclusions: what was observed, what remains unknown, and what to investigate next. You retain control of target selection and every timing confirmation.
 
-**Available now:** T17 and the standalone, live-validated T18.2A CPU Activity
-Check are implemented. Fixed tagged prereleases are authoritative through
-[GitHub Releases](https://github.com/Robinlee0929/codex-resource-audit/releases),
-while `main` is moving development/latest source. Version `v0.2.0-beta.7`
-contains the consolidated `FIRST_RUN_RECOVERY_BATCH`; the Releases page
-remains the authority for whether that tag has been published. Published beta.1
-through beta.4 remain immutable historical prereleases with their documented
-scope. The existing `v0.2.0-beta.5` tag was not published as a GitHub prerelease
-and remains unchanged. A prerelease is not production readiness.
+## Choose a version before starting
+
+**For general use, choose the published [v0.2.0-beta.7 prerelease](https://github.com/Robinlee0929/codex-resource-audit/releases/tag/v0.2.0-beta.7).**
+GitHub's release record and remote annotated tag were checked on 2026-10-13:
+published 2026-09-23, `draft=false`, `prerelease=true`, both resolving to commit
+`8beed2d0824a7bfcd464dc810359f5e9ac73f1a7`. This is a fixed experimental
+version, not a production-readiness claim.
+
+| Capability | Fixed beta.7 | Moving `main` at reviewed commit `9633113e74756661d8a9d98ba0676716e0dbdaf6` |
+| --- | --- | --- |
+| T17 Incident Observation / AI-assisted bridge | Historical Incident v1 workflow, with O0/O1/O2/O3 and first-run recovery. | New Incident v2 is **RELEASE_GATED**; ordinary new Incident observation is unavailable. |
+| Standalone T18.2A CPU Activity Check | Implemented; historical Windows live-validation evidence is recorded below. | Same CPU runtime as beta.7; independent of the Incident gate. |
+| Manual candidates, Finder and Session | Available within their separate eligibility and verification rules. | Available within their separate rules; the Incident gate is not a product-wide shutdown. |
+| T18.2B Memory Trend, T18.3 AI interpretation and T18.1 runtime ingestion | Not implemented. | Not implemented. |
+
+**Do not start the main Incident flow or select candidates expecting to Observe.**
+Its production collection profile is unset, so it stops with
+`INCIDENT_POLICY_RELEASE_GATED` before O0. Benchmark B1/B2/B3 are not production
+profiles or a user workaround. Main does not silently fall back to Incident v1;
+historical v1 reader compatibility does not enable new v1 runs. Use a separate,
+matching beta.7 checkout if you want its historical Incident workflow. These
+statements apply to the reviewed main commit, not all future main revisions.
+See [compatibility and evidence limits](docs/COMPATIBILITY.md#version-capability-boundary).
 
 **Beta.7 first-run recovery:** one milestone combines safe Skill replacement,
 same-request STEP 2 typo correction, copy-safe launch, OutputDirectory recovery
@@ -50,8 +64,8 @@ and T17/T18 contract details remain available below as advanced references.
 
 | Your goal | Start here |
 | --- | --- |
-| Ask Codex to help inspect a stuck/slow workflow or unusual process activity | [Use with Codex](#use-with-codex): Incident Observation with the `cra-incident` Skill. |
-| Manually inspect candidates or use advanced workflows | [Manual Guided](#manual-guided): Finder, Session and Observation remain available where eligible. |
+| Ask Codex to help inspect a stuck/slow workflow or unusual process activity | [Use with Codex](#use-with-codex) from fixed beta.7: Incident Observation with the matching `cra-incident` Skill. |
+| Manually inspect candidates or use advanced workflows | [Manual Guided](#manual-guided): Finder and Session where eligible; Observe requires a version with an available Incident runtime. |
 | Work with stronger verified-root / Session evidence requirements | [Advanced Session](#advanced-session): a separate manual workflow, with its own verification requirements. |
 | Receive a PowerShell object for an operator-run Incident observation | [PowerShell structured-result API](#powershell-structured-result-api). |
 | Measure bounded CPU-time changes for one process you independently select | [CPU Activity Check](#cpu-activity-check): a separate Windows operator workflow, not AI-assisted Incident continuation. |
@@ -64,17 +78,22 @@ The AI-assisted path supports **Incident Observation only**. Finder and Session 
 
 ### Get the fixed beta or moving source
 
-When the Releases page provides `v0.2.0-beta.7`, use its matching fixed checkout.
+Use the verified fixed `v0.2.0-beta.7` checkout for the Incident instructions below.
 Choose a parent directory in your own terminal and run:
 
 ```powershell
 git clone --branch v0.2.0-beta.7 `
   https://github.com/Robinlee0929/codex-resource-audit.git
 cd codex-resource-audit
+git rev-parse HEAD
 ```
 
+Expected HEAD: `8beed2d0824a7bfcd464dc810359f5e9ac73f1a7`.
+
 For moving development/latest source, use `--branch main` instead and report the
-actual commit when possible. Use the Skill, bridge and runtime from the same
+actual commit when possible. At the reviewed main commit, Incident v2 remains
+release-gated; choose main for development or its independent available workflows,
+not a new Incident observation. Use the Skill, bridge and runtime from the same
 checkout; do not mix files from `main` or another fixed/archive version. Every
 published beta should be used with its matching checkout, while `main` continues
 to move. See the [version policy](docs/RELEASE_POLICY.md).
@@ -106,6 +125,12 @@ guarantee about future commits on `main`.
 The [repository Skill](skills/cra-incident/SKILL.md) is canonical; the installed copy is deployment only. The installed directory is never used to infer the CRA repository root. Codex validates the current Git workspace or an explicit root against CRA's required files.
 
 ## Use with Codex
+
+**Version check first:** these new-observation instructions apply to fixed beta.7's
+Incident v1 workflow. Do not launch the bridge from reviewed main for an Incident;
+its v2 release gate remains closed. Use the Skill, bridge and runtime from the
+same selected checkout; changing checkouts is an explicit version choice, not a
+fallback within an existing request.
 
 **Observation request** — after Skill recognition succeeds, ask separately:
 
@@ -295,13 +320,21 @@ From your checkout in your own PowerShell 7 console:
 <a id="candidate-workflow"></a>
 <a id="guided-workflow"></a>
 
-Manual Guided retains **F/Finder**, **S/Session** and **O/Observe** where eligible. You inspect local terminal evidence, choose candidates for review, select one target and explicitly choose an action. Readiness and ordering never choose or trust a target automatically. [Manual Finder](docs/T16_2_ISSUE_CENTRIC_ACTIVITY_TARGET_FINDER_SPEC.md).
+Manual Guided retains **F/Finder** and **S/Session** where eligible. **O/Observe**
+is available in fixed beta.7; at reviewed main it reaches the Incident v2 release
+gate, even if candidate readiness permits the action. You inspect local terminal
+evidence, choose candidates for review, select one target and explicitly choose
+an action. Readiness and ordering never choose or trust a target automatically.
+[Manual Finder](docs/T16_2_ISSUE_CENTRIC_ACTIVITY_TARGET_FINDER_SPEC.md).
 
 ### Advanced Session
 
 Session is a separate manual workflow with recognition/confirmation and exact revalidation. It retains S0–S4, `TASK_END`, Task Delta and Process Branch Origin; its verification and classifications do not transfer to Incident Observation. See the [Session operator guide](docs/V0_1_1_GUIDED_SESSION_TARGET_AND_HANDOFF.md) and [sanitized demo](demo/v0.1.1/DEMO_NOTES.md). Choosing Session alone does not establish a verified root.
 
 ### PowerShell structured-result API
+
+Use fixed beta.7 for a new Incident with this API. `-PassThru` does not bypass
+reviewed main's Incident v2 release gate.
 
 ```powershell
 $result = .\codex-resource-audit.ps1 -Mode Guided -PassThru
@@ -350,7 +383,14 @@ pwsh -NoProfile -File .\scripts\Test-Stage0.ps1 -Offline
 
 The historical CPU baseline recorded in Quick Start passed **1859/1859** locally and on Hosted Windows CI, with zero failed, skipped, inconclusive or NotRun tests. The beta.3, beta.4 and beta.5 preparation checkpoints reran the same full offline suite. For beta.6, one focused STEP 2 display regression was added and **1860/1860** offline tests passed before Owner review. These local reruns remain separate from the earlier exact-SHA baseline. Beta.7 product implementation acceptance at `996996e58056245e8784e4db3dc7abd248f407e9` passed **1900/1900** locally and on exact-SHA Hosted Windows CI, with zero failed, skipped, inconclusive or not-run tests; Robin reported clean-clone acceptance PASS. Later documentation changes and release-target commits require their own applicable review and validation.
 
-T17.1, T17.2, T17.3 and standalone T18.2A are complete within their documented public-main scopes. T18.2A live validation passed L1/L2/L3; L4 is `NOT_EXPOSED` by design. Executable vectors remain 22/22 positive and 37/38 negative: N30 is intentionally `PARTIAL` because T18.1 has no executable parent external-state runtime seam. This does not implement T18.1 or T18.2B Memory Trend. Windows operator integration acceptance is not a universal host/client-version guarantee. Historical phase statements retain their own checkpoint scope.
+Historical T17.1/T17.2/T17.3 acceptance applies to the Incident v1 workflow;
+it does not release main's Incident v2. Standalone T18.2A live validation passed
+L1/L2/L3; L4 is `NOT_EXPOSED` by design. Executable vectors remain 22/22 positive
+and 37/38 negative: N30 is intentionally `PARTIAL` because T18.1 has no executable
+parent external-state runtime seam. This does not implement T18.1 or T18.2B
+Memory Trend. Windows operator integration acceptance is not a universal
+host/client-version guarantee. Historical phase statements retain their own
+checkpoint scope.
 
 ## License
 
