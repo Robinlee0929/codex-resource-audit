@@ -3,8 +3,115 @@ BeforeAll {
     . (Join-Path $PSScriptRoot '../FocusedTestCoverage.ps1')
     $script:contractUnitPath = $PSScriptRoot
     function New-TestCoverageCase([string]$File, [string]$Name, [string]$Result = 'Passed', [bool]$Executed = $true) {
-        [pscustomobject]@{Name=$Name;Result=$Result;Executed=$Executed
+        [pscustomobject]@{Name=$Name;ExpandedName=$Name;Result=$Result;Executed=$Executed
             ScriptBlock=[pscustomobject]@{File=(Join-Path $script:contractUnitPath "$File.Tests.ps1")}}
+    }
+}
+
+BeforeDiscovery {
+    # Synthetic fixture identities, independent of the guard implementation and
+    # of the real timeline tests' -ForEach arrays. Keep every required case visible.
+    $u03CoverageNames = @(
+        'accepts U03 Plain rows inside multiline information records',
+        'accepts U03 Ansi rows inside multiline information records',
+        'rejects U03 timeline corruption: wrong stage',
+        'rejects U03 timeline corruption: repeated S0',
+        'rejects U03 timeline corruption: reordered stages',
+        'rejects U03 timeline corruption: wrong label',
+        'rejects U03 timeline corruption: wrong status',
+        'rejects U03 timeline corruption: missing record',
+        'rejects U03 timeline corruption: extra record',
+        'rejects U03 timeline corruption: extra row in message',
+        'rejects U03 timeline corruption: missing row',
+        'rejects U03 timeline corruption: embedded control',
+        'rejects U03 timeline corruption: wrong stream type',
+        'rejects U03 ANSI framing corruption: wrong color',
+        'rejects U03 ANSI framing corruption: missing style',
+        'rejects U03 ANSI framing corruption: missing reset',
+        'rejects U03 ANSI framing corruption: extra reset',
+        'rejects U03 ANSI framing corruption: OSC escape',
+        'rejects U03 ANSI framing corruption: style spans multiple lines'
+    )
+}
+
+Describe 'Terminal contract assertion guard R1 exact U03 coverage' -ForEach @(@{expectedNames=$u03CoverageNames}) {
+    BeforeEach {
+        $u03Cases = @($expectedNames | ForEach-Object {
+            $record = New-TestCoverageCase TerminalOutputContract $_
+            # Model real Pester: Name is a template; ExpandedName is the identity.
+            $record.Name = if ($_ -like 'accepts U03 *') { 'accepts U03 <capability> rows inside multiline information records' }
+                elseif ($_ -like 'rejects U03 timeline*') { 'rejects U03 timeline corruption: <defect>' }
+                else { 'rejects U03 ANSI framing corruption: <defect>' }
+            $record
+        })
+        $otherCases = @(
+            New-TestCoverageCase TerminalOutputContract 'rejects forbidden framing or controls: synthetic'
+            New-TestCoverageCase TerminalOutputContract 'accepts independent progress in Plain without consulting the production formatter'
+            New-TestCoverageCase TerminalOutputContract 'rejects progress corruption: synthetic'
+            New-TestCoverageCase TerminalOutputContract 'accepts required coverage and leaves intentionally excluded cases NotRun'
+            New-TestCoverageCase TerminalOutputContract 'rejects missing or unexecuted coverage: synthetic'
+            New-TestCoverageCase TerminalOutputContract 'runner rejects unrelated PASS when required tests are NotRun'
+            New-TestCoverageCase TerminalOutputContract 'additional legitimate passing test'
+            New-TestCoverageCase GuidedObservation 'intentionally excluded unrelated test' NotRun $false
+        )
+        $coverage = [pscustomobject]@{Tests=@($u03Cases) + @($otherCases)}
+        # Every negative starts from a proven-complete fixture. A broken unrelated
+        # group cannot masquerade as successful detection of a U03 defect.
+        Assert-TestFocusedCoverage $coverage @('TerminalOutputContract') $script:contractUnitPath
+    }
+    It 'R1 accepts all 19 expanded identities with existing groups and unrelated NotRun' {
+        $u03Cases.Count | Should -Be 19
+        Assert-TestFocusedCoverage $coverage @('TerminalOutputContract') $script:contractUnitPath
+        $otherCases[-1].Result | Should -BeExactly NotRun
+    }
+    It 'R1 rejects missing U03 group <prefix>' -ForEach @(
+        @{prefix='accepts U03 ';first='accepts U03 Plain rows inside multiline information records'},
+        @{prefix='rejects U03 timeline corruption: ';first='rejects U03 timeline corruption: wrong stage'},
+        @{prefix='rejects U03 ANSI framing corruption: ';first='rejects U03 ANSI framing corruption: wrong color'}
+    ) {
+        $coverage.Tests = @($coverage.Tests | Where-Object { -not $_.ExpandedName.StartsWith($prefix) })
+        { Assert-TestFocusedCoverage $coverage @('TerminalOutputContract') $script:contractUnitPath } |
+            Should -Throw -ExpectedMessage "FOCUSED_COVERAGE_MISSING: TerminalOutputContract / $first"
+    }
+    It 'R1 rejects missing parameter identity <caseName>' -ForEach @($u03CoverageNames | ForEach-Object { @{caseName=$_} }) {
+        $coverage.Tests = @($coverage.Tests | Where-Object ExpandedName -CNE $caseName)
+        { Assert-TestFocusedCoverage $coverage @('TerminalOutputContract') $script:contractUnitPath } |
+            Should -Throw -ExpectedMessage "FOCUSED_COVERAGE_MISSING: TerminalOutputContract / $caseName"
+    }
+    It 'R1 rejects invalid U03 execution state <label>' -ForEach @(
+        @{label='NotRun';state='NotRun';executed=$false},
+        @{label='unexecuted Passed';state='Passed';executed=$false},
+        @{label='Skipped';state='Skipped';executed=$true},
+        @{label='Failed';state='Failed';executed=$true},
+        @{label='Inconclusive';state='Inconclusive';executed=$true},
+        @{label='noncanonical passed';state='passed';executed=$true},
+        @{label='nonboolean execution';state='Passed';executed='true'}
+    ) {
+        $caseName='rejects U03 timeline corruption: wrong stage'
+        $target=@($coverage.Tests | Where-Object ExpandedName -CEQ $caseName)[0]
+        $target.Result=$state; $target.Executed=$executed
+        { Assert-TestFocusedCoverage $coverage @('TerminalOutputContract') $script:contractUnitPath } |
+            Should -Throw -ExpectedMessage "FOCUSED_COVERAGE_CASE_NOT_PASSED: TerminalOutputContract / $caseName / Executed=$executed / Result=$state"
+    }
+    It 'R1 rejects duplicate U03 identity even when both records pass' {
+        $caseName='accepts U03 Ansi rows inside multiline information records'
+        $coverage.Tests += New-TestCoverageCase TerminalOutputContract $caseName
+        { Assert-TestFocusedCoverage $coverage @('TerminalOutputContract') $script:contractUnitPath } |
+            Should -Throw -ExpectedMessage "FOCUSED_COVERAGE_CASE_DUPLICATE: TerminalOutputContract / $caseName / Count=2"
+    }
+    It 'R1 rejects an expected identity supplied only by the wrong source file' {
+        $caseName='rejects U03 ANSI framing corruption: OSC escape'
+        $target=@($coverage.Tests | Where-Object ExpandedName -CEQ $caseName)[0]
+        $target.ScriptBlock.File=Join-Path $script:contractUnitPath 'Other.Tests.ps1'
+        { Assert-TestFocusedCoverage $coverage @('TerminalOutputContract') $script:contractUnitPath } |
+            Should -Throw -ExpectedMessage "FOCUSED_COVERAGE_MISSING: TerminalOutputContract / $caseName"
+    }
+    It 'R1 rejects unrelated PASS records replacing required U03 coverage' {
+        $caseName='accepts U03 Ansi rows inside multiline information records'
+        $coverage.Tests = @($coverage.Tests | Where-Object ExpandedName -CNE $caseName)
+        $coverage.Tests += New-TestCoverageCase TerminalOutputContract 'unrelated passing replacement'
+        { Assert-TestFocusedCoverage $coverage @('TerminalOutputContract') $script:contractUnitPath } |
+            Should -Throw -ExpectedMessage "FOCUSED_COVERAGE_MISSING: TerminalOutputContract / $caseName"
     }
 }
 
