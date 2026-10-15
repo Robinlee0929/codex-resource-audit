@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalDocumentContract.ps1')
     $script:branchRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Send-SessionProgress','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults') {
         . (Join-Path $script:branchRoot "src\$name.ps1")
@@ -177,7 +178,7 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
     It 'T695-J S4 presence remains observation state without residue or orphan claims' {
         $view = Get-BranchView $script:branchEvidence
         $view.branches[0].still_observed_at_s4 | Should -BeExactly '2'
-        $text = Format-GuidedProcessBranches $view
+        $text = Format-GuidedProcessBranches $view -ColorCapability Plain
         $text | Should -Match '\| STILL_OBSERVED'
         $text | Should -Not -Match 'STILL_OBSERVED_AT_S4 != RESIDUE'
         $text | Should -Not -Match '(?m)^\s*(?:RESIDUE|ORPHAN)\s*:'
@@ -186,7 +187,7 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
     It 'T695-K S4 absence remains NO_LONGER_OBSERVED without exit confirmation' {
         $view = Get-BranchView $script:branchEvidence
         $view.branches[0].no_longer_observed_by_s4 | Should -BeExactly '1'
-        $text = Format-GuidedProcessBranches $view
+        $text = Format-GuidedProcessBranches $view -ColorCapability Plain
         $text | Should -Match '\| NO_LONGER_OBSERVED'
         $text | Should -Not -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
     }
@@ -219,7 +220,7 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
         $view = Get-BranchView $script:branchEvidence
         $view.logical_session_provenance | Should -BeExactly 'NOT_ESTABLISHED'
         $view.logical_session_reason | Should -BeExactly 'NO_EXPLICIT_STRUCTURED_SESSION_OR_INVOCATION_IDENTIFIER'
-        $text = Format-GuidedProcessBranches $view
+        $text = Format-GuidedProcessBranches $view -ColorCapability Plain
         $text | Should -Match 'PROCESS_BRANCH != LOGICAL_SESSION'
         $text | Should -Match 'PROCESS_PARENTAGE != TOOL_CAUSATION'
         $text | Should -Not -Match 'SHARED_PARENT != SAME_LOGICAL_SESSION|BRANCH_ID != SESSION_IDENTITY'
@@ -229,7 +230,7 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
     It 'T695-O Guided placement remains before Lifecycle and DETAILS stays on demand' {
         $life = @($script:branchSingleLifecycleJson | ConvertFrom-Json -Depth 50 -DateKind String)
         $guided = Get-GuidedResultsView $script:branchEvidence $life $script:branchEvents
-        $text = Format-GuidedResults $guided
+        $text = Format-GuidedResults $guided -ColorCapability Plain
         $text.IndexOf('=== TASK DELTA / ISSUE EVIDENCE ===') | Should -BeLessThan $text.IndexOf('=== PROCESS BRANCH ORIGIN ===')
         $text.IndexOf('=== PROCESS BRANCH ORIGIN ===') | Should -BeLessThan $text.IndexOf('=== LIFECYCLE ===')
         $text | Should -Match 'Type DETAILS at the next prompt'
@@ -239,7 +240,7 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
     It 'T695-P branch projection is isolated from collection attribution lifecycle and canonical formatting' {
         $before = @($script:branchEvidence,$script:branchEvents) | ConvertTo-Json -Depth 70 -Compress
         $view = Get-BranchView $script:branchEvidence
-        $null = Format-GuidedProcessBranches $view
+        $null = Format-GuidedProcessBranches $view -ColorCapability Plain
         (@($script:branchEvidence,$script:branchEvents) | ConvertTo-Json -Depth 70 -Compress) | Should -BeExactly $before
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
         Should -Invoke Resolve-SessionEvidence -Times 0 -Exactly
@@ -252,15 +253,16 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
 
     It 'T695-Q plain ANSI and NO_COLOR preserve the same textual meaning' {
         $view = Get-BranchView $script:branchEvidence
-        $plain = Format-GuidedProcessBranches $view
+        $plain = Format-GuidedProcessBranches $view -ColorCapability Plain
         $plain | Should -Not -Match '\x1B'
         $ansi = Format-GuidedProcessBranches $view -ColorCapability Ansi
         $ansi | Should -Match '\x1B\['
+        Assert-TestOperatorDocumentPair $plain $ansi
         [Environment]::SetEnvironmentVariable('NO_COLOR','1')
         Format-GuidedProcessBranches $view -ColorCapability Ansi | Should -BeExactly $plain
     }
 
-    It 'T695-R paths commands hostile names and internal process keys are not disclosed' {
+    It 'T695-R paths commands hostile names and internal process keys are not disclosed' -ForEach @(@{capability='Plain'},@{capability='Ansi'}) {
         $malicious = "PRIVATE_TOKEN C:\Users\PrivatePerson\secret`r`nFAKE BRANCH`e[31m$([char]0x202e)"
         foreach ($entry in $script:branchEvidence.process_history) {
             foreach ($observation in $entry.observations) {
@@ -278,7 +280,7 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
             }
         }
         $view = Get-BranchView $script:branchEvidence
-        $text = Format-GuidedProcessBranches $view
+        $text = ConvertFrom-TestOperatorDocument (Format-GuidedProcessBranches $view -ColorCapability $capability) $capability
         $text | Should -Not -Match 'PRIVATE_TOKEN|PrivatePerson|FAKE BRANCH|SYNTHETIC_ARGUMENTS_ONLY|C:\\Synthetic|\x1B|\p{Cf}'
         $text | Should -Not -Match [regex]::Escape($view.branches[0].root.process_key)
         $text | Should -Match '<REDACTED_OR_UNAVAILABLE>'
@@ -286,7 +288,7 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
 
     It 'T695-S formatter emits one success object and no non-success stream records' {
         $view = Get-BranchView $script:branchEvidence
-        $output = @(Format-GuidedProcessBranches $view 3>&1 4>&1 5>&1 6>&1)
+        $output = @(Format-GuidedProcessBranches $view -ColorCapability Plain 3>&1 4>&1 5>&1 6>&1)
         $output.Count | Should -Be 1
         $output[0] | Should -BeOfType [string]
     }
@@ -297,6 +299,6 @@ Describe 'T6.9.5 Guided Process Branch Origin (synthetic only)' {
         $view.available | Should -BeTrue
         $view.branch_count | Should -BeExactly '0'
         $view.branches.Count | Should -Be 0
-        Format-GuidedProcessBranches $view | Should -Match 'Confirmed task-window Codex branches: 0'
+        Format-GuidedProcessBranches $view -ColorCapability Plain | Should -Match 'Confirmed task-window Codex branches: 0'
     }
 }

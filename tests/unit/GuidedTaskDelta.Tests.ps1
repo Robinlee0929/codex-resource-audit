@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalDocumentContract.ps1')
     $script:taskDeltaRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Send-SessionProgress','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults') {
         . (Join-Path $script:taskDeltaRoot "src\$name.ps1")
@@ -105,8 +106,8 @@ Describe 'T6.9 Guided Task Delta issue evidence (synthetic only)' {
         $row = $view.task_window_rows | Where-Object name -CEQ 'codex-command-runner.exe'
         $row.first_seen | Should -BeExactly 'S2'
         $row.creation_time_utc | Should -BeExactly '2026-01-01T00:01:20.0000000+00:00'
-        Format-GuidedTaskDelta $view | Should -Match 'FIRST_SEEN != CREATION_TIME'
-        Format-GuidedTaskDelta $view | Should -Not -Match '(?i)created after task|created by (?:this )?(?:Browser|task)'
+        Format-GuidedTaskDelta $view -ColorCapability Plain | Should -Match 'FIRST_SEEN != CREATION_TIME'
+        Format-GuidedTaskDelta $view -ColorCapability Plain | Should -Not -Match '(?i)created after task|created by (?:this )?(?:Browser|task)'
     }
 
     It 'T69-B2 task-window boundaries exclude S0 end equality and include TASK_END equality' {
@@ -156,7 +157,7 @@ Describe 'T6.9 Guided Task Delta issue evidence (synthetic only)' {
         $view = Get-GuidedTaskDeltaView $script:taskDeltaEvidence $script:taskDeltaEvents
         $view.still_observed_count | Should -BeExactly '1'
         ($view.task_window_rows | Where-Object name -CEQ 'codex-command-runner.exe').state | Should -BeExactly 'STILL_OBSERVED'
-        $text = Format-GuidedTaskDelta $view
+        $text = Format-GuidedTaskDelta $view -ColorCapability Plain
         $text | Should -Match 'STILL_OBSERVED != RESIDUE'
         $text | Should -Not -Match '(?m)^\s*(?:RESIDUE|ORPHAN|EXIT_CONFIRMED)\s*:'
     }
@@ -165,7 +166,7 @@ Describe 'T6.9 Guided Task Delta issue evidence (synthetic only)' {
         $view = Get-GuidedTaskDeltaView $script:taskDeltaEvidence $script:taskDeltaEvents
         $view.no_longer_observed_count | Should -BeExactly '1'
         ($view.task_window_rows | Where-Object name -CEQ 'node.exe').state | Should -BeExactly 'NO_LONGER_OBSERVED'
-        Format-GuidedTaskDelta $view | Should -Match 'NO_LONGER_OBSERVED does not establish process exit'
+        Format-GuidedTaskDelta $view -ColorCapability Plain | Should -Match 'NO_LONGER_OBSERVED does not establish process exit'
     }
 
     It 'T69-H PID reuse keeps pre-existing and task-window identities distinct' {
@@ -214,7 +215,7 @@ Describe 'T6.9 Guided Task Delta issue evidence (synthetic only)' {
     It 'T69-L Guided remains summary-first and preserves the DETAILS-on-demand boundary' {
         $life = @($script:taskDeltaLifecycleJson | ConvertFrom-Json -Depth 40 -DateKind String)
         $guided = Get-GuidedResultsView $script:taskDeltaEvidence $life $script:taskDeltaEvents
-        $text = Format-GuidedResults $guided
+        $text = Format-GuidedResults $guided -ColorCapability Plain
         $text.IndexOf('=== PROCESS CHANGES ===') | Should -BeLessThan $text.IndexOf('=== TASK DELTA / ISSUE EVIDENCE ===')
         $text.IndexOf('=== TASK DELTA / ISSUE EVIDENCE ===') | Should -BeLessThan $text.IndexOf('=== LIFECYCLE ===')
         $text | Should -Match 'Type DETAILS at the next prompt'
@@ -224,7 +225,7 @@ Describe 'T6.9 Guided Task Delta issue evidence (synthetic only)' {
     It 'T69-M projection uses resolved data only and does not invoke Session or evidence engines' {
         $before = @($script:taskDeltaEvidence,$script:taskDeltaEvents) | ConvertTo-Json -Depth 60 -Compress
         $view = Get-GuidedTaskDeltaView $script:taskDeltaEvidence $script:taskDeltaEvents
-        $null = Format-GuidedTaskDelta $view
+        $null = Format-GuidedTaskDelta $view -ColorCapability Plain
         (@($script:taskDeltaEvidence,$script:taskDeltaEvents) | ConvertTo-Json -Depth 60 -Compress) | Should -BeExactly $before
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
         Should -Invoke Resolve-SessionEvidence -Times 0 -Exactly
@@ -237,23 +238,24 @@ Describe 'T6.9 Guided Task Delta issue evidence (synthetic only)' {
 
     It 'T69-N plain and NO_COLOR output have identical text meaning' {
         $view = Get-GuidedTaskDeltaView $script:taskDeltaEvidence $script:taskDeltaEvents
-        $plain = Format-GuidedTaskDelta $view
+        $plain = Format-GuidedTaskDelta $view -ColorCapability Plain
         $plain | Should -Not -Match '\x1B'
         $ansi = Format-GuidedTaskDelta $view -ColorCapability Ansi
         $ansi | Should -Match '\x1B\['
+        Assert-TestOperatorDocumentPair $plain $ansi
         [Environment]::SetEnvironmentVariable('NO_COLOR','1')
         Format-GuidedTaskDelta $view -ColorCapability Ansi | Should -BeExactly $plain
     }
 
     It 'T69-O formatter emits one success object and no canonical evidence stream' {
         $view = Get-GuidedTaskDeltaView $script:taskDeltaEvidence $script:taskDeltaEvents
-        $output = @(Format-GuidedTaskDelta $view 3>&1 4>&1 5>&1 6>&1)
+        $output = @(Format-GuidedTaskDelta $view -ColorCapability Plain 3>&1 4>&1 5>&1 6>&1)
         $output.Count | Should -Be 1
         $output[0] | Should -BeOfType [string]
         $output[0] | Should -Not -Match 'COMMAND_LINE:|EXECUTABLE_PATH:|EVIDENCE_IDS:'
     }
 
-    It 'T69-P names paths and commands cannot expose private text or terminal controls' {
+    It 'T69-P names paths and commands cannot expose private text or terminal controls' -ForEach @(@{capability='Plain'},@{capability='Ansi'}) {
         $malicious = "PRIVATE_TOKEN C:\Users\PrivatePerson\secret`r`nFAKE RESULT`e[31m$([char]0x202e)"
         foreach ($entry in $script:taskDeltaEvidence.process_history) {
             foreach ($observation in $entry.observations) {
@@ -270,12 +272,12 @@ Describe 'T6.9 Guided Task Delta issue evidence (synthetic only)' {
             }
         }
         $view = Get-GuidedTaskDeltaView $script:taskDeltaEvidence $script:taskDeltaEvents
-        $text = Format-GuidedTaskDelta $view
+        $text = ConvertFrom-TestOperatorDocument (Format-GuidedTaskDelta $view -ColorCapability $capability) $capability
         $text | Should -Not -Match 'PRIVATE_TOKEN|PrivatePerson|FAKE RESULT|\x1B|\p{Cf}'
         $text | Should -Match '<REDACTED_OR_UNAVAILABLE>'
         $view.available = $false
         $view.unavailable_reason = $malicious
-        Format-GuidedTaskDelta $view | Should -Not -Match 'PRIVATE_TOKEN|PrivatePerson|FAKE RESULT|\x1B|\p{Cf}'
+        ConvertFrom-TestOperatorDocument (Format-GuidedTaskDelta $view -ColorCapability $capability) $capability | Should -Not -Match 'PRIVATE_TOKEN|PrivatePerson|FAKE RESULT|\x1B|\p{Cf}'
     }
 
     It 'T69-Z a complete empty task-window population establishes zero separately from unavailable' {

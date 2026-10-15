@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalOutputContract.ps1')
     $script:t7Root=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     foreach ($name in 'Format-AuditReport','Format-RootCandidates','Format-OperatorView','Read-OperatorInput','Resolve-IncidentObservation','Format-IncidentObservation','Invoke-IncidentObservation','Format-GuidedCandidates','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults') {
         . (Join-Path $script:t7Root "src\$name.ps1")
@@ -19,10 +20,23 @@ Describe 'T7 shared terminal hierarchy and color semantics' {
     }
     AfterEach { [Environment]::SetEnvironmentVariable('NO_COLOR',$script:t7NoColor) }
 
-    It 'T7-A plain and automatic redirected output contain no ANSI' {
-        Format-OperatorLine Section -Label 'TEST' -ColorCapability Plain | Should -Not -Match '\x1B'
-        Resolve-OperatorColorCapability Auto | Should -BeExactly Plain
-        Format-OperatorLine Section -Label 'TEST' -ColorCapability Auto | Should -Not -Match '\x1B'
+    It 'T7-A Plain has no ANSI regardless of host capability' {
+        Assert-TestTerminalLine (Format-OperatorLine Section -Label 'TEST' -ColorCapability Plain) '=== TEST ===' Plain
+    }
+    It 'T7-A Ansi emits exactly the allowed heading style even on redirected hosts' {
+        Assert-TestTerminalLine (Format-OperatorLine Section -Label 'TEST' -ColorCapability Ansi) '=== TEST ===' Ansi 36
+    }
+    It 'T7-A Auto follows the actual host capability without assuming redirection' {
+        $expected = Get-TestAutoColorCapability
+        Resolve-OperatorColorCapability Auto | Should -BeExactly $expected
+        Assert-TestTerminalLine (Format-OperatorLine Section -Label 'TEST' -ColorCapability Auto) '=== TEST ===' $expected 36
+    }
+    It 'T7-A <capability> renders untrusted controls as inert text' -ForEach @(
+        @{capability='Plain'}, @{capability='Ansi'}, @{capability='Auto'}
+    ) {
+        $text = Format-OperatorLine Section -Label "TEST`e[31m`r`n`t$([char]0x202e)" -ColorCapability $capability
+        $expected = if ($capability -eq 'Auto') { Get-TestAutoColorCapability } else { $capability }
+        Assert-TestTerminalLine $text '=== TEST<CONTROL>[31m<CONTROL><CONTROL><CONTROL><CONTROL> ===' $expected 36
     }
     It 'T7-B NO_COLOR disables every semantic style' -ForEach @(
         @{token='COMPLETE'},@{token='UNKNOWN'},@{token='FAILED'},@{token='STILL_OBSERVED'},@{token='UNAVAILABLE'}
@@ -35,7 +49,14 @@ Describe 'T7 shared terminal hierarchy and color semantics' {
     ) {
         $plain=Format-OperatorLine Status -Label 'State' -Value $token -ColorCapability Plain
         $styled=Format-OperatorLine Status -Label 'State' -Value $token -ColorCapability Ansi
-        [regex]::Replace($styled,'\x1B\[(?:0|31|33|36|90)m','') | Should -BeExactly $plain
+        $code = switch ($token) {
+            { $_ -in 'COMPLETE','READY' } { '36' }
+            { $_ -in 'UNKNOWN','PENDING','UNAVAILABLE' } { '33' }
+            'FAILED' { '31' }
+        }
+        $plain | Should -Not -Match '\x1B'
+        if ($code) { Assert-TestTerminalLine $styled $plain Ansi $code }
+        else { Assert-TestTerminalLine $styled $plain Plain }
     }
     It 'T7-D only true failures are red while UNKNOWN and unavailable are amber and survival is neutral' {
         Format-OperatorLine Status -Label State -Value FAILED -ColorCapability Ansi | Should -Match '\x1B\[31m'

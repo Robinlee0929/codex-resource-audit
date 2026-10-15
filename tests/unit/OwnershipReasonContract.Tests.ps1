@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalDocumentContract.ps1')
     $script:reasonRoot=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
     foreach ($name in 'Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Send-SessionProgress','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults','Write-IssueEvidencePackage','Invoke-GuidedIssueEvidenceExport') {
         . (Join-Path $script:reasonRoot "src/$name.ps1")
@@ -180,11 +181,12 @@ Describe 'T14.0.2 ownership reason contracts (offline)' {
         ($summary.unknown_reason_counts | Measure-Object count -Sum).Sum | Should -Be 4
         @($summary.unknown_reason_counts | Where-Object reason_code -CEQ NO_CONFIRMED_CODEX_ROOT_CHAIN)[0].count | Should -Be 3
         (Test-IssueEvidencePrivacy $r.value.model).success | Should -BeTrue
-        $text=Format-GuidedResults $current.results_view
+        $text=Format-GuidedResults $current.results_view -ColorCapability Plain
         $text | Should -Match 'No confirmed Codex root chain: 3'
         $text | Should -Not -Match 'NO_VERIFIED_ROOT_AND_COMPLETE_LINEAGE|<REDACTED_REASON>'
         $destination=Join-Path $TestDrive 'reason-compatible'
-        (Invoke-GuidedIssueEvidenceExport $current $true MATCHED $destination).success | Should -BeTrue
+        $export = Invoke-GuidedIssueEvidenceExport $current $true MATCHED $destination
+        $export.success | Should -BeTrue -Because $export.code
         @((Get-ChildItem $destination -File).Name | Sort-Object) | Should -Be @('issue-evidence.json','issue-evidence.md')
     }
 
@@ -198,7 +200,7 @@ Describe 'T14.0.2 ownership reason contracts (offline)' {
         $view.ownership_unknown | Should -BeExactly '4'
         ($view.ownership_reasons | Measure-Object count -Sum).Sum | Should -Be 4
         @($view.ownership_reasons | Where-Object label -CEQ '<REDACTED_REASON>')[0].count | Should -Be 1
-        $text=Format-GuidedResults $view
+        $text=Format-GuidedResults $view -ColorCapability Plain
         $text | Should -Match 'Other/redacted reasons: 1'
         $text | Should -Not -Match 'SYNTHETIC_PRIVATE|\x1B|<REDACTED_REASON>'
         $c.ownership | Should -BeExactly UNKNOWN
