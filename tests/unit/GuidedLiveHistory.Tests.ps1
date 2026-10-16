@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalDocumentContract.ps1')
     $script:liveHistoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Send-SessionProgress','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults') {
         . (Join-Path $script:liveHistoryRoot "src/$name.ps1")
@@ -209,7 +210,7 @@ Describe 'T6.9.6 resolved live-history compatibility using synthetic evidence on
         $view=Get-LiveHistoryDelta $evidence
         $view.still_observed_count | Should -BeExactly '2'
         $view.no_longer_observed_count | Should -BeExactly '1'
-        $text=Format-GuidedTaskDelta $view
+        $text=Format-GuidedTaskDelta $view -ColorCapability Plain
         $text | Should -Match 'NO_LONGER_OBSERVED does not establish process exit'
         $text | Should -Match 'STILL_OBSERVED != RESIDUE'
     }
@@ -235,14 +236,14 @@ Describe 'T6.9.6 resolved live-history compatibility using synthetic evidence on
         $branch.available | Should -BeTrue
         $branch.branch_count | Should -BeExactly '0'
         $branch.logical_session_provenance | Should -BeExactly 'NOT_ESTABLISHED'
-        Format-GuidedTaskDelta $view | Should -Match '0 means evidence was available'
-        Format-GuidedProcessBranches $branch | Should -Match 'No confirmed task-window process branch was established'
+        Format-GuidedTaskDelta $view -ColorCapability Plain | Should -Match '0 means evidence was available'
+        Format-GuidedProcessBranches $branch -ColorCapability Plain | Should -Match 'No confirmed task-window process branch was established'
     }
 
     It 'T696-W X Y projection leaves canonical data report and DETAILS behavior unchanged' {
         $before=$script:liveEvidence | ConvertTo-Json -Depth 70 -Compress
         $guided=Get-GuidedResultsView $script:liveEvidence $script:smallLife $script:liveEvents
-        Format-GuidedResults $guided | Should -Match 'Type DETAILS at the next prompt'
+        Format-GuidedResults $guided -ColorCapability Plain | Should -Match 'Type DETAILS at the next prompt'
         ($script:liveEvidence | ConvertTo-Json -Depth 70 -Compress) | Should -BeExactly $before
         Format-SessionAuditReport -SessionEvidence $script:liveEvidence -Lifecycle $script:smallLife | Should -BeExactly $script:smallCanonical
         foreach ($command in 'Get-ProcessSnapshot','Resolve-SessionEvidence','Resolve-Attribution','Resolve-ProcessRelationships','Compare-Lifecycle') { Should -Invoke $command -Times 0 -Exactly }
@@ -251,17 +252,17 @@ Describe 'T6.9.6 resolved live-history compatibility using synthetic evidence on
     It 'T696-Z AA AB diagnostics obey privacy allowlisting color and stream boundaries' {
         $script:liveEvidence.process_history[0].pid=-1
         $view=Get-LiveHistoryDelta
-        $plain=Format-GuidedTaskDelta $view
+        $plain=Format-GuidedTaskDelta $view -ColorCapability Plain
         $ansi=Format-GuidedTaskDelta $view -ColorCapability Ansi
-        ($ansi -replace '\x1B\[[0-9;]*m','') | Should -BeExactly $plain
+        Assert-TestOperatorDocumentPair $plain $ansi
         [Environment]::SetEnvironmentVariable('NO_COLOR','1')
         Format-GuidedTaskDelta $view -ColorCapability Ansi | Should -BeExactly $plain
-        $records=@(Format-GuidedTaskDelta $view 3>&1 4>&1 5>&1 6>&1)
+        $records=@(Format-GuidedTaskDelta $view -ColorCapability Plain 3>&1 4>&1 5>&1 6>&1)
         $records.Count | Should -Be 1
         $records[0] | Should -BeOfType [string]
         $view.diagnostic_code="PRIVATE_TOKEN C:\Users\PrivatePerson\secret`r`nFAKE`e[31m"
         $branch=Get-GuidedProcessBranchView $script:liveEvidence $view
-        $text=(Format-GuidedTaskDelta $view)+(Format-GuidedProcessBranches $branch)
+        $text=(Format-GuidedTaskDelta $view -ColorCapability Plain)+(Format-GuidedProcessBranches $branch -ColorCapability Plain)
         $text | Should -Not -Match 'PRIVATE_TOKEN|PrivatePerson|FAKE|\x1B|SYNTHETIC_ONLY|C:\\Synthetic'
     }
 
@@ -292,10 +293,10 @@ Describe 'T6.9.6 resolved live-history compatibility using synthetic evidence on
         $view.unavailable_reason | Should -BeExactly 'HISTORY_INVALID'
         $view.diagnostic_code | Should -BeExactly $code
         (Get-LiveHistoryDelta).diagnostic_code | Should -BeExactly $code
-        Format-GuidedTaskDelta $view | Should -Match "Diagnostic: $code"
+        Format-GuidedTaskDelta $view -ColorCapability Plain | Should -Match "Diagnostic: $code"
         $branch=Get-GuidedProcessBranchView $script:liveEvidence $view
         $branch.available | Should -BeFalse
         $branch.diagnostic_code | Should -BeExactly $code
-        Format-GuidedProcessBranches $branch | Should -Match "Task Delta diagnostic: $code"
+        Format-GuidedProcessBranches $branch -ColorCapability Plain | Should -Match "Task Delta diagnostic: $code"
     }
 }

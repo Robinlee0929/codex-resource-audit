@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalDocumentContract.ps1')
     . (Join-Path $PSScriptRoot '../../src/Invoke-SessionExecution.ps1')
     $script:uxRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     foreach ($name in 'Resolve-ActivityTargetFinder','Format-ActivityTargetFinder','Invoke-ActivityTargetFinder') {
@@ -19,6 +20,7 @@ BeforeAll {
     $script:uxAttribution=(Get-Command Resolve-Attribution).ScriptBlock
     $script:uxLifecycle=(Get-Command Compare-Lifecycle).ScriptBlock
     $script:uxFormatter=(Get-Command Format-SessionAuditReport).ScriptBlock
+    $script:realUxOperatorLine=(Get-Command Format-OperatorLine).ScriptBlock
     $script:uxProgressCapability=(Get-Command Test-GuidedProgressHost).ScriptBlock
     $script:uxFixtureJson=Get-Content -Raw (Join-Path $script:uxRoot 'tests\fixtures\session-root-history.json')
     function Set-UxInput([AllowNull()] [object[]] $Values) {
@@ -28,7 +30,13 @@ BeforeAll {
     function Invoke-UxGuided {
         & $script:uxEntry -Mode Guided -FollowUpSeconds 3 *>&1 | ForEach-Object { $script:uxRecords.Add($_) }
     }
-    function Get-UxText { ($script:uxRecords | ForEach-Object { [string]$_ }) -join "`n" }
+    function Get-UxText {
+        ($script:uxRecords | ForEach-Object {
+            if ($_ -is [Management.Automation.InformationRecord]) {
+                ConvertFrom-TestOperatorDocument ([string]$_.MessageData) Auto
+            } else { [string]$_ }
+        }) -join "`n"
+    }
 }
 
 Describe 'T6.6 Guided end-to-end UX with synthetic collection and inert waits' {
@@ -275,7 +283,7 @@ Describe 'T6.6 Candidate grammar and neutral readiness' {
         if ($property) { $record.$property=$value }
         $candidate | Add-Member session_readiness (Get-GuidedSessionReadiness $record COMPLETE -TimeField creation_time_utc)
         $before=$candidate | ConvertTo-Json -Compress
-        $text=Format-GuidedComparison @($candidate,$candidate)
+        $text=Format-GuidedComparison @($candidate,$candidate) -ColorCapability Plain
         [regex]::Matches($text,'Candidate ID: C9').Count | Should -Be 2
         if ($field -eq 'none') { $text | Should -Match 'Session readiness: READY'; $text | Should -Not -Match 'Missing:' }
         else { $text | Should -Match 'Session readiness: BLOCKED'; $text | Should -Match 'Reason:' }
@@ -285,11 +293,39 @@ Describe 'T6.6 Candidate grammar and neutral readiness' {
     }
     It 'UX18 Friendly errors recognize explicit ID and type without echoing exception details' {
         $record=[Management.Automation.ErrorRecord]::new([ArgumentException]::new("PRIVATE C:\Users\PrivatePerson`e[31m"),'GUIDED_TARGET_INVALID',[Management.Automation.ErrorCategory]::InvalidArgument,$null)
-        $text=Format-GuidedInputError $record
+        $text=ConvertFrom-TestOperatorDocument (Format-GuidedInputError $record) Auto
         $text | Should -Match 'SESSION TARGET INVALID'
         $text | Should -Not -Match 'PRIVATE|PrivatePerson|\x1B'
         $record=[Management.Automation.ErrorRecord]::new([InvalidOperationException]::new('GUIDED_TARGET_INVALID'),'GUIDED_TARGET_INVALID',[Management.Automation.ErrorCategory]::InvalidOperation,$null)
         Format-GuidedInputError $record | Should -BeNullOrEmpty
+    }
+    It 'UX18b Friendly error uses exact safe lines and owned resets in <capability>' -ForEach @(
+        @{capability='Plain'},@{capability='Ansi'}
+    ) {
+        $savedNoColor=[Environment]::GetEnvironmentVariable('NO_COLOR')
+        try {
+            [Environment]::SetEnvironmentVariable('NO_COLOR',$null)
+            # Only the renderer capability is injected; the error recognizer is real.
+            Mock Format-OperatorLine {
+                param($Kind,$Label,$Value,$Step)
+                & $script:realUxOperatorLine @PSBoundParameters -ColorCapability $capability
+            }
+            $record=[Management.Automation.ErrorRecord]::new([ArgumentException]::new("PRIVATE C:\Users\PrivatePerson`e[31m"),'GUIDED_TARGET_INVALID',[Management.Automation.ErrorCategory]::InvalidArgument,$null)
+            $raw=Format-GuidedInputError $record
+            $rows=@($raw -split '\r?\n')
+            $expected=@(
+                '=== GUIDED INPUT STOPPED ===',
+                '  Note: SESSION TARGET INVALID. Enter exactly one candidate ID from the current Review Set, e.g. C1. No Session target or operator assertion was retained.',
+                '  Note: Guided stopped safely. Start a new Guided run to try again.'
+            )
+            $rows.Count | Should -Be 3
+            for ($i=0;$i -lt 3;$i++) {
+                $code=if ($i -eq 0) {'36'} else {'90'}
+                Assert-TestTerminalLine $rows[$i] $expected[$i] $capability $code
+            }
+            $checked=ConvertFrom-TestOperatorDocument $raw $capability
+            $checked | Should -Not -Match 'PRIVATE|PrivatePerson|\x1B'
+        } finally { [Environment]::SetEnvironmentVariable('NO_COLOR',$savedNoColor) }
     }
 }
 

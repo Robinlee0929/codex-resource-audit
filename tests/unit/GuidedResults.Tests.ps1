@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalDocumentContract.ps1')
     $script:resultsRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     foreach ($name in 'Collect-ProcessSnapshot','Resolve-Attribution','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-RootCandidates','Format-OperatorView','Send-SessionProgress','Format-GuidedTaskDelta','Format-GuidedProcessBranches','Format-GuidedResults') {
         . (Join-Path $script:resultsRoot "src\$name.ps1")
@@ -31,7 +32,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
     AfterEach { [Environment]::SetEnvironmentVariable('NO_COLOR',$script:savedColor) }
 
     It 'V01 Summary sections occur in the required order before the detailed-evidence boundary' {
-        $text=Format-GuidedResults (Build-ResultsView)
+        $text=Format-GuidedResults (Build-ResultsView) -ColorCapability Plain
         $previous=-1
         foreach ($section in 'SESSION RESULTS','=== ROOT ===','=== OWNERSHIP ===','=== PROCESS CHANGES ===','=== TASK DELTA / ISSUE EVIDENCE ===','=== PRE-EXISTING CODEX PROCESSES OF INTEREST ===','=== PROCESS BRANCH ORIGIN ===','=== OPERATOR NEXT STEP ===','=== LIFECYCLE ===','=== WHY UNKNOWN ===','=== OBSERVATION TIMELINE ===','=== TRUST BOUNDARIES ===','=== DETAILED EVIDENCE ===') {
             $position=$text.IndexOf($section); $position | Should -BeGreaterThan $previous; $previous=$position
@@ -71,7 +72,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         $view.ownership_unknown | Should -BeExactly '1'
         foreach ($entry in $script:evidence.process_history) { $entry.historical_ownership='CONFIRMED_CODEX_OWNED' }
         (Build-ResultsView).ownership_unknown | Should -BeExactly '1'
-        Format-GuidedResults $view | Should -Match 'UNKNOWN does not mean unowned'
+        Format-GuidedResults $view -ColorCapability Plain | Should -Match 'UNKNOWN does not mean unowned'
     }
     It 'V05 Playwright attribution remains independent and uses only its resolved dimension' {
         $script:last.classifications[2].playwright_attribution='CONFIRMED_PLAYWRIGHT_OWNED'
@@ -79,7 +80,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         $view.ownership[2].value | Should -BeExactly '1'
         $view.ownership[0].value | Should -BeExactly '2'
         $view.ownership_unknown | Should -BeExactly '1'
-        Format-GuidedResults $view | Should -Match 'independent; do not add'
+        Format-GuidedResults $view -ColorCapability Plain | Should -Match 'independent; do not add'
     }
     It 'V06 Missing malformed or unsupported ownership values cannot become zero or a new category' -ForEach @(
         @{value=$null},@{value='LIKELY_CODEX_OWNED'},@{value='SAFE'},@{value=@('UNKNOWN')}
@@ -88,7 +89,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         $view=Build-ResultsView
         $view.ownership_unknown | Should -BeExactly UNAVAILABLE
         $view.ownership[0].value | Should -BeExactly UNAVAILABLE
-        Format-GuidedResults $view | Should -Not -Match 'LIKELY_CODEX_OWNED|SAFE:|None in the evaluated ownership'
+        Format-GuidedResults $view -ColorCapability Plain | Should -Not -Match 'LIKELY_CODEX_OWNED|SAFE:|None in the evaluated ownership'
     }
     It 'V07 Genuinely empty classified history and lifecycle collections preserve zero separately from missing' {
         foreach ($snapshot in $script:evidence.attributed_snapshots) {
@@ -102,14 +103,14 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         $view.changes[0].value | Should -BeExactly '0'
         $view.coverage | Should -BeExactly '0/0'
         $view.lifecycle_unknown | Should -BeExactly '0'
-        Format-GuidedResults $view | Should -Match 'None in the evaluated ownership result'
+        Format-GuidedResults $view -ColorCapability Plain | Should -Match 'None in the evaluated ownership result'
         $script:evidence.attributed_snapshots[-1].classifications=$null
         (Build-ResultsView).ownership_unknown | Should -BeExactly UNAVAILABLE
     }
     It 'V08 Process changes count existing history entries without new lifecycle meaning' {
         $view=Build-ResultsView
         @($view.changes.value) | Should -Be @('1','3','1')
-        $text=Format-GuidedResults $view
+        $text=Format-GuidedResults $view -ColorCapability Plain
         $changes=$text.Substring($text.IndexOf('=== PROCESS CHANGES ==='),$text.IndexOf('=== TASK DELTA / ISSUE EVIDENCE ===')-$text.IndexOf('=== PROCESS CHANGES ==='))
         $changes | Should -Not -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
         $text.Substring($text.IndexOf('=== TRUST BOUNDARIES ===')) | Should -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
@@ -128,10 +129,10 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         $view=Build-ResultsView
         $view.coverage | Should -BeExactly '3/3'
         ($view.lifecycle_counts | Where-Object label -CEQ $state).value | Should -BeExactly $(if ($state -eq 'UNKNOWN') { '3' } else { '1' })
-        Format-GuidedResults $view | Should -Not -Match '(?m)^  (?:ORPHAN|RESIDUE):'
+        Format-GuidedResults $view -ColorCapability Plain | Should -Not -Match '(?m)^  (?:ORPHAN|RESIDUE):'
     }
     It 'V11 Absent suspected classes do not acquire unsupported zero totals' {
-        $text=Format-GuidedResults (Build-ResultsView)
+        $text=Format-GuidedResults (Build-ResultsView) -ColorCapability Plain
         $text | Should -Not -Match 'SUSPECTED_(?:ORPHAN|RESIDUE): 0'
         $text | Should -Match 'Omitted classes have no established zero'
     }
@@ -150,7 +151,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         }
         $view=Build-ResultsView
         $view.lifecycle_unknown | Should -BeExactly UNAVAILABLE
-        Format-GuidedResults $view | Should -Not -Match 'None in the evaluated lifecycle|HEALTHY|SUSPECTED_RESIDUE: 0'
+        Format-GuidedResults $view -ColorCapability Plain | Should -Not -Match 'None in the evaluated lifecycle|HEALTHY|SUSPECTED_RESIDUE: 0'
     }
     It 'V13 Lifecycle basis follows existing latest timestamp even when different from current observation' {
         $script:evidence.attributed_snapshots[3].capture_end_utc='2026-01-01T01:00:00Z'
@@ -168,10 +169,10 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         }
         ($view.lifecycle_reasons | Where-Object count -eq 2).explanation | Should -Match 'LIFECYCLE_SCOPE_UNKNOWN'
     }
-    It 'V15 Unknown reason data stays unavailable or redacted without invented explanations' {
+    It 'V15 Unknown reason data stays unavailable or redacted without invented explanations' -ForEach @(@{capability='Plain'},@{capability='Ansi'}) {
         $script:last.classifications[2].unknown_reason="PRIVATE_REASON`e[2J"
         $script:life[0].unknown_reason='PRIVATE_LIFECYCLE_REASON'
-        $text=Format-GuidedResults (Build-ResultsView)
+        $text=ConvertFrom-TestOperatorDocument (Format-GuidedResults (Build-ResultsView) -ColorCapability $capability) $capability
         $text | Should -Match 'Other/redacted reason'
         $text | Should -Not -Match 'PRIVATE_REASON|PRIVATE_LIFECYCLE_REASON|\x1B'
     }
@@ -181,7 +182,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         $view=Build-ResultsView
         $view.ownership_unknown | Should -BeExactly '0'
         $view.lifecycle_unknown | Should -BeExactly '0'
-        Format-GuidedResults $view | Should -Match 'None in the evaluated lifecycle result'
+        Format-GuidedResults $view -ColorCapability Plain | Should -Match 'None in the evaluated lifecycle result'
     }
     It 'V17 Partial failed unknown and unavailable current capture remain visible without fake metrics: <status>' -ForEach @(
         @{status='PARTIAL'},@{status='FAILED'},@{status='UNKNOWN'},@{status='UNAVAILABLE'}
@@ -209,7 +210,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         $script:events=@($script:events[0])
         $script:events[0].event_type=@('TASK_END')
         (Build-ResultsView).task_end | Should -BeExactly UNAVAILABLE
-        $text=Format-GuidedResults (Build-ResultsView)
+        $text=Format-GuidedResults (Build-ResultsView) -ColorCapability Plain
         $text | Should -Match 'it does not mean a process exited'
         $text | Should -Match 'Capture COMPLETE does not imply ownership or lifecycle PASS'
     }
@@ -224,11 +225,11 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         }
         $view=Build-ResultsView
         $view.available | Should -BeFalse
-        Format-GuidedResults $view | Should -Match 'Final evidence summary: UNAVAILABLE'
-        Format-GuidedResults $view | Should -Not -Match 'Confirmed Codex-owned: 0|Session capture: COMPLETE'
+        Format-GuidedResults $view -ColorCapability Plain | Should -Match 'Final evidence summary: UNAVAILABLE'
+        Format-GuidedResults $view -ColorCapability Plain | Should -Not -Match 'Confirmed Codex-owned: 0|Session capture: COMPLETE'
     }
     It 'V21 Core trust boundaries remain explicit without inventing an attached-browser condition' {
-        $text=Format-GuidedResults (Build-ResultsView)
+        $text=Format-GuidedResults (Build-ResultsView) -ColorCapability Plain
         foreach ($boundary in 'UNKNOWN != CODEX','PROCESS_SURVIVAL != RESIDUE','PROCESS_SURVIVAL != ORPHAN',
             'NO_LONGER_OBSERVED != EXIT_CONFIRMED','STILL_OBSERVED != RESIDUE','PRE_EXISTING_AT_S0 != TASK_CREATED',
             'PROCESS_BRANCH != LOGICAL_SESSION','NEXT_STEP_GUIDANCE != EVIDENCE_CLASSIFICATION') {
@@ -239,7 +240,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
     It 'V22 No result input is mutated or retained as a mutable reference and no engine is rerun' {
         $before=@($script:evidence,$script:life,$script:events) | ConvertTo-Json -Depth 60 -Compress
         $view=Build-ResultsView
-        $null=Format-GuidedResults $view
+        $null=Format-GuidedResults $view -ColorCapability Plain
         $view.root_rows[0].match='CHANGED'; $view.ownership[0].value='999'
         (@($script:evidence,$script:life,$script:events) | ConvertTo-Json -Depth 60 -Compress) | Should -BeExactly $before
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
@@ -250,7 +251,7 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         Should -Invoke Format-SessionAuditReport -Times 0 -Exactly
         Should -Invoke Format-EvidenceSummary -Times 0 -Exactly
     }
-    It 'V23 Evidence fields cannot expose private paths raw commands or inject terminal controls' {
+    It 'V23 Evidence fields cannot expose private paths raw commands or inject terminal controls' -ForEach @(@{capability='Plain'},@{capability='Ansi'}) {
         $malicious="PRIVATE_TOKEN C:\Users\PrivatePerson\secret`r`nFAKE RESULT`e[31m$([char]0x202e)"
         foreach ($snapshot in $script:evidence.attributed_snapshots) {
             foreach ($row in $snapshot.classifications) { $row.process.name=$malicious; $row.process.executable_path=$malicious; $row.process.command_line=$malicious }
@@ -258,16 +259,16 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
         $script:last.root_anchor_matches[0].match_result=$malicious
         $script:last.classifications[2].unknown_reason=$malicious
         $script:life[0].unknown_reason=$malicious
-        $text=Format-GuidedResults (Build-ResultsView)
+        $text=ConvertFrom-TestOperatorDocument (Format-GuidedResults (Build-ResultsView) -ColorCapability $capability) $capability
         $text | Should -Not -Match 'PRIVATE_TOKEN|PrivatePerson|FAKE RESULT|\x1B|\p{Cf}'
     }
     It 'V24 Plain and NO_COLOR output retain identical meaning with only renderer-owned ANSI allowed' {
         $view=Build-ResultsView
-        $plain=Format-GuidedResults $view
+        $plain=Format-GuidedResults $view -ColorCapability Plain
         $plain | Should -Not -Match '\x1B'
         $ansi=Format-GuidedResults $view -ColorCapability Ansi
         $ansi | Should -Match '\x1B\[36m'
-        ([regex]::Replace($ansi,'\x1B\[(?:0|31|33|36|90)m','')) | Should -Not -Match '\x1B'
+        Assert-TestOperatorDocumentPair $plain $ansi
         [Environment]::SetEnvironmentVariable('NO_COLOR','1')
         Format-GuidedResults $view -ColorCapability Ansi | Should -BeExactly $plain
     }
@@ -283,10 +284,10 @@ Describe 'Guided resolved Results projection and renderer (synthetic only)' {
     It 'V29 Attached-browser boundary is shown only for an explicit recorded boolean attachment' {
         $script:last.classifications[2].process.existing_browser_attach=$true
         $view=Build-ResultsView
-        Format-GuidedResults $view | Should -Match 'ATTACHED_BROWSER != CODEX_OWNED'
+        Format-GuidedResults $view -ColorCapability Plain | Should -Match 'ATTACHED_BROWSER != CODEX_OWNED'
         $view.ownership_unknown | Should -BeExactly '1'
         $script:last.classifications[2].process.existing_browser_attach='true'
-        Format-GuidedResults (Build-ResultsView) | Should -Not -Match 'ATTACHED_BROWSER'
+        Format-GuidedResults (Build-ResultsView) -ColorCapability Plain | Should -Not -Match 'ATTACHED_BROWSER'
     }
     It 'V30 Different root identities across snapshots cannot be aggregated into one matched root' {
         $script:last.root_anchor_matches[0].process_key='different-synthetic-root'

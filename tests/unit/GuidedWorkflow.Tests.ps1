@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalDocumentContract.ps1')
     $script:guidedRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     foreach ($name in 'Resolve-ActivityTargetFinder','Format-ActivityTargetFinder','Invoke-ActivityTargetFinder') {
         . (Join-Path $script:guidedRoot "src/$name.ps1")
@@ -7,6 +8,7 @@ BeforeAll {
         . (Join-Path $script:guidedRoot "src\$name.ps1")
     }
     $script:realSelector = (Get-Command Select-RootCandidates).ScriptBlock
+    $script:realWorkflowOperatorLine = (Get-Command Format-OperatorLine).ScriptBlock
     $script:realProjection = (Get-Command Get-RootCandidatePresentation).ScriptBlock
     $tokens=$null; $errors=$null
     $script:guidedAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $script:guidedRoot 'codex-resource-audit.ps1'), [ref]$tokens, [ref]$errors)
@@ -42,7 +44,8 @@ BeforeAll {
         else { $invocation = { & $script:guidedEntry -Mode Guided } }
         & $invocation 6>&1 | ForEach-Object {
             if ($_ -is [Management.Automation.InformationRecord]) {
-                $script:info.Add([string]$_.MessageData)
+                # Validate raw Auto styling before inspecting semantic/privacy text.
+                $script:info.Add((ConvertFrom-TestOperatorDocument ([string]$_.MessageData) Auto))
                 $script:trace.Add('display')
             }
             else { $script:success.Add($_) }
@@ -59,7 +62,7 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         Set-GuidedTestInput @('C3,C1','C1','YES')
         # Keep all T2/T3 assertions at their existing phase boundary. T4 is
         # separately exercised with the real matcher and canonical Session body.
-        Mock Invoke-GuidedSession { param($GuidedOutcome,$FollowUpSeconds) Format-GuidedOutcome $GuidedOutcome }
+        Mock Invoke-GuidedSession { param($GuidedOutcome,$FollowUpSeconds) Format-GuidedOutcome $GuidedOutcome -ColorCapability Plain }
         Mock Test-OperatorInteractiveHost { $true }
         Mock Get-ProcessSnapshot {
             param($AuditRunId,$SnapshotId)
@@ -216,7 +219,10 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         $result[0].candidate_indices.Count | Should -Be 0
         @($result[0].PSObject.Properties.Name) | Should -Be @('status','candidate_indices')
         ($inputResult | ConvertTo-Json -Compress) | Should -BeExactly $before
-        $text=$messages -join "`n"
+        $text=($messages | ForEach-Object {
+            $_ | Should -BeOfType [Management.Automation.InformationRecord]
+            ConvertFrom-TestOperatorDocument ([string]$_.MessageData) Auto
+        }) -join "`n"
         $text | Should -Match ([regex]::Escape("Invalid candidate ID at token 2: $display"))
         $text | Should -Not -Match 'token 3|X123|PRIVATE|secret|\x1B|\p{Cf}|\uff23'
         $text | Should -Match 'Nothing was accepted.*COMPLETE review set.*Q/QUIT'
@@ -225,6 +231,36 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
             $text | Should -Not -Match ([regex]::Escape($token))
         }
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
+    }
+    It 'H05c Invalid review notification preserves exact safe fields in <capability>' -ForEach @(
+        @{capability='Plain'},@{capability='Ansi'}
+    ) {
+        $savedNoColor=[Environment]::GetEnvironmentVariable('NO_COLOR')
+        try {
+            [Environment]::SetEnvironmentVariable('NO_COLOR',$null)
+            # Inject an explicit renderer capability, never a fabricated host.
+            Mock Format-OperatorLine {
+                param($Kind,$Label,$Value,$Step)
+                & $script:realWorkflowOperatorLine @PSBoundParameters -ColorCapability $capability
+            }
+            $messages=@()
+            $result=Resolve-OperatorReviewSet ([pscustomobject]@{status='INPUT';text="C1,PRIVATE`e[31m,X123"}) -Candidates $script:snapshot.processes[0..2] -ExplainInvalidInput -InformationVariable messages 6>$null
+            $result.status | Should -BeExactly INVALID
+            $result.candidate_indices.Count | Should -Be 0
+            $messages.Count | Should -Be 1
+            $messages[0] | Should -BeOfType [Management.Automation.InformationRecord]
+            $rows=@(([string]$messages[0].MessageData) -split '\r?\n')
+            $expected=@(
+                '  Note: Invalid candidate ID at token 2: value not displayed',
+                '  Note: Nothing was accepted. Re-enter the COMPLETE review set, or Q/QUIT to cancel.',
+                '  Note: Same active request, directory and IDs; no new discovery or directory is needed.'
+            )
+            $rows.Count | Should -Be 3
+            for ($i=0;$i -lt 3;$i++) { Assert-TestTerminalLine $rows[$i] $expected[$i] $capability 90 }
+            $checked=ConvertFrom-TestOperatorDocument ([string]$messages[0].MessageData) $capability
+            $checked | Should -Not -Match 'PRIVATE|X123|\x1B|\p{Cf}'
+            Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
+        } finally { [Environment]::SetEnvironmentVariable('NO_COLOR',$savedNoColor) }
     }
     It 'H07 Target must be exactly one captured ID inside the review set' {
         foreach ($target in '', 'C1,C3', 'C2', 'C4', 'C', '9003', 'C01', ' C1BAD', 'C1 BAD ', 'YES') {
@@ -315,7 +351,7 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         $result.session_capture | Should -BeExactly 'NOT_STARTED'
         $result.s0_capture | Should -BeExactly 'NOT_STARTED'
         ($result | ConvertTo-Json -Depth 10) | Should -Not -Match 'root_anchors|verified_root|operator_verified|known_codex_instance|command_line|CONFIRMED_CODEX_OWNED'
-        $summary = Format-GuidedOutcome $result
+        $summary = Format-GuidedOutcome $result -ColorCapability Plain
         foreach ($text in 'DISCOVER: COMPLETE','REVIEW_SET: COMPLETE','REVIEW_COUNT: 2','SESSION_TARGET: SELECTED','OPERATOR_CONFIRMATION: RECORDED','SESSION_IDENTITY_REVALIDATION: NOT_STARTED','SESSION_CAPTURE: NOT_STARTED','S0_CAPTURE: NOT_STARTED') {
             $summary | Should -Match ([regex]::Escape($text))
         }
@@ -337,7 +373,7 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
                 $result.identity | Should -BeNullOrEmpty
                 $result.session_capture | Should -BeExactly 'NOT_STARTED'
                 @($script:trace | Where-Object { $_ -eq 'prompt' }).Count | Should -Be ($stage+1)
-                Format-GuidedOutcome $result | Should -Match 'Cancelled'
+                Format-GuidedOutcome $result -ColorCapability Plain | Should -Match 'Cancelled'
             }
         }
     }
@@ -437,10 +473,10 @@ Describe 'Guided pure projection comparison styling and stream boundaries' {
     }
     AfterEach { [Environment]::SetEnvironmentVariable('NO_COLOR',$script:oldNoColor) }
     It 'H23 Plain and styled comparison share full layout and NO_COLOR always disables escapes' {
-        $plain = Format-GuidedComparison -Candidates $view.rows
+        $plain = Format-GuidedComparison -Candidates $view.rows -ColorCapability Plain
         $styled = Format-GuidedComparison -Candidates $view.rows -ColorCapability Ansi
         $styled | Should -Match '\x1B\[36m'
-        [regex]::Replace($styled,'\x1B\[(?:36|33|31|90|0)m','') | Should -BeExactly $plain
+        Assert-TestOperatorDocumentPair $plain $styled
         $plain | Should -Not -Match '\x1B'
         foreach ($setting in '1','0','false',' ') {
             [Environment]::SetEnvironmentVariable('NO_COLOR',$setting)
@@ -457,7 +493,7 @@ Describe 'Guided pure projection comparison styling and stream boundaries' {
                 $canonical | Should -Match ([regex]::Escape($text))
             }
         }
-        $null = Format-GuidedComparison $view.rows
+        $null = Format-GuidedComparison $view.rows -ColorCapability Plain
         ($snapshot | ConvertTo-Json -Depth 30 -Compress) | Should -BeExactly $before
         ($view | ConvertTo-Json -Depth 20) | Should -Not -Match 'command_line|working_set_bytes|parent_process_key|operator_verified'
     }
@@ -467,9 +503,9 @@ Describe 'Guided pure projection comparison styling and stream boundaries' {
         Mock Resolve-Attribution { throw 'Forbidden attribution' }
         Mock Resolve-SessionEvidence { throw 'Forbidden resolver' }
         Mock Compare-Lifecycle { throw 'Forbidden lifecycle' }
-        $null=Format-GuidedComparison $view.rows
-        $null=Format-GuidedCandidateIndex $view
-        $null=Format-GuidedSelectedIdentity $view.rows[0]
+        $null=Format-GuidedComparison $view.rows -ColorCapability Plain
+        $null=Format-GuidedCandidateIndex $view -ColorCapability Plain
+        $null=Format-GuidedSelectedIdentity $view.rows[0] -ColorCapability Plain
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
         Should -Invoke Select-RootCandidates -Times 0 -Exactly
         Should -Invoke Resolve-Attribution -Times 0 -Exactly
@@ -484,13 +520,13 @@ Describe 'Guided pure projection comparison styling and stream boundaries' {
         }
     }
     It 'H26 Explicit plain capture and merged streams contain no ANSI or unexpected output records' {
-        $assigned = @(Format-GuidedComparison $view.rows)
-        $merged = @(Format-GuidedComparison $view.rows *>&1)
+        $assigned = @(Format-GuidedComparison $view.rows -ColorCapability Plain)
+        $merged = @(Format-GuidedComparison $view.rows -ColorCapability Plain *>&1)
         $assigned.Count | Should -Be 1
         $assigned[0] | Should -BeOfType [string]
         $merged | Should -Be $assigned
         $destination = Join-Path $TestDrive 'comparison.txt'
-        Format-GuidedComparison $view.rows > $destination
+        Format-GuidedComparison $view.rows -ColorCapability Plain > $destination
         (Get-Content -Raw $destination).TrimEnd("`r","`n") | Should -BeExactly $assigned[0]
     }
 }

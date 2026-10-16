@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalDocumentContract.ps1')
     $script:operatorRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     . (Join-Path $script:operatorRoot 'tests\SessionObserverCompatibility.ps1')
     foreach ($name in 'Resolve-Attribution','Collect-ProcessSnapshot','Resolve-SessionEvidence','Compare-Lifecycle','Format-AuditReport','Format-OperatorView','Read-OperatorInput') {
@@ -89,35 +90,35 @@ Describe 'T1 pure Operator View primitives and color boundary' {
     AfterEach { [Environment]::SetEnvironmentVariable('NO_COLOR', $script:savedNoColor) }
 
     It 'O05 Each plain primitive is deterministic and single-line' {
-        Format-OperatorLine -Kind Section -Label 'ROOT' | Should -BeExactly '=== ROOT ==='
-        Format-OperatorLine -Kind Step -Label 'DISCOVER' -Step 1 | Should -BeExactly 'STEP 1 - DISCOVER'
-        Format-OperatorLine -Kind KeyValue -Label 'PID' -Value '42' | Should -BeExactly '  PID: 42'
-        Format-OperatorLine -Kind Status -Label 'Ownership' -Value 'UNKNOWN' | Should -BeExactly '  Ownership: UNKNOWN'
-        Format-OperatorLine -Kind Note -Value 'UNKNOWN != CODEX' | Should -BeExactly '  Note: UNKNOWN != CODEX'
-        Format-OperatorLine -Kind KeyValue -Label 'Value' -Value $null | Should -BeExactly '  Value: <UNAVAILABLE>'
+        Format-OperatorLine -Kind Section -Label 'ROOT' -ColorCapability Plain | Should -BeExactly '=== ROOT ==='
+        Format-OperatorLine -Kind Step -Label 'DISCOVER' -Step 1 -ColorCapability Plain | Should -BeExactly 'STEP 1 - DISCOVER'
+        Format-OperatorLine -Kind KeyValue -Label 'PID' -Value '42' -ColorCapability Plain | Should -BeExactly '  PID: 42'
+        Format-OperatorLine -Kind Status -Label 'Ownership' -Value 'UNKNOWN' -ColorCapability Plain | Should -BeExactly '  Ownership: UNKNOWN'
+        Format-OperatorLine -Kind Note -Value 'UNKNOWN != CODEX' -ColorCapability Plain | Should -BeExactly '  Note: UNKNOWN != CODEX'
+        Format-OperatorLine -Kind KeyValue -Label 'Value' -Value $null -ColorCapability Plain | Should -BeExactly '  Value: <UNAVAILABLE>'
     }
     It 'O06 Styling uses only owned SGR pairs and stripping them yields exactly the plain view' {
-        $plain = Format-OperatorFoundationView
+        $plain = Format-OperatorFoundationView -ColorCapability Plain
         $styled = Format-OperatorFoundationView -ColorCapability Ansi
         $styled | Should -Match '\x1B\[36m'
         $styled | Should -Match '\x1B\[33m'
         $styled | Should -Match '\x1B\[90m'
-        [regex]::Replace($styled, '\x1B\[(?:36|33|31|90|0)m', '') | Should -BeExactly $plain
+        Assert-TestOperatorDocumentPair $plain $styled
         $plain | Should -Not -Match '\x1B|[\x80-\x9F]'
     }
     It 'O07 NO_COLOR value <value> disables even explicitly requested styling' -ForEach @(
         @{ value='1' }, @{ value='0' }, @{ value='false' }, @{ value=' ' }
     ) {
         [Environment]::SetEnvironmentVariable('NO_COLOR', $value)
-        Format-OperatorFoundationView -ColorCapability Ansi | Should -BeExactly (Format-OperatorFoundationView)
+        Format-OperatorFoundationView -ColorCapability Ansi | Should -BeExactly (Format-OperatorFoundationView -ColorCapability Plain)
     }
     It 'O08 Untrusted terminal controls cannot inject lines escapes or terminal operations' {
         $hostile = "value`e[31m`e]0;spoof`a`r`n`t$([char]0x85)$([char]0x9b)$([char]0x202e)$([char]0x2028)$([char]0x2029)"
         foreach ($kind in 'Section','Step','KeyValue','Note','Status') {
-            $plain = Format-OperatorLine -Kind $kind -Label $hostile -Value $hostile
+            $plain = Format-OperatorLine -Kind $kind -Label $hostile -Value $hostile -ColorCapability Plain
             $plain | Should -Not -Match '[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]'
             $styled = Format-OperatorLine -Kind $kind -Label $hostile -Value $hostile -ColorCapability Ansi
-            [regex]::Replace($styled, '\x1B\[(?:36|33|31|90|0)m', '') | Should -BeExactly $plain
+            Assert-TestOperatorDocumentPair $plain $styled
         }
         Add-OperatorStyle -Text $hostile -Style Failure -ColorCapability Ansi |
             Should -BeExactly ([string][char]27 + '[31m' + (ConvertTo-OperatorCell $hostile) + [char]27 + '[0m')
@@ -125,8 +126,8 @@ Describe 'T1 pure Operator View primitives and color boundary' {
     It 'O09 Rendering preserves existing profile redaction and never serializes records' {
         $record = [pscustomobject]@{ command_line='PRIVATE_COMMAND_SENTINEL'; executable_path='C:\Users\PrivatePerson\private.exe' }
         $before = $record | ConvertTo-Json -Compress
-        Format-OperatorLine -Kind KeyValue -Label 'Value' -Value $record | Should -BeExactly '  Value: <REDACTED_VALUE>'
-        Format-OperatorLine -Kind KeyValue -Label 'Display' -Value $record.executable_path | Should -Not -Match 'PrivatePerson'
+        Format-OperatorLine -Kind KeyValue -Label 'Value' -Value $record -ColorCapability Plain | Should -BeExactly '  Value: <REDACTED_VALUE>'
+        Format-OperatorLine -Kind KeyValue -Label 'Display' -Value $record.executable_path -ColorCapability Plain | Should -Not -Match 'PrivatePerson'
         ($record | ConvertTo-Json -Compress) | Should -BeExactly $before
     }
     It 'O10 Status color is semantic and never a suspicion score' {
@@ -142,10 +143,10 @@ Describe 'T1 pure Operator View primitives and color boundary' {
         foreach ($state in 'VERIFIED','MATCHED','CONFIRMED','COMPLETE','PASS') {
             Format-OperatorLine -Kind Status -Label 'State' -Value $state -ColorCapability Ansi | Should -Match '^\x1B\[36m'
         }
-        Format-OperatorLine -Kind Status -Label 'State' -Value 'PRIVATE_STATUS' | Should -BeExactly '  State: <REDACTED_STATUS>'
+        Format-OperatorLine -Kind Status -Label 'State' -Value 'PRIVATE_STATUS' -ColorCapability Plain | Should -BeExactly '  State: <REDACTED_STATUS>'
     }
     It 'O11 Renderer and foundation execute no collector resolver attribution ancestry or lifecycle logic' {
-        $null = Format-OperatorFoundationView
+        $null = Format-OperatorFoundationView -ColorCapability Plain
         $null = Format-OperatorFoundationView -ColorCapability Ansi
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
         Should -Invoke Resolve-SessionEvidence -Times 0 -Exactly
@@ -161,8 +162,8 @@ Describe 'T1 pure Operator View primitives and color boundary' {
             $command.GetCommandName() | Should -BeIn @('Set-StrictMode','ConvertTo-SafeAuditText','ConvertTo-OperatorCell','Resolve-OperatorColorCapability','Add-OperatorStyle','Format-OperatorLine')
         }
     }
-    It 'O12 Default captured and merged Operator Views are one ANSI-free string with honest scope' {
-        $plain = @(Format-OperatorFoundationView *>&1)
+    It 'O12 Explicit Plain captured and merged Operator Views are one ANSI-free string with honest scope' {
+        $plain = @(Format-OperatorFoundationView -ColorCapability Plain *>&1)
         $plain.Count | Should -Be 1
         $plain[0] | Should -BeOfType [string]
         $plain[0] | Should -Match 'FOUNDATION_ONLY'
@@ -171,8 +172,53 @@ Describe 'T1 pure Operator View primitives and color boundary' {
         $plain[0] | Should -Match 'Operator assertion: NONE'
         $plain[0] | Should -Not -Match '\x1B'
         $path = Join-Path $TestDrive 'operator.txt'
-        Format-OperatorFoundationView > $path
+        Format-OperatorFoundationView -ColorCapability Plain > $path
         (Get-Content -Raw $path).TrimEnd("`r", "`n") | Should -BeExactly $plain[0]
+    }
+}
+
+Describe 'Owned terminal document contract regressions' {
+    It 'validates owned pairs before preserving privacy text and negative trust boundaries' {
+        $plain = "=== TEST ===`nNO_LONGER_OBSERVED != EXIT_CONFIRMED`nPRIVATE_SENTINEL"
+        $ansi = "`e[36m=== TEST ===`e[0m`n`e[90mNO_LONGER_OBSERVED != EXIT_CONFIRMED`e[0m`nPRIVATE_SENTINEL"
+        Assert-TestOperatorDocumentPair $plain $ansi
+        $checked = ConvertFrom-TestOperatorDocument $ansi Ansi
+        $checked | Should -Match 'NO_LONGER_OBSERVED != EXIT_CONFIRMED'
+        $checked | Should -Match 'PRIVATE_SENTINEL'
+        # Validation never erases an affirmative claim or private payload.
+        { $checked | Should -Not -Match 'PRIVATE_SENTINEL' } | Should -Throw
+        $claim = ConvertFrom-TestOperatorDocument "`e[36mEXIT_CONFIRMED: YES`e[0m" Ansi
+        { $claim | Should -Not -Match '^EXIT_CONFIRMED: YES$' } | Should -Throw
+    }
+    It 'rejects malformed or unowned terminal controls: <label>' -ForEach @(
+        @{label='missing reset';text="`e[36mtext"},
+        @{label='extra reset';text="`e[36mtext`e[0m`e[0m"},
+        @{label='nested owned code';text="`e[36mtext`e[31mevil`e[0m"},
+        @{label='unsupported SGR';text="`e[1mtext`e[0m"},
+        @{label='OSC';text="`e]0;spoof`a"},
+        @{label='multiline scope';text="`e[36mtext`nmore`e[0m"},
+        @{label='bidi';text="text$([char]0x202e)"}
+    ) {
+        { ConvertFrom-TestOperatorDocument $text Ansi } | Should -Throw
+    }
+    It 'Plain rejects even an otherwise legal renderer pair' {
+        { ConvertFrom-TestOperatorDocument "`e[36mtext`e[0m" Plain } | Should -Throw
+    }
+    It 'U09 completed prefix <completed> preserves order and rejects later completion in either capability' -ForEach @(
+        @{completed=0},@{completed=1},@{completed=2},@{completed=3},@{completed=4},@{completed=5}
+    ) {
+        $rows=@('  S0  BASELINE           COMPLETE','  S1  TASK ACTIVE        COMPLETE','  S2  POST TASK          COMPLETE',
+            '  S3  FIRST FOLLOW-UP    COMPLETE','  S4  FINAL FOLLOW-UP    COMPLETE')
+        foreach ($capability in 'Plain','Ansi') {
+            $records=@(for ($i=0;$i -lt $completed;$i++) {
+                $text=if ($capability -eq 'Ansi') {"`e[36m$($rows[$i])`e[0m"} else {$rows[$i]}
+                [Management.Automation.InformationRecord]::new($text,'synthetic')
+            })
+            Assert-TestCaptureTimelineRecords $records $capability -CompletedCount $completed
+            $extraText=if ($capability -eq 'Ansi') {"`e[36m$($rows[4])`e[0m"} else {$rows[4]}
+            $records+=[Management.Automation.InformationRecord]::new($extraText,'synthetic')
+            { Assert-TestCaptureTimelineRecords $records $capability -CompletedCount $completed } | Should -Throw
+        }
     }
 }
 
@@ -276,14 +322,16 @@ Describe 'T1 internal operator interaction, never root verification' {
         }
         finally { $ErrorActionPreference = $previousPreference }
     }
-    It 'O21 Supported host foundation remains plain and cannot select assert collect or hand off' {
+    It 'O21 Supported host foundation follows Auto and cannot select assert collect or hand off' {
         Mock Test-OperatorInteractiveHost { $true }
         Mock Read-OperatorInput { throw 'No input in T1 Guided surface.' }
         Mock Resolve-OperatorChoice { throw 'No selection in T1 Guided surface.' }
         $output = @(Invoke-GuidedFoundation *>&1)
         $output.Count | Should -Be 1
-        $output[0] | Should -BeExactly (Format-OperatorFoundationView)
-        $output[0] | Should -Not -Match '\x1B'
+        $output[0] | Should -BeExactly (Format-OperatorFoundationView -ColorCapability Auto)
+        $checked = ConvertFrom-TestOperatorDocument $output[0] Auto
+        $checked | Should -BeExactly (Format-OperatorFoundationView -ColorCapability Plain)
+        $checked | Should -Not -Match '\x1B'
         Should -Invoke Read-OperatorInput -Times 0 -Exactly
         Should -Invoke Resolve-OperatorChoice -Times 0 -Exactly
         Should -Invoke Read-Host -Times 0 -Exactly

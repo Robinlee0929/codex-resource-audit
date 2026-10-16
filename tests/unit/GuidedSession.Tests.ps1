@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalOutputContract.ps1')
     $script:handoffRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     foreach ($name in 'Resolve-ActivityTargetFinder','Format-ActivityTargetFinder','Invoke-ActivityTargetFinder') {
         . (Join-Path $script:handoffRoot "src/$name.ps1")
@@ -13,6 +14,7 @@ BeforeAll {
     $script:realSessionResolver = (Get-Command Resolve-SessionEvidence).ScriptBlock
     $script:realLifecycle = (Get-Command Compare-Lifecycle).ScriptBlock
     $script:realHandoffSelector = (Get-Command Select-RootCandidates).ScriptBlock
+    $script:handoffProgressFormatter = (Get-Command Format-SessionCaptureProgressNotification).ScriptBlock
     $tokens=$null; $errors=$null
     $script:handoffAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:handoffRoot 'codex-resource-audit.ps1'),[ref]$tokens,[ref]$errors)
     if ($errors.Count) { throw 'CLI parse failed.' }
@@ -252,20 +254,32 @@ Describe 'Guided target policy and canonical Session handoff (offline only)' {
         Should -Invoke Start-Sleep -Times 2 -Exactly -ParameterFilter { $Seconds -eq 7 }
         ($script:state | ConvertTo-Json -Depth 20 -Compress) | Should -BeExactly $before
     }
-    It 'T07 Canonical output and five capture progress records retain exact existing semantics' {
+    It 'T07 Canonical output and five capture progress records retain exact existing semantics: <capability> NO_COLOR=<noColor>' -ForEach @(
+        @{capability='Plain';noColor=$null}, @{capability='Ansi';noColor=$null},
+        @{capability='Auto';noColor=$null}, @{capability='Ansi';noColor='1'}
+    ) {
+        $savedNoColor = [Environment]::GetEnvironmentVariable('NO_COLOR')
+        try {
+        [Environment]::SetEnvironmentVariable('NO_COLOR',$noColor)
+        $script:handoffProgressCapability = $capability
+        # Forward through the real formatter with an explicit renderer capability.
+        # Auto still observes the actual host; no console capability is fabricated.
+        Mock Format-SessionCaptureProgressNotification {
+            param($Snapshot,$SnapshotId,$GuidedPresentation)
+            & $script:handoffProgressFormatter -Snapshot $Snapshot -SnapshotId $SnapshotId -GuidedPresentation:$GuidedPresentation -ColorCapability $script:handoffProgressCapability
+        }
         Invoke-TestHandoff
         $script:reports.Count | Should -Be 1
         $script:reports[0] | Should -BeOfType [string]
         $expected=Format-SessionAuditReport -SessionEvidence $script:sessionEvidence -Lifecycle $script:life -DataSource LIVE_WINDOWS_CIM
         $script:reports[0] | Should -BeExactly $expected
-        $progress=@($script:information | Where-Object { [string]$_.MessageData -match '^CAPTURE_PROGRESS:' })
-        $progress.Count | Should -Be 5
-        for ($i=0;$i -lt 5;$i++) {
-            [string]$progress[$i].MessageData | Should -BeExactly (Format-CaptureProgress -Snapshot $script:captures[$i+1] -SnapshotId "S$i")
-        }
+        $expectedCapability = if ($noColor) { 'Plain' } elseif ($capability -eq 'Auto') { Get-TestAutoColorCapability } else { $capability }
+        Assert-TestCaptureProgressRecords -Records @($script:information) -Snapshots @($script:captures)[1..5] -Capability $expectedCapability
+        Should -Invoke Format-SessionCaptureProgressNotification -Times 5 -Exactly -ParameterFilter { $GuidedPresentation }
         ($script:information | ForEach-Object { [string]$_.MessageData }) -join "`n" | Should -Match 'SESSION_IDENTITY_REVALIDATION: MATCHED'
         $script:reports[0] | Should -Not -Match 'GUIDED OUTCOME|EXACT IDENTITY REVALIDATION|\x1B'
         $script:sessionEvidence.attributed_snapshots.Count | Should -Be 5
+        } finally { [Environment]::SetEnvironmentVariable('NO_COLOR',$savedNoColor) }
     }
     It 'T08 Existing UTC normalization and Windows path case comparison are reused without replacing captured values' {
         $script:revalidationDefect='case-and-zone'

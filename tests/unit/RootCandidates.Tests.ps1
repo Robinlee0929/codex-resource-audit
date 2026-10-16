@@ -1,4 +1,5 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../../src/Format-OperatorView.ps1')
     . (Join-Path $PSScriptRoot '../../src/Invoke-SessionExecution.ps1')
     $script:candidateRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     foreach ($name in 'Resolve-ActivityTargetFinder','Format-ActivityTargetFinder','Invoke-ActivityTargetFinder') {
@@ -105,7 +106,8 @@ Describe 'Root Candidates workflow (offline only)' {
         Mock Start-Sleep { param($Seconds) $script:trace.Add("sleep:$Seconds") }
     }
 
-    It 'K01 Default Candidates preserves canonical mixed stream structure and values' {
+    It 'K01 Legacy Candidates preserves canonical mixed stream structure and values' {
+        Mock Test-RootCandidateHumanConsole { $false }
         $expectedRows = @($script:candidateSnapshot.processes | Where-Object { $_.name -match '(?i)codex' -or $_.executable_path -match '(?i)codex' } | ForEach-Object {
             [pscustomobject]@{CandidatePid=$_.pid;CreationTimeUtc=$_.creation_time;Name=(ConvertTo-SafeAuditText $_.name);ExecutablePath=(ConvertTo-SafeAuditText $_.executable_path);Classification='CANDIDATE_ONLY';OperatorActionRequired=$true}
         })
@@ -117,6 +119,33 @@ Describe 'Root Candidates workflow (offline only)' {
         foreach ($row in @($actual | Select-Object -Skip 2)) { $row | Should -BeOfType [pscustomobject] }
         Should -Invoke Get-ProcessSnapshot -Times 1 -Exactly
         Should -Invoke Resolve-Attribution -Times 0 -Exactly
+        Should -Invoke Test-RootCandidateHumanConsole -Times 1 -Exactly
+    }
+
+    It 'K01 Human Candidates uses its own renderer and retains nontrust boundaries' {
+        # Exercise routing explicitly; this does not claim a physical console.
+        Mock Test-RootCandidateHumanConsole { $true }
+        $before = $script:candidateSnapshot | ConvertTo-Json -Depth 40 -Compress
+        $rows = @(Select-RootCandidates -Processes $script:candidateSnapshot.processes)
+        $actual = @(Invoke-OfflineCandidateEntry -Mode Candidates)
+        $actual.Count | Should -Be 1
+        $actual[0] | Should -BeOfType [string]
+        $actual[0] | Should -BeExactly (Format-RootCandidateHumanView -Snapshot $script:candidateSnapshot -Candidates $rows)
+        $actual[0] | Should -Match 'ROOT CANDIDATES'
+        $actual[0] | Should -Match 'CANDIDATE_ONLY != VERIFIED_ROOT; DISCOVERY_RESULT != OPERATOR_VERIFICATION'
+        $actual[0] | Should -Match 'GROUP != TRUST_LEVEL; GROUP != RECOMMENDATION'
+        $actual[0] | Should -Not -Match 'VERIFIED_ROOT: (YES|C1)|CLASSIFICATION: CONFIRMED|LIKELY_ROOT|command_line|WindowsApps'
+        foreach ($i in 0..($rows.Count - 1)) {
+            $actual[0] | Should -Match ([regex]::Escape("C$($i+1) | $($rows[$i].name) | $($rows[$i].pid)"))
+        }
+        # Collection changes audit_run_id, so compare the immutable candidate records.
+        ($script:candidateSnapshot.processes | ConvertTo-Json -Depth 30 -Compress) |
+            Should -BeExactly (($before | ConvertFrom-Json -Depth 40 -DateKind String).processes | ConvertTo-Json -Depth 30 -Compress)
+        Should -Invoke Get-ProcessSnapshot -Times 1 -Exactly
+        Should -Invoke Resolve-Attribution -Times 0 -Exactly
+        Should -Invoke Read-Host -Times 0 -Exactly
+        Should -Invoke Start-Sleep -Times 0 -Exactly
+        Should -Invoke Test-RootCandidateHumanConsole -Times 1 -Exactly
     }
 
     It 'K02 Flag is rejected before collection in <mode>' -ForEach @(@{mode='Help'},@{mode='Fixture'},@{mode='Session'}) {

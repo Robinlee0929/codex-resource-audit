@@ -1,4 +1,6 @@
 BeforeAll {
+    . (Join-Path $PSScriptRoot '../TerminalDocumentContract.ps1')
+    . (Join-Path $PSScriptRoot '../TerminalOutputContract.ps1')
     $script:observeRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     foreach ($name in 'Resolve-ActivityTargetFinder','Format-ActivityTargetFinder','Invoke-ActivityTargetFinder') {
         . (Join-Path $script:observeRoot "src/$name.ps1")
@@ -11,6 +13,8 @@ BeforeAll {
     $script:observeLifecycle = (Get-Command Compare-Lifecycle).ScriptBlock
     $script:observeReporter = (Get-Command Format-SessionAuditReport).ScriptBlock
     $script:observeSender = (Get-Command Send-SessionProgress).ScriptBlock
+    $script:observeProgressFormatter = (Get-Command Format-SessionCaptureProgressNotification).ScriptBlock
+    $script:observeTimelineFormatter = (Get-Command Format-GuidedObservation).ScriptBlock
     $tokens=$null; $errors=$null
     $script:observeAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $script:observeRoot 'codex-resource-audit.ps1'),[ref]$tokens,[ref]$errors)
     if ($errors.Count) { throw 'CLI parse failed.' }
@@ -32,6 +36,7 @@ BeforeAll {
         }
         & $script:observeEntry @params 6>&1 | ForEach-Object {
             if ($_ -is [Management.Automation.InformationRecord]) {
+                $script:observeInformationRecords.Add($_)
                 $text=[string]$_.MessageData
                 $script:observeInfo.Add($text)
                 $script:observeTrace.Add('info:'+$text)
@@ -47,6 +52,7 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
             foreach ($row in $snapshot.processes) { $row.field_availability | Add-Member executable_path 'AVAILABLE' -Force }
         }
         $script:observeInfo=[Collections.Generic.List[string]]::new()
+        $script:observeInformationRecords=[Collections.Generic.List[object]]::new()
         $script:observeOutput=[Collections.Generic.List[object]]::new()
         $script:observeTrace=[Collections.Generic.List[string]]::new()
         $script:observeEvents=[Collections.Generic.List[object]]::new()
@@ -151,7 +157,17 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         Should -Invoke Invoke-CanonicalSession -Times 0 -Exactly
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly -ParameterFilter { $SnapshotId -eq 'S0' }
     }
-    It 'U03 Every notification follows the real capture event prompt wait and report in canonical order' {
+    It 'U03 Every notification follows the real capture event prompt wait and report in canonical order: <capability>' -ForEach @(
+        @{capability='Plain'}, @{capability='Ansi'}, @{capability='Auto'}
+    ) {
+        $savedNoColor = [Environment]::GetEnvironmentVariable('NO_COLOR')
+        try {
+        [Environment]::SetEnvironmentVariable('NO_COLOR',$null)
+        $script:observeTimelineCapability = $capability
+        Mock Format-GuidedObservation {
+            param($Progress)
+            & $script:observeTimelineFormatter -Progress $Progress -ColorCapability $script:observeTimelineCapability
+        }
         Invoke-ObserveTest
         @($script:observeTrace | Where-Object { $_ -notmatch '^info:' }) | Should -Be @(
             'capture:CANDIDATES','capture:GUIDED_REVALIDATION','handoff',
@@ -159,17 +175,28 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
             'prompt:end','notify:TaskEnd:','capture:S2','notify:Capture:S2','notify:Wait:S3','sleep:7',
             'capture:S3','notify:Capture:S3','notify:Wait:S4','sleep:7','capture:S4','notify:Capture:S4',
             'resolve','lifecycle','report','notify:Results:','notify:Ready:','success')
-        $rows=@($script:observeInfo | Where-Object { $_ -cmatch '^  S[0-4] ' })
-        $rows.Count | Should -Be 5
-        for ($i=0; $i -lt 5; $i++) {
-            $rows[$i] | Should -Match ("^  S$i +[^\r\n]+ COMPLETE")
-            if ($i -lt 4) { $rows[$i] | Should -Not -Match ("S"+($i+1)+'.*COMPLETE') }
+        # Correlate actual information records with Capture notifications instead
+        # of selecting messages by their first visible characters. This excludes
+        # the initial PENDING header without filtering out broken capture rows.
+        $captureRecords = @(for ($i=0; $i -lt $script:observeTrace.Count; $i++) {
+            if ($script:observeTrace[$i] -cmatch '^notify:Capture:') {
+                $script:observeTrace[$i+1] | Should -Match '^info:'
+                $recordIndex = @($script:observeTrace[0..$i] | Where-Object { $_ -cmatch '^info:' }).Count
+                $script:observeInformationRecords[$recordIndex]
+            }
+        })
+        $expectedCapability = if ($capability -eq 'Auto') { Get-TestAutoColorCapability } else { $capability }
+        Assert-TestCaptureTimelineRecords -Records $captureRecords -Capability $expectedCapability
+        if ($capability -eq 'Ansi') {
+            # Reproduce the old selector's blind spot using real styled output.
+            @($script:observeInfo | Where-Object { $_ -cmatch '^  S[0-4] ' }).Count | Should -Be 0
         }
         Should -Invoke Get-ProcessSnapshot -Times 7 -Exactly
         Should -Invoke Resolve-SessionEvidence -Times 1 -Exactly
         Should -Invoke Compare-Lifecycle -Times 1 -Exactly
         Should -Invoke Invoke-CanonicalSession -Times 1 -Exactly
         Should -Invoke Start-Sleep -Times 2 -Exactly -ParameterFilter { $Seconds -eq 7 }
+        } finally { [Environment]::SetEnvironmentVariable('NO_COLOR',$savedNoColor) }
     }
     It 'U04 TASK_END view uses the exact existing event clock before S2 without any exit claim' {
         Invoke-ObserveTest
@@ -184,7 +211,8 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         $text | Should -Match 'Post-task observation continues through S2, S3 and S4'
         # Keep the original T5 assertion on its messages; the new T6 record
         # intentionally includes the explicit NO_LONGER_OBSERVED != EXIT_CONFIRMED boundary.
-        ($script:observeInfo | Where-Object { $_ -notmatch '^STEP 8 - SESSION RESULTS' }) -join "`n" |
+        ($script:observeInfo | ForEach-Object { ConvertFrom-TestOperatorDocument $_ Auto } |
+            Where-Object { $_ -notmatch '^STEP 8 - SESSION RESULTS' }) -join "`n" |
             Should -Not -Match 'EXIT_CONFIRMED|OWNERSHIP_CONFIRMED|RESIDUE_DETECTED|ORPHAN_DETECTED|checking for residue'
     }
     It 'U05 Activity and end instructions arrive before their unchanged prompts and waits remain intervals' {
@@ -198,15 +226,29 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         foreach ($wait in $waits) { $wait | Should -Match 'not lifecycle grace' }
         Should -Invoke Read-Host -Times 7 -Exactly
     }
-    It 'U06 Canonical result stays one unchanged success string and explicit DETAILS follows readiness' {
+    It 'U06 Canonical result stays one unchanged success string and explicit DETAILS follows readiness: <capability> NO_COLOR=<noColor>' -ForEach @(
+        @{capability='Plain';noColor=$null}, @{capability='Ansi';noColor=$null},
+        @{capability='Auto';noColor=$null}, @{capability='Ansi';noColor='1'}
+    ) {
+        $savedNoColor = [Environment]::GetEnvironmentVariable('NO_COLOR')
+        try {
+        [Environment]::SetEnvironmentVariable('NO_COLOR',$noColor)
+        $script:observeProgressCapability = $capability
+        Mock Format-SessionCaptureProgressNotification {
+            param($Snapshot,$SnapshotId,$GuidedPresentation)
+            & $script:observeProgressFormatter -Snapshot $Snapshot -SnapshotId $SnapshotId -GuidedPresentation:$GuidedPresentation -ColorCapability $script:observeProgressCapability
+        }
         Invoke-ObserveTest
         $script:observeOutput.Count | Should -Be 1
         $script:observeOutput[0] | Should -BeExactly (& $script:observeReporter -SessionEvidence $script:observeEvidence -Lifecycle $script:observeLife -DataSource LIVE_WINDOWS_CIM)
         $script:observeOutput[0] | Should -Not -Match 'OBSERVATION TIMELINE|STEP 7|SESSION OBSERVATION FINISHED'
-        @($script:observeInfo | Where-Object { $_ -match '^CAPTURE_PROGRESS:' }).Count | Should -Be 5
+        $expectedCapability = if ($noColor) { 'Plain' } elseif ($capability -eq 'Auto') { Get-TestAutoColorCapability } else { $capability }
+        Assert-TestCaptureProgressRecords -Records @($script:observeInformationRecords) -Snapshots @($script:observeFixture.snapshots) -Capability $expectedCapability
+        Should -Invoke Format-SessionCaptureProgressNotification -Times 5 -Exactly -ParameterFilter { $GuidedPresentation }
         $script:observeInfo[-1] | Should -Match 'SESSION CAPTURE: COMPLETE'
         $script:observeInfo[-1] | Should -Match 'UNKNOWN remains UNKNOWN; NO_LONGER_OBSERVED does not establish exit'
         $script:observeTrace.IndexOf('notify:Ready:') | Should -BeLessThan $script:observeTrace.IndexOf('success')
+        } finally { [Environment]::SetEnvironmentVariable('NO_COLOR',$savedNoColor) }
     }
     It 'U07 Legacy Session preserves five information records and emits no observer calls' {
         Invoke-ObserveTest -Legacy
@@ -237,7 +279,20 @@ Describe 'Guided observation on the actual canonical Session sequence (offline)'
         { Invoke-ObserveTest } | Should -Throw '*SYNTHETIC*'
         $text=$script:observeInfo -join "`n"
         $text | Should -Not -Match 'SESSION OBSERVATION FINISHED|SESSION CAPTURE: COMPLETE'
-        ([regex]::Matches($text,'(?m)^  S[0-4] +[^\r\n]+ COMPLETE')).Count | Should -Be $completed
+        $checkedText = ConvertFrom-TestOperatorDocument $text Auto
+        ([regex]::Matches($checkedText,'(?m)^  S[0-4] +[^\r\n]+ COMPLETE')).Count | Should -Be $completed
+        $captureRecords = @(for ($i=0; $i -lt $script:observeTrace.Count; $i++) {
+            if ($script:observeTrace[$i] -cmatch '^notify:Capture:') {
+                $script:observeTrace[$i+1] | Should -Match '^info:'
+                $recordIndex = @($script:observeTrace[0..$i] | Where-Object { $_ -cmatch '^info:' }).Count
+                $script:observeInformationRecords[$recordIndex]
+            }
+        })
+        Assert-TestCaptureTimelineRecords $captureRecords (Get-TestAutoColorCapability) -CompletedCount $completed
+        # No later COMPLETE row may be hidden by a valid ANSI prefix or the header.
+        for ($stage=$completed; $stage -lt 5; $stage++) {
+            $checkedText | Should -Not -Match ("(?m)^  S$stage +[^\r\n]+ COMPLETE")
+        }
         if ($failure -in @('S0','start','S1','end')) { $text | Should -Not -Match 'END TASK_END +DECLARED' }
         @($script:observeEvents | Where-Object event -eq Ready).Count | Should -Be 0
         $script:observeOutput.Count | Should -Be 0
@@ -300,7 +355,8 @@ Invoke-GuidedSession -GuidedOutcome $state -FollowUpSeconds 7
     }
     It 'V26 Completed Session data produces summary before canonical success without rerunning evidence' {
         Invoke-ObserveTest
-        $summary=@($script:observeInfo | Where-Object { $_ -match '^STEP 8 - SESSION RESULTS' })
+        $summary=@($script:observeInfo | ForEach-Object { ConvertFrom-TestOperatorDocument $_ Auto } |
+            Where-Object { $_ -match '^STEP 8 - SESSION RESULTS' })
         $summary.Count | Should -Be 1
         $summary[0] | Should -Match 'Confirmed Codex-owned: 2'
         $summary[0] | Should -Match 'Unknown ownership: 1'
@@ -340,7 +396,7 @@ Describe 'Pure Guided observation rendering and notification boundary' {
 
     It 'U12 Plain and NO_COLOR renderings retain all meaning without controls' {
         $progress=[pscustomobject]@{event='Capture';stage='S2';capture_status='PARTIAL'}
-        $plain=Format-GuidedObservation $progress
+        $plain=Format-GuidedObservation $progress -ColorCapability Plain
         $plain | Should -Not -Match '\x1B'
         $ansi=Format-GuidedObservation $progress -ColorCapability Ansi
         $ansi | Should -Match '^\x1B\[33m'
@@ -353,13 +409,13 @@ Describe 'Pure Guided observation rendering and notification boundary' {
             $text=Format-GuidedObservation ([pscustomobject]@{event='Capture';stage='S2';capture_status=$status}) -ColorCapability Ansi
             if ($status -eq 'FAILED') { $text | Should -Match '^\x1B\[31m' }
             else { $text | Should -Not -Match '\x1B\[31m' }
-            ([regex]::Replace($text,'\x1B\[(?:0|31|33|36|90)m','')) | Should -Not -Match '\x1B'
+            $null = ConvertFrom-TestOperatorDocument $text Ansi
         }
     }
-    It 'U14 Untrusted controls private fields malformed labels and scalar collections cannot fabricate completion' {
+    It 'U14 Untrusted controls private fields malformed labels and scalar collections cannot fabricate completion' -ForEach @(@{capability='Plain'},@{capability='Ansi'}) {
         $malicious="COMPLETE`r`nSESSION CAPTURE: COMPLETE`e[2J$([char]0x202e)"
         $target=[pscustomobject]@{candidate_id=$malicious;pid=$malicious;name=$malicious;executable_path='C:\Users\PrivatePerson\secret';command_line='PRIVATE_TOKEN'}
-        $header=Format-GuidedObserveHeader $target
+        $header=ConvertFrom-TestOperatorDocument (Format-GuidedObserveHeader $target -ColorCapability $capability) $capability
         $header | Should -Not -Match 'PrivatePerson|PRIVATE_TOKEN|secret|SESSION CAPTURE: COMPLETE|\x1B|\p{Cf}'
         foreach ($event in @(
             [pscustomobject]@{event='Capture';stage='S2';capture_status=$malicious},
@@ -369,7 +425,7 @@ Describe 'Pure Guided observation rendering and notification boundary' {
             [pscustomobject]@{event='TaskEnd';occurred_utc=$malicious},
             [pscustomobject]@{event='Wait';stage='S3';seconds=$malicious}
         )) {
-            $text=Format-GuidedObservation $event
+            $text=ConvertFrom-TestOperatorDocument (Format-GuidedObservation $event -ColorCapability $capability) $capability
             $text | Should -Not -Match 'SESSION CAPTURE: COMPLETE|SESSION OBSERVATION FINISHED|DECLARED|\x1B|\p{Cf}'
         }
     }
@@ -386,8 +442,8 @@ Describe 'Pure Guided observation rendering and notification boundary' {
         $progress=[pscustomobject]@{event='Ready';capture_statuses=@('COMPLETE','COMPLETE','UNKNOWN','COMPLETE','COMPLETE')}
         $target=[pscustomobject]@{candidate_id='C1';pid=42}
         $before=@($progress,$target) | ConvertTo-Json -Depth 10 -Compress
-        Format-GuidedObservation $progress | Should -BeExactly (Format-GuidedObservation $progress)
-        $null=Format-GuidedObserveHeader $target
+        Format-GuidedObservation $progress -ColorCapability Plain | Should -BeExactly (Format-GuidedObservation $progress -ColorCapability Plain)
+        $null=Format-GuidedObserveHeader $target -ColorCapability Plain
         (@($progress,$target) | ConvertTo-Json -Depth 10 -Compress) | Should -BeExactly $before
         Should -Invoke Get-ProcessSnapshot -Times 0 -Exactly
         Should -Invoke Resolve-SessionEvidence -Times 0 -Exactly
@@ -426,7 +482,7 @@ $null = & $SessionProgressObserver ([pscustomobject]@{event='Capture';stage='S0'
 'SYNTHETIC_CANONICAL_RESULT'
 '@
         . (Join-Path $testSource 'Invoke-GuidedSession.ps1')
-        $observer={param($progress) Write-Information (Format-GuidedObservation $progress) -InformationAction Continue}
+        $observer={param($progress) Write-Information (Format-GuidedObservation $progress -ColorCapability Plain) -InformationAction Continue}
         $records=@(Invoke-CanonicalSession -RootPid 42 -RootCreationTimeUtc '2026-01-01T00:00:00Z' -RootExecutablePath 'C:\Synthetic\codex.exe' -OperatorVerifiedKnownCodexInstance -FollowUpSeconds 7 -SessionProgressObserver $observer 6>&1)
         $records.Count | Should -Be 2
         $records[0] | Should -BeOfType [Management.Automation.InformationRecord]
