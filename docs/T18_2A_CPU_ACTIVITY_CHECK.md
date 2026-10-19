@@ -43,7 +43,8 @@ workaround, or helper script is required.
 6. Type exact `START` to begin sampling.
 7. CRA samples cumulative process CPU time on a monotonic 1-second schedule for
    the selected 5–60 second window, preserving unavailable intervals and gaps.
-8. CRA returns a bounded, privacy-allowlisted, in-memory result.
+8. After releasing the retained handle, CRA displays a human-readable CPU summary
+   and returns the bounded, privacy-allowlisted, in-memory result.
 
 Gate tokens are case-sensitive:
 
@@ -64,6 +65,54 @@ Anything other than the exact token shown above cancels at that gate.
 running cancellation token. `Ctrl+C` or a terminal interruption is a hard
 interruption and must not be reported as `CPU_CANCELLED`; it may prevent a final
 result.
+
+## CPU summary in development main
+
+The standalone CLI uses the existing `Format-CraCpuSummary` after execution to
+show the actual status and reason. For a started measurement with returnable
+interval evidence, it shows valid, unavailable and unattempted interval counts,
+attempted readings, the authorized window and actual valid coverage. CPU time,
+mean and maximum rates appear only when valid intervals support them. A
+cancellation or safe failure retains its actual status; it does not become a
+completed measurement.
+
+The summary is one PowerShell **Information Stream (stream 6)** record tagged
+`CRA_CPU_SUMMARY`, explicitly displayed with `InformationAction Continue`.
+Existing gate messages remain separate. Within a PowerShell session, the
+Success Stream still returns exactly the same original canonical result object
+once, with its fields and types unchanged. The summary text and formatter
+envelope are not success output. Callers can capture InformationRecords using
+`-InformationVariable` without merging streams.
+
+An external `pwsh -NoProfile -File ...` invocation renders both the displayed
+summary and the usual PowerShell result view as terminal text. Capturing its
+stdout does not preserve PowerShell object identity, types or stream separation;
+it is not a JSON or other transport format. Tests of external rendered output
+are separate from in-process object and stream assertions.
+
+Measured zero means no CPU-time advance in valid measured intervals.
+Unavailable and unattempted intervals are gaps, not zero CPU measurements.
+Actual valid coverage may therefore be shorter than the authorized window.
+Rates describe only the selected process and are one-core-relative; a supported
+rate above 100% is valid and is not whole-host or Task Manager CPU percentage.
+The formatter remains authoritative for measured values.
+
+If a valid result cannot be formatted safely, the only added Information Stream
+notice is `CPU summary unavailable.` and the original result is still returned.
+A missing, multiple or invalid driver result fails closed with the fixed error
+`CPU result presentation failed.` and no canonical success output. Public result
+fields are never used to reconstruct trusted metadata. Hard interruptions
+propagate without a fabricated result or cancellation outcome. Information
+delivery failure does not retry presentation or collection and can prevent
+final result delivery.
+
+The added summary excludes process identifiers, handles, private paths, creation
+markers, usernames, command lines and raw exceptions. It grants no collection or
+process-control authority and changes none of the three human gates. It adds no
+Incident v2, T18.1 or Memory Trend support. These presentation changes apply to
+moving development main; published beta.7 history and prior live-validation
+records below are unchanged. Focused synthetic tests do not establish Windows
+operator usability acceptance for this presentation change.
 
 ## What the metric means
 
