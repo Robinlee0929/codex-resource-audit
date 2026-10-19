@@ -3,6 +3,7 @@ Describe 'T18.2A I5D production live composition seam' {
         $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
         Import-Module (Join-Path $script:RepoRoot 'src/CraCpuProcessAdapter.psm1') -Force
         Import-Module (Join-Path $script:RepoRoot 'src/CraCpuLiveServices.psm1') -Force
+        Import-Module (Join-Path $script:RepoRoot 'src/CraCpuDiagnostics.psm1') -Force
         . (Join-Path $script:RepoRoot 'src/Invoke-CpuActivityCheck.ps1')
         $script:LiveModule = Get-Module CraCpuLiveServices
 
@@ -50,10 +51,14 @@ Describe 'T18.2A I5D production live composition seam' {
                     if ($c.options.ContainsKey('throw_query_index') -and $index -eq $c.options.throw_query_index) {
                         throw [System.OperationCanceledException]::new('Injected hard interruption')
                     }
+                    if ($c.options.ContainsKey('unavailable_indices') -and $index -in $c.options.unavailable_indices) {
+                        return [pscustomobject]@{ status = 'UNAVAILABLE'; creation_marker = $null; kernel_100ns = $null; user_100ns = $null }
+                    }
+                    $step = if ($c.options.ContainsKey('cpu_step')) { $c.options.cpu_step } else { 2000000L }
                     [pscustomobject][ordered]@{
                         status = 'AVAILABLE'
                         creation_marker = [uint64]777
-                        kernel_100ns = [uint64]($index * 2000000L)
+                        kernel_100ns = [uint64]($index * $step)
                         user_100ns = [uint64]0
                     }
                 }
@@ -384,11 +389,18 @@ Describe 'T18.2A I5D production live composition seam' {
         $accepted.standard_error | Should -BeNullOrEmpty
         $accepted.standard_output | Should -Match 'GATE A.+BIND PERMISSION'
         $accepted.standard_output | Should -Match 'CANCELLED'
+        # External stdout is rendered text, not an in-process object/stream assertion.
+        ([regex]::Matches($accepted.standard_output, 'Status CANCELLED \(CPU_CANCELLED\)\. No CPU interval evidence is returnable\.')).Count | Should -Be 1
+        $accepted.standard_output | Should -Not -Match 'CPU summary unavailable|not recognized|formatted_value'
 
         foreach ($rejected in @(
             @{ ProcessId = '4242.5'; Duration = '5'; Relation = 'NO_ACTIVITY_ASSOCIATION' },
             @{ ProcessId = '4242'; Duration = '5.5'; Relation = 'NO_ACTIVITY_ASSOCIATION' },
-            @{ ProcessId = '4242'; Duration = '5'; Relation = 'no_activity_association' }
+            @{ ProcessId = '4242'; Duration = '5'; Relation = 'no_activity_association' },
+            @{ ProcessId = '0'; Duration = '5'; Relation = 'NO_ACTIVITY_ASSOCIATION' },
+            @{ ProcessId = '4294967296'; Duration = '5'; Relation = 'NO_ACTIVITY_ASSOCIATION' },
+            @{ ProcessId = '4242'; Duration = '4'; Relation = 'NO_ACTIVITY_ASSOCIATION' },
+            @{ ProcessId = '4242'; Duration = '61'; Relation = 'NO_ACTIVITY_ASSOCIATION' }
         )) {
             $result = Invoke-I5DEntrypointChild -ProcessId $rejected.ProcessId `
                 -DurationSeconds $rejected.Duration -ActivityRelation $rejected.Relation
@@ -447,5 +459,317 @@ Describe 'T18.2A I5D production live composition seam' {
         $source = (Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'src/CraCpuLiveServices.psm1')) +
             (Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'src/Invoke-CraCpuActivityCheckLive.ps1'))
         $source | Should -Not -Match 'Get-Process|Get-CimInstance|Win32_Process|Stop-Process|TerminateProcess|Suspend|Set-Priority|ConvertTo-Json|Set-Content|Out-File|Get-Date|DateTime\.Now'
+    }
+
+    Context 'DU-1B actual entrypoint presentation with synthetic services' {
+        AfterAll {
+            Get-Variable -Name 'CraDu1*' -Scope Global | Remove-Variable -Scope Global
+        }
+
+        BeforeAll {
+            # Pester invokes exported-function mocks in module scope. Use a dedicated
+            # test-only global prefix for the shared fixture, removed in AfterAll.
+            $global:CraDu1ResultCommand = Get-Command New-CraCpuResult
+            $global:CraDu1FormatCommand = Get-Command Format-CraCpuSummary
+            $global:CraDu1Entrypoint = Join-Path $script:RepoRoot 'src/Invoke-CraCpuActivityCheckLive.ps1'
+            $global:CraDu1ScopeText = ' Single-process scope; CPU percentages are one-core-relative, not whole-host or Task Manager percentages.'
+
+            function Initialize-Du1Case {
+                param([hashtable] $Options = @{}, [string[]] $Inputs = @('CONFIRM','CONFIRM','START'))
+                $global:CraDu1Native = New-I5DNativeOperations $Options
+                $global:CraDu1Environment = New-I5DEnvironment -Native $global:CraDu1Native -Inputs $Inputs
+                $global:CraDu1Services = New-I5DServices $global:CraDu1Environment
+            }
+
+            function Invoke-Du1Entrypoint {
+                # Keep streams separate. InformationVariable contains InformationRecords.
+                $global:CraDu1Information = @()
+                & $global:CraDu1Entrypoint -ProcessId 4242 -DurationSeconds 5 `
+                    -ActivityRelation NEW_REPRODUCTION_HUMAN_REPORTED -InformationVariable global:CraDu1Information
+            }
+
+            function Assert-Du1Preserved {
+                param([object[]] $Output)
+                $Output.Count | Should -Be 1
+                [object]::ReferenceEquals($Output[0], $global:CraDu1Original) | Should -BeTrue
+                [System.Management.Automation.PSSerializer]::Serialize($Output[0], 30) | Should -BeExactly $global:CraDu1Before
+                $Output[0].record_type | Should -BeExactly 'CPU_DIAGNOSTIC_RESULT'
+                $global:CraDu1Information.Count | Should -Be 1
+                $global:CraDu1Information[0] | Should -BeOfType ([System.Management.Automation.InformationRecord])
+                $global:CraDu1Information[0].Tags | Should -Contain 'CRA_CPU_SUMMARY'
+                $global:CraDu1Information[0].MessageData | Should -BeOfType ([string])
+                $global:CraDu1Information[0].MessageData | Should -Not -Match 'PRIVATE_SENTINEL|4242|RETAINED-A1|same\.exe'
+                $global:CraDu1Native.context.calls | Should -Be $global:CraDu1CallsAtFormat
+                $global:CraDu1Environment.context.sleeps | Should -Be $global:CraDu1SleepsAtFormat
+                Should -Invoke New-CraCpuLiveServices -Times 1 -Exactly
+                Should -Invoke Format-CraCpuSummary -Times 1 -Exactly
+            }
+        }
+
+        BeforeEach {
+            Initialize-Du1Case
+            $global:CraDu1Original = $null
+            $global:CraDu1Before = $null
+            $global:CraDu1Transform = $null
+            $global:CraDu1Information = @()
+            $global:CraDu1GetterRan = $false
+            # Retain Pester's mocks across entrypoint imports. The genuine fresh-session
+            # -File test above independently exercises all imports and formatter visibility.
+            Mock Import-Module { }
+            Mock New-CraCpuLiveServices { $global:CraDu1Services }
+            Mock New-CraCpuResult {
+                param($Candidate, $RunId, $TrustedMetadata, $TrustedQueryAttempts)
+                $projection = & $global:CraDu1ResultCommand -Candidate $Candidate -RunId $RunId `
+                    -TrustedMetadata $TrustedMetadata -TrustedQueryAttempts $TrustedQueryAttempts
+                if ($null -ne $global:CraDu1Transform) { $projection.result = & $global:CraDu1Transform $projection.result }
+                $global:CraDu1Original = $projection.result
+                $global:CraDu1Before = [System.Management.Automation.PSSerializer]::Serialize($projection.result, 30)
+                $projection
+            }
+            Mock Format-CraCpuSummary {
+                param($Result)
+                # This executes only after the real driver's return/finally path.
+                $global:CraDu1Native.context.close_count | Should -Be $global:CraDu1Native.context.open_count
+                $global:CraDu1CallsAtFormat = @($global:CraDu1Native.context.calls)
+                $global:CraDu1SleepsAtFormat = @($global:CraDu1Environment.context.sleeps)
+                & $global:CraDu1FormatCommand -Result $Result
+            }
+        }
+
+        It 'DU1 positive <Name> preserves identity, types, streams and all collection calls' -ForEach @(
+            @{ Name='five-second completion'; Options=@{}; Inputs=@('CONFIRM','CONFIRM','START'); Status='COMPLETED'; Reason='CPU_WINDOW_COMPLETE'; Valid=5; Unavailable=0; Unattempted=0; Readings=6; Coverage=5000; Cpu=1000; Rate='20.00' }
+            @{ Name='measured zero'; Options=@{cpu_step=0L}; Inputs=@('CONFIRM','CONFIRM','START'); Status='COMPLETED'; Reason='CPU_WINDOW_COMPLETE'; Valid=5; Unavailable=0; Unattempted=0; Readings=6; Coverage=5000; Cpu=0; Rate='0.00' }
+            @{ Name='partial gaps'; Options=@{unavailable_indices=@(2)}; Inputs=@('CONFIRM','CONFIRM','START'); Status='PARTIAL'; Reason='CPU_INTERVALS_UNAVAILABLE'; Valid=3; Unavailable=2; Unattempted=0; Readings=6; Coverage=3000; Cpu=600; Rate='20.00' }
+            @{ Name='no valid intervals'; Options=@{unavailable_indices=@(1,2,3,4,5)}; Inputs=@('CONFIRM','CONFIRM','START'); Status='FAILED'; Reason='CPU_NO_VALID_INTERVALS'; Valid=0; Unavailable=5; Unattempted=0; Readings=6; Coverage=0; Cpu=0; Rate=$null }
+            @{ Name='exit after valid interval'; Options=@{wait_statuses=@('LIVE','LIVE','LIVE','LIVE','LIVE','EXITED')}; Inputs=@('CONFIRM','CONFIRM','START'); Status='STOPPED'; Reason='CPU_PROCESS_EXIT_OBSERVED'; Valid=1; Unavailable=1; Unattempted=3; Readings=2; Coverage=1000; Cpu=200; Rate='20.00' }
+            @{ Name='above 100 percent'; Options=@{cpu_step=20000000L}; Inputs=@('CONFIRM','CONFIRM','START'); Status='COMPLETED'; Reason='CPU_WINDOW_COMPLETE'; Valid=5; Unavailable=0; Unattempted=0; Readings=6; Coverage=5000; Cpu=10000; Rate='200.00' }
+            @{ Name='GATE_A_BIND cancellation'; Options=@{}; Inputs=@('CANCEL'); Status='CANCELLED'; Reason='CPU_CANCELLED'; Valid=$null }
+            @{ Name='GATE_A_REVIEW cancellation'; Options=@{}; Inputs=@('CONFIRM','CANCEL'); Status='CANCELLED'; Reason='CPU_CANCELLED'; Valid=$null }
+            @{ Name='GATE_B_START cancellation'; Options=@{}; Inputs=@('CONFIRM','CONFIRM','CANCEL'); Status='CANCELLED'; Reason='CPU_CANCELLED'; Valid=$null }
+        ) {
+            # Compare against the same real driver without the presentation entrypoint.
+            $control = New-I5DCase -NativeOptions $Options -Inputs $Inputs
+            Initialize-Du1Case -Options $Options -Inputs $Inputs
+            $output = @(Invoke-Du1Entrypoint)
+            Assert-Du1Preserved $output
+            $output[0].status | Should -BeExactly $Status
+            $output[0].reason_code | Should -BeExactly $Reason
+            $output[0].prior_terminal | Should -BeNullOrEmpty
+            $global:CraDu1Native.context.calls | Should -Be $control.native_context.calls
+            $global:CraDu1Environment.context.prompts | Should -Be $control.environment_context.prompts
+            $global:CraDu1Environment.context.information | Should -Be $control.environment_context.information
+            $global:CraDu1Environment.context.sleeps | Should -Be $control.environment_context.sleeps
+            $global:CraDu1Services.context.wait_due_ticks | Should -Be $control.services.context.wait_due_ticks
+            $global:CraDu1Native.context.open_count | Should -Be $control.native_context.open_count
+            $global:CraDu1Native.context.query_count | Should -Be $control.native_context.query_count
+            $global:CraDu1Native.context.wait_count | Should -Be $control.native_context.wait_count
+            $global:CraDu1Native.context.close_count | Should -Be $control.native_context.close_count
+            $global:CraDu1Environment.context.prompts.Count | Should -Be $Inputs.Count
+            @($global:CraDu1Environment.context.prompts | ForEach-Object { ($_ -split ' ')[0] }) |
+                Should -Be @(@('GATE_A_BIND','GATE_A_REVIEW','GATE_B_START') | Select-Object -First $Inputs.Count)
+            $text = [string]$global:CraDu1Information[0].MessageData
+            if ($null -eq $Valid) {
+                $text | Should -BeExactly ('Status CANCELLED (CPU_CANCELLED). No CPU interval evidence is returnable.' + $global:CraDu1ScopeText)
+            }
+            else {
+                $text | Should -Match ('^' + [regex]::Escape("Status $Status ($Reason). "))
+                $text | Should -Match ([regex]::Escape("$Valid of 5 valid intervals; $Unavailable unavailable, $Unattempted unattempted, 0 timing deviations."))
+                $text | Should -Match ([regex]::Escape("Readings $Readings of 6 attempted. Authorized window 5000 ms; actual valid coverage $Coverage ms."))
+                if ($Valid -gt 0) {
+                    $text | Should -Match ([regex]::Escape("D1 accumulated $Cpu ms of CPU time"))
+                    $text | Should -Match ([regex]::Escape("Mean $Rate% and maximum $Rate% one-core-relative."))
+                    if ($Cpu -eq 0) { $text | Should -Match 'No CPU time advance was observed in valid measured intervals\.' }
+                    else { $text | Should -Match 'CPU activity was observed in measured intervals\.' }
+                }
+                else {
+                    $text | Should -Match 'No valid CPU intervals were available for this CPU window\.'
+                    $text | Should -Match 'No CPU activity finding is available\.'
+                    $text | Should -Not -Match 'Mean |maximum |accumulated '
+                }
+                if ($Unavailable -gt 0) { $text | Should -Match 'Gaps remain as listed\.' }
+                else { $text | Should -Match 'All planned intervals were measurable\.' }
+            }
+        }
+
+        It 'DU1 minimal safe failure is preserved and accurately presented' {
+            $global:CraDu1Transform = {
+                param($result)
+                (& $global:CraDu1ResultCommand -Candidate $null -RunId $result.run_id).result
+            }
+            $output = @(Invoke-Du1Entrypoint)
+            Assert-Du1Preserved $output
+            $output[0].status | Should -BeExactly 'FAILED'
+            $global:CraDu1Information[0].MessageData | Should -BeExactly (
+                'Status FAILED (CPU_RESULT_INVALID). Whether collection started is unknown. No CPU interval evidence is returnable.' + $global:CraDu1ScopeText)
+        }
+
+        It 'DU1 rejects canonical defect <Defect> without displaying private data' -ForEach @(
+            @{Defect='missing'}, @{Defect='duplicate'}, @{Defect='root field'}, @{Defect='nested field'},
+            @{Defect='script property'}, @{Defect='invalid status'}, @{Defect='prior terminal'}
+        ) {
+            $global:CraDu1Defect = $Defect
+            $global:CraDu1Transform = {
+                param($result)
+                (Test-CraCpuResult $result).disposition | Should -BeExactly 'VALID'
+                switch ($global:CraDu1Defect) {
+                    'missing' { return $null }
+                    'duplicate' { return @($result, $result) }
+                    'root field' { $result | Add-Member path 'PRIVATE_SENTINEL' }
+                    'nested field' { $result.samples[0] | Add-Member handle 'PRIVATE_SENTINEL' }
+                    'script property' {
+                        $result.PSObject.Properties.Remove('status')
+                        $result | Add-Member -MemberType ScriptProperty -Name status -Value { $global:CraDu1GetterRan = $true; 'PRIVATE_SENTINEL' }
+                    }
+                    'invalid status' { $result.status = "PRIVATE_SENTINEL$([char]27)[2J" }
+                    'prior terminal' {
+                        $result = (& $global:CraDu1ResultCommand -Candidate $null -RunId $result.run_id).result
+                        $result.prior_terminal = [pscustomobject]@{status='CANCELLED'; reason_code='CPU_CANCELLED'}
+                        # Independent structural validation proves this is specifically the
+                        # missing-trust defect, not a malformed rejection fixture.
+                        $module = Get-Module CraCpuDiagnostics
+                        (& $module { param($r) (Get-CraCpuResultValidation $r).disposition } $result) | Should -BeExactly 'VALID'
+                    }
+                }
+                (Test-CraCpuResult $result).disposition | Should -BeExactly 'INVALID'
+                $result
+            }
+            # Serialization itself can execute ScriptProperty getters; omit it only for
+            # hostile fixtures. The production validator must never evaluate the getter.
+            Mock New-CraCpuResult {
+                param($Candidate, $RunId, $TrustedQueryAttempts)
+                $projection = & $global:CraDu1ResultCommand -Candidate $Candidate -RunId $RunId -TrustedQueryAttempts $TrustedQueryAttempts
+                $projection.result = & $global:CraDu1Transform $projection.result
+                $projection
+            }
+            $captured = [System.Collections.Generic.List[object]]::new()
+            { Invoke-Du1Entrypoint | ForEach-Object { $captured.Add($_) } } | Should -Throw -ExpectedMessage 'CPU result presentation failed.'
+            $captured.Count | Should -Be 0
+            $global:CraDu1Information.Count | Should -Be 0
+            $global:CraDu1GetterRan | Should -BeFalse
+            $global:CraDu1Native.context.close_count | Should -Be 1
+            Should -Invoke Format-CraCpuSummary -Times 0 -Exactly
+        }
+
+        It 'DU1 preserves a valid result with fixed notice for formatter defect <Defect>' -ForEach @(
+            @{Defect='INVALID'}, @{Defect='missing'}, @{Defect='duplicate'}, @{Defect='extra field'},
+            @{Defect='script property'}, @{Defect='wrong type'}, @{Defect='ordinary exception'},
+            @{Defect='control character'}, @{Defect='injected text'}, @{Defect='wrong status'}, @{Defect='non-string'}
+        ) {
+            $global:CraDu1Defect = $Defect
+            Mock Format-CraCpuSummary {
+                param($Result)
+                $global:CraDu1FixtureDisposition = (Test-CraCpuResult $Result).disposition
+                $global:CraDu1CloseAtFormat = $global:CraDu1Native.context.close_count
+                $global:CraDu1CallsAtFormat = @($global:CraDu1Native.context.calls)
+                $global:CraDu1SleepsAtFormat = @($global:CraDu1Environment.context.sleeps)
+                $envelope = & $global:CraDu1FormatCommand -Result $Result
+                $global:CraDu1EnvelopeDisposition = $envelope.disposition
+                switch ($global:CraDu1Defect) {
+                    'INVALID' { $envelope.disposition = 'INVALID' }
+                    'missing' { return $null }
+                    'duplicate' { return @($envelope, $envelope) }
+                    'extra field' { $envelope | Add-Member path 'PRIVATE_SENTINEL' }
+                    'script property' {
+                        $envelope.PSObject.Properties.Remove('formatted_value')
+                        $envelope | Add-Member -MemberType ScriptProperty -Name formatted_value -Value { $global:CraDu1GetterRan = $true; 'PRIVATE_SENTINEL' }
+                    }
+                    'wrong type' { return 'PRIVATE_SENTINEL' }
+                    'ordinary exception' { throw 'PRIVATE_SENTINEL' }
+                    'control character' { $envelope.formatted_value += "$([char]27)[2J" }
+                    'injected text' { $envelope.formatted_value += ' PRIVATE_SENTINEL root cause found.' }
+                    'wrong status' { $envelope.formatted_value = $envelope.formatted_value.Replace('COMPLETED', 'FAILED') }
+                    'non-string' { $envelope.formatted_value = [pscustomobject]@{path='PRIVATE_SENTINEL'} }
+                }
+                $envelope
+            }
+            $output = @(Invoke-Du1Entrypoint)
+            Assert-Du1Preserved $output
+            # Keep fixture assertions outside production's ordinary-error catch.
+            $global:CraDu1FixtureDisposition | Should -BeExactly 'VALID'
+            $global:CraDu1EnvelopeDisposition | Should -BeExactly 'VALID'
+            $global:CraDu1CloseAtFormat | Should -Be 1
+            $global:CraDu1Information[0].MessageData | Should -BeExactly 'CPU summary unavailable.'
+            $global:CraDu1GetterRan | Should -BeFalse
+            $global:CraDu1Native.context.query_count | Should -Be 6
+            $global:CraDu1Native.context.close_count | Should -Be 1
+        }
+
+        It 'DU1 sampling <Failure> disposes once without result or summary' -ForEach @(
+            @{Failure='hard interruption'}, @{Failure='ordinary exception'}
+        ) {
+            $global:CraDu1Failure = $Failure
+            $global:CraDu1Environment.sleep_milliseconds = {
+                param($c, $milliseconds)
+                if ($global:CraDu1Failure -eq 'ordinary exception') { throw 'Injected hard interruption' }
+                throw [System.OperationCanceledException]::new('Injected hard interruption')
+            }
+            $captured = [System.Collections.Generic.List[object]]::new()
+            { Invoke-Du1Entrypoint | ForEach-Object { $captured.Add($_) } } | Should -Throw '*Injected hard interruption*'
+            $captured.Count | Should -Be 0
+            $global:CraDu1Information.Count | Should -Be 0
+            $global:CraDu1Native.context.close_count | Should -Be 1
+            $global:CraDu1Native.context.query_count | Should -Be 1
+            Should -Invoke Format-CraCpuSummary -Times 0 -Exactly
+        }
+
+        It 'DU1 formatter hard interruption is not converted to unavailable or cancelled' {
+            Mock Format-CraCpuSummary { throw [System.OperationCanceledException]::new('Synthetic presentation interruption') }
+            $captured = [System.Collections.Generic.List[object]]::new()
+            { Invoke-Du1Entrypoint | ForEach-Object { $captured.Add($_) } } | Should -Throw '*Synthetic presentation interruption*'
+            $captured.Count | Should -Be 0
+            $global:CraDu1Information.Count | Should -Be 0
+            $global:CraDu1Native.context.close_count | Should -Be 1
+            $global:CraDu1Native.context.query_count | Should -Be 6
+        }
+
+        It 'DU1 information delivery failure does not retry formatting or collection' {
+            Mock Write-Information { throw [System.OperationCanceledException]::new('Synthetic stream interruption') }
+            $captured = [System.Collections.Generic.List[object]]::new()
+            { Invoke-Du1Entrypoint | ForEach-Object { $captured.Add($_) } } | Should -Throw '*Synthetic stream interruption*'
+            $captured.Count | Should -Be 0
+            $global:CraDu1Native.context.close_count | Should -Be 1
+            $global:CraDu1Native.context.open_count | Should -Be 1
+            $global:CraDu1Native.context.query_count | Should -Be 6
+            Should -Invoke Format-CraCpuSummary -Times 1 -Exactly
+            Should -Invoke Write-Information -Times 1 -Exactly
+        }
+
+        It 'DU1 pipeline-stop at <Phase> propagates in an isolated PowerShell pipeline' -ForEach @(
+            @{Phase='sampling'}, @{Phase='formatter'}, @{Phase='information'}
+        ) {
+            # Isolate PipelineStoppedException from Pester's own execution pipeline.
+            # Both imports below are real; only service creation and the failing
+            # presentation command are replaced in this test runspace.
+            if ($Phase -eq 'sampling') {
+                $global:CraDu1Environment.sleep_milliseconds = { throw [System.Management.Automation.PipelineStoppedException]::new() }
+            }
+            $pipeline = [powershell]::Create()
+            try {
+                $null = $pipeline.AddScript({
+                    param($entrypoint, $syntheticServices, $phase)
+                    $root = Split-Path $entrypoint
+                    Import-Module (Join-Path $root 'CraCpuLiveServices.psm1') -Force
+                    Import-Module (Join-Path $root 'CraCpuDiagnostics.psm1') -Force
+                    function Import-Module { }
+                    function New-CraCpuLiveServices { $syntheticServices }
+                    if ($phase -eq 'formatter') {
+                        function Format-CraCpuSummary { throw [System.Management.Automation.PipelineStoppedException]::new() }
+                    }
+                    elseif ($phase -eq 'information') {
+                        function Write-Information { throw [System.Management.Automation.PipelineStoppedException]::new() }
+                    }
+                    & $entrypoint -ProcessId 4242 -DurationSeconds 5 -ActivityRelation NEW_REPRODUCTION_HUMAN_REPORTED
+                }).AddArgument($global:CraDu1Entrypoint).AddArgument($global:CraDu1Services).AddArgument($Phase)
+                $output = @($pipeline.Invoke())
+                $pipeline.InvocationStateInfo.State | Should -Be ([System.Management.Automation.PSInvocationState]::Stopped)
+                $pipeline.InvocationStateInfo.Reason | Should -BeOfType ([System.Management.Automation.PipelineStoppedException])
+                $output.Count | Should -Be 0
+                @($pipeline.Streams.Information | Where-Object { $_.Tags -contains 'CRA_CPU_SUMMARY' }).Count | Should -Be 0
+                $global:CraDu1Native.context.open_count | Should -Be 1
+                $global:CraDu1Native.context.close_count | Should -Be 1
+                $global:CraDu1Native.context.query_count | Should -Be $(if ($Phase -eq 'sampling') { 1 } else { 6 })
+            }
+            finally { $pipeline.Dispose() }
+        }
     }
 }
