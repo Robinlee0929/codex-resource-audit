@@ -70,7 +70,8 @@ Describe 'T7.1 compact Help and standalone Candidates compatibility' {
         $text | Should -Match '\.\\codex-resource-audit\.ps1 -Mode Guided'
         foreach ($mode in 'Guided','Candidates','Fixture','Session','Help') { $text | Should -Match ([regex]::Escape("-Mode $mode")) }
         $text | Should -Not -Match 'Required Session parameters|Optional Session only|-RootPid <PID>'
-        @($text -split '\r?\n').Count | Should -BeLessOrEqual 40
+        # DU-2B adds capability boundaries and the separate CPU entry point.
+        @($text -split '\r?\n').Count | Should -BeLessOrEqual 50
         $text | Should -Match 'Read-only: never terminates'
     }
 

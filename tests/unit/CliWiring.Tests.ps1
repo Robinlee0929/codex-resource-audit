@@ -89,6 +89,121 @@ Describe 'Stage 0 CLI module wiring' {
             Set-Location -LiteralPath $originalLocation
         }
     }
+    It 'DU2B-A Help preserves exactly five root modes and recommends manual Guided first' {
+        $text = & $script:entrypoint -Mode Help
+        $modeParameter = $script:wiringAst.ParamBlock.Parameters |
+            Where-Object { $_.Name.VariablePath.UserPath -ceq 'Mode' }
+        $validateSet = $modeParameter.Attributes | Where-Object { $_.TypeName.FullName -ceq 'ValidateSet' }
+        @($validateSet.PositionalArguments | ForEach-Object { $_.SafeGetValue() }) |
+            Should -Be @('Help','Fixture','Candidates','Session','Guided')
+        $text | Should -Match 'Recommended:\r?\n  Guided \(primary manual entry; from CRA folder\):'
+        $text.IndexOf('-Mode Guided') | Should -BeLessThan $text.IndexOf('Advanced:')
+        foreach ($mode in 'Help','Fixture','Candidates','Session','Guided') {
+            $text | Should -Match ([regex]::Escape("-Mode $mode"))
+        }
+        $text | Should -Not -Match '(?i)-Mode CPU\b'
+    }
+    It 'DU2B-B Help explains manual eligibility without claiming selection or ownership' {
+        $text = (& $script:entrypoint -Mode Help) -replace '\s+', ' '
+        $text | Should -Match 'compare and explicitly select an eligible action'
+        $text | Should -Match 'In Guided, F/Finder: eligible manual review.*bounded activity-related relationships'
+        $text | Should -Match 'Finder does NOT select, verify, rank or recommend the correct process'
+        $text | Should -Match 'In Guided, S/Session: eligibility requires human recognition, confirmation and fresh exact-process identity revalidation'
+        $text | Should -Match 'A READY candidate is not proof of ownership'
+        $text | Should -Match 'Finder and Session are manual; unavailable through the Incident-only PassThru / AI bridge'
+        $text | Should -Not -Match '(?i)automatically (?:select|verify)|best candidate|recommended process'
+    }
+    It 'DU2B-C Help distinguishes the main release gate from the fixed historical Incident v1 workflow' {
+        $text = (& $script:entrypoint -Mode Help) -replace '\s+', ' '
+        $text | Should -Match 'Incident O/Observe: RELEASE_GATED on development main\.'
+        $text | Should -Match 'Ordinary new execution stops before O0 \(Incident v2\)'
+        $text | Should -Match 'Observation readiness does not override the release gate'
+        $text | Should -Match 'Historical Incident v1: use published fixed v0\.2\.0-beta\.7 with its matching checkout, runtime, Skill and bridge'
+        $text | Should -Match 'docs/FIRST_RUN\.md'
+        $text | Should -Not -Match '(?i)benchmark|B1/B2/B3|fallback|bypass'
+    }
+    It 'DU2B-D CPU guidance leaves PID selection to the human and preserves all three gates' {
+        $text = & $script:entrypoint -Mode Help
+        $flat = $text -replace '\s+', ' '
+        $text | Should -Match 'Standalone CPU Activity Check \(separate from root -Mode\)'
+        $text | Should -Match '(?m)^  # Independently identify one benign current process\.\r?$'
+        $assignment = '$SelectedPid = [long](Read-Host ''Enter its PID'')'
+        @($text -split '\r?\n' | Where-Object { $_.Trim() -ceq $assignment }).Count | Should -Be 1
+        ([regex]::Matches($text, '(?m)^\s*\$SelectedPid\s*=')).Count | Should -Be 1
+        $command = 'pwsh -NoProfile -File .\src\Invoke-CraCpuActivityCheckLive.ps1 -ProcessId $SelectedPid -DurationSeconds 5 -ActivityRelation NO_ACTIVITY_ASSOCIATION'
+        @($text -split '\r?\n' | Where-Object { $_.Trim() -ceq $command }).Count | Should -Be 1
+        $text | Should -Not -Match '-ProcessId\s+[+-]?\d+|\$SelectedPid\s*=\s*(?:\[long\]\s*)?[+-]?\d+'
+        $text | Should -Not -Match 'Get-Process|Get-CimInstance|Get-WmiObject|Win32_Process|Select-Object|Sort-Object'
+        $flat | Should -Match 'Requires fresh CONFIRM / CONFIRM / START decisions'
+        $flat | Should -Match 'measures one selected process for 5-60 seconds'
+        $flat | Should -Match 'CPU percentages are one-core-relative, not whole-host CPU'
+        $flat | Should -Match 'Development main only: DU-1 human-readable CPU summary'
+        $text | Should -Match 'docs/T18_2A_CPU_ACTIVITY_CHECK\.md'
+        $text | Should -Not -Match '(?i)entire application|diagnoses? a hang|proves? a leak'
+    }
+    It 'DU2B-E Help retains the read-only trust identity and lifecycle safety notices' {
+        $text = & $script:entrypoint -Mode Help
+        foreach ($notice in @(
+            'Read-only: never terminates, cleans up, repairs, suspends, or reprioritizes processes.',
+            'Discovery does not establish trust.',
+            'Live use belongs in an operator-owned PowerShell 7 session.',
+            'Candidate groups are presentation-only, not trust levels or recommendations.',
+            'Session requires exact PID, creation-time, and executable-path matching.',
+            'REAL_BROWSER_MCP_LIFECYCLE_POLICY: EVIDENCE_BLOCKED',
+            'REAL_BROWSER_MCP_RESIDUE_CLAIM: NOT_SUPPORTED',
+            'UNKNOWN is never treated as CODEX ownership. Survival alone does not establish residue.'
+        )) {
+            $text | Should -Match ([regex]::Escape($notice))
+        }
+    }
+    It 'DU2B-F Show-Help is only one static literal with no executable workflow or side effects' {
+        $definition = $script:wiringAst.Find({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Show-Help'
+        }, $false)
+        $definition.Body.ParamBlock | Should -BeNullOrEmpty
+        $definition.Body.BeginBlock | Should -BeNullOrEmpty
+        $definition.Body.ProcessBlock | Should -BeNullOrEmpty
+        $definition.Body.CleanBlock | Should -BeNullOrEmpty
+        $definition.Body.DynamicParamBlock | Should -BeNullOrEmpty
+        $statements = @($definition.Body.EndBlock.Statements)
+        $statements.Count | Should -Be 1
+        $statements[0] | Should -BeOfType ([Management.Automation.Language.PipelineAst])
+        $elements = @($statements[0].PipelineElements)
+        $elements.Count | Should -Be 1
+        $elements[0] | Should -BeOfType ([Management.Automation.Language.CommandExpressionAst])
+        $elements[0].Redirections.Count | Should -Be 0
+        $literal = $elements[0].Expression
+        $literal | Should -BeOfType ([Management.Automation.Language.StringConstantExpressionAst])
+        $literal.StringConstantType.ToString() | Should -BeExactly 'SingleQuotedHereString'
+        $literal.Value | Should -Match '\$SelectedPid'
+        @($definition.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.CommandAst] -or
+            $node -is [Management.Automation.Language.InvokeMemberExpressionAst] -or
+            $node -is [Management.Automation.Language.VariableExpressionAst]
+        }, $true)).Count | Should -Be 0
+    }
+    It 'DU2B-G default and explicit Help emit the same single success string without acquisition or prompts' {
+        Mock Get-CimInstance { throw 'Help must not collect processes.' }
+        Mock Get-Process { throw 'Help must not open a process.' }
+        Mock Add-Type { throw 'Help must not load native process operations.' }
+        Mock Read-Host { throw 'Help must not prompt.' }
+        $information = @(); $warnings = @(); $helpErrors = @()
+        $explicit = @(& $script:entrypoint -Mode Help -InformationVariable information -WarningVariable warnings -ErrorVariable helpErrors)
+        $explicit.Count | Should -Be 1
+        $explicit[0] | Should -BeOfType [string]
+        $information.Count | Should -Be 0
+        $warnings.Count | Should -Be 0
+        $helpErrors.Count | Should -Be 0
+        $default = @(& $script:entrypoint *>&1)
+        $merged = @(& $script:entrypoint -Mode Help *>&1)
+        $default | Should -Be $explicit
+        $merged | Should -Be $explicit
+        foreach ($command in 'Get-CimInstance','Get-Process','Add-Type','Read-Host') {
+            Should -Invoke $command -Times 0 -Exactly
+        }
+    }
     It 'W04 startup guard pins every Finder function used by the Guided path' {
         $requiredNames=@($script:requiredFunctionsAssignment.Right.FindAll({param($node)
             $node -is [Management.Automation.Language.StringConstantExpressionAst]
