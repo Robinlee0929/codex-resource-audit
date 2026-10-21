@@ -128,18 +128,32 @@ foreach ($functionName in $requiredProductionFunctions) {
 function Show-Help {
     @'
 === CODEX RESOURCE AUDIT ===
-
 Evidence-based Codex process attribution and lifecycle auditing.
 Read-only: never terminates, cleans up, repairs, suspends, or reprioritizes processes.
-
 Recommended:
-  Guided
-    .\codex-resource-audit.ps1 -Mode Guided
-    Interactive discover -> verify -> observe -> review workflow.
+  Guided (primary manual entry; from CRA folder): .\codex-resource-audit.ps1 -Mode Guided
+    Discover candidates for operator review; compare and explicitly select an eligible action.
+    In Guided, F/Finder: eligible manual review can inspect bounded activity-related relationships.
+    Finder does NOT select, verify, rank or recommend the correct process.
+    In Guided, S/Session: eligibility requires human recognition, confirmation and fresh
+    exact-process identity revalidation. A READY candidate is not proof of ownership.
+    Finder and Session are manual; unavailable through the Incident-only PassThru / AI bridge.
     Optional PUBLIC_SAFE_ONLY JSON + Markdown export (explicit new local directory):
     .\codex-resource-audit.ps1 -Mode Guided -ExportIssueEvidence -IssueEvidenceOutputDirectory C:\Evidence\cra-run-01
     Writes only the requested package; no new collection. Review before public sharing.
-
+Incident O/Observe: RELEASE_GATED on development main.
+  Ordinary new execution stops before O0 (Incident v2).
+  Observation readiness does not override the release gate.
+  Historical Incident v1: use published fixed v0.2.0-beta.7 with its matching
+  checkout, runtime, Skill and bridge. See docs/FIRST_RUN.md.
+Standalone CPU Activity Check (separate from root -Mode)
+  # Independently identify one benign current process.
+  $SelectedPid = [long](Read-Host 'Enter its PID')
+  pwsh -NoProfile -File .\src\Invoke-CraCpuActivityCheckLive.ps1 -ProcessId $SelectedPid -DurationSeconds 5 -ActivityRelation NO_ACTIVITY_ASSOCIATION
+  Requires fresh CONFIRM / CONFIRM / START decisions; measures one selected process for 5-60 seconds.
+  CPU percentages are one-core-relative, not whole-host CPU.
+  Development main only: DU-1 human-readable CPU summary.
+  See docs/T18_2A_CPU_ACTIVITY_CHECK.md.
 Advanced:
   Candidates
     .\codex-resource-audit.ps1 -Mode Candidates

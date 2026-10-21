@@ -55,7 +55,7 @@ Describe 'T1 additive CLI and legacy stream compatibility' {
 '@ -replace "`r`n", "`n"
         $helpText=$helpDefinition.Extent.Text -replace "`r`n", "`n"
         ([regex]::Matches($helpText,[regex]::Escape($exportHelp))).Count | Should -Be 1
-        Get-OperatorTestHash ($helpText.Replace($exportHelp+"`n",'')) | Should -BeExactly '635031788B3BADD8F14A9141A36132F355871C7307D47D5D90CE8ED07A38E158'
+        Get-OperatorTestHash ($helpText.Replace($exportHelp+"`n",'')) | Should -BeExactly '9D632F91759B85C2476B824598D3F0D5A2EC678C837E0BDA4CF946F31804C72F'
         $assigned = @(& $script:operatorEntry -Mode Help)
         $piped = @(& $script:operatorEntry -Mode Help | ForEach-Object { $_ })
         $merged = @(& $script:operatorEntry -Mode Help *>&1)
