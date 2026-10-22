@@ -472,6 +472,58 @@ Describe 'Guided pure projection comparison styling and stream boundaries' {
         $view = Get-GuidedCandidateView $snapshot $candidates
     }
     AfterEach { [Environment]::SetEnvironmentVariable('NO_COLOR',$script:oldNoColor) }
+    It 'DU3B readiness guidance separates captured eligibility from the main release gate without changing rows or streams' {
+        $before=$view | ConvertTo-Json -Depth 30 -Compress
+        $all=@(Format-GuidedCandidateIndex $view -ColorCapability Plain *>&1)
+        $all.Count | Should -Be 1
+        $all[0] | Should -BeOfType [string]
+        $all[0] | Should -Match 'READY describes captured candidate eligibility only'
+        $all[0] | Should -Match 'does not prove ownership, identity continuity or correctness'
+        $all[0] | Should -Match 'No candidate is automatically selected or recommended'
+        $all[0] | Should -Match 'OBSERVATION_READY != RELEASE_AVAILABLE'
+        $all[0] | Should -Match 'On development main, Incident v2 remains RELEASE_GATED before O0'
+        $all[0] | Should -Match 'Finder and eligible manual Session have separate availability rules'
+        $rows=@($all[0] -split '\r?\n' | Where-Object {$_ -match '^    C[1-9]'})
+        @($rows | ForEach-Object {($_.Trim() -split ' \| ')[0]}) | Should -Be @('C1','C3','C2')
+        ($view | ConvertTo-Json -Depth 30 -Compress) | Should -BeExactly $before
+        Assert-TestOperatorDocumentPair $all[0] (Format-GuidedCandidateIndex $view -ColorCapability Ansi)
+    }
+    It 'DU3B blocked reason <reason> has a precise safe explanation and preserves the output contract' -ForEach @(
+        @{reason='GUIDED_ACTION_INVALID';message='The action input was not accepted.'},
+        @{reason='NO_READY_CANDIDATES';message='No eligible candidate was established in the review set.'},
+        @{reason='NO_SESSION_READY_CANDIDATES';message='No Session-eligible candidate was established in the review set.'},
+        @{reason='SESSION_TARGET_BLOCKED';message='Session eligibility was not established for the selected candidate.'},
+        @{reason='OBSERVATION_TARGET_BLOCKED';message='Observation eligibility was not established for the selected candidate.'},
+        @{reason='TARGET_BLOCKED';message='Neither Session nor Observation eligibility was established for the selected candidate.'}
+    ) {
+        $outcome=[pscustomobject]@{status='EVIDENCE_BLOCKED';operator_assertion_recorded=$false;review_candidate_ids=@('C3','C1');reason_code=$reason}
+        $before=$outcome | ConvertTo-Json -Compress
+        $all=@(Format-GuidedOutcome $outcome -ColorCapability Plain *>&1)
+        $all.Count | Should -Be 1;$all[0] | Should -BeOfType [string]
+        $all[0] | Should -Match ([regex]::Escape($message))
+        $all[0] | Should -Match ('Reason: '+$reason)
+        $all[0] | Should -Match 'Outcome: EVIDENCE_BLOCKED'
+        $all[0] | Should -Match 'No confirmation recorded; suppressed fields remain private'
+        $all[0] | Should -Not -Match 'Captured identity is not Session-ready|INPUT REQUIRED|OPERATOR_CONFIRMATION: RECORDED'
+        ($outcome | ConvertTo-Json -Compress) | Should -BeExactly $before
+        Assert-TestOperatorDocumentPair $all[0] (Format-GuidedOutcome $outcome -ColorCapability Ansi)
+    }
+    It 'DU3B absent unknown or malformed reason <variant> stays neutral without disclosing private input' -ForEach @(
+        @{variant='absent'},@{variant='null'},@{variant='unknown'},@{variant='case'},@{variant='object'},@{variant='array'}
+    ) {
+        $outcome=[pscustomobject]@{status='EVIDENCE_BLOCKED';operator_assertion_recorded=$false;review_candidate_ids=@()}
+        $private='C:\Users\PRIVATE_SENTINEL\raw-command --secret'
+        switch ($variant) {
+            null {$outcome | Add-Member reason_code $null}
+            unknown {$outcome | Add-Member reason_code $private}
+            case {$outcome | Add-Member reason_code 'guided_action_invalid'}
+            object {$outcome | Add-Member reason_code ([pscustomobject]@{error=$private})}
+            array {$outcome | Add-Member reason_code @('GUIDED_ACTION_INVALID',$private)}
+        }
+        $text=Format-GuidedOutcome $outcome -ColorCapability Plain
+        $text | Should -Match 'Guided could not proceed; eligibility or a valid action was not established'
+        $text | Should -Not -Match 'Reason:|PRIVATE_SENTINEL|raw-command|secret|not Session-ready'
+    }
     It 'H23 Plain and styled comparison share full layout and NO_COLOR always disables escapes' {
         $plain = Format-GuidedComparison -Candidates $view.rows -ColorCapability Plain
         $styled = Format-GuidedComparison -Candidates $view.rows -ColorCapability Ansi

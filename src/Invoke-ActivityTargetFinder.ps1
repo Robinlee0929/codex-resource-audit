@@ -14,6 +14,10 @@ function Invoke-ActivityTargetFinder {
         if ($null -ne $failure) {$result=New-ActivityFinderResult -Condition $failure}
         else {
             Write-Information (@('=== FIND RELATED ACTIVITY ===','Baseline ready.',
+                'Finder reuses the initial Guided discovery snapshot and takes exactly one additional activity snapshot after CAPTURE_ACTIVITY.',
+                'It looks for newly observed exact identities and bounded parent relationships; short-lived processes between snapshots can be missed.',
+                'An existing process simply remaining active does not establish CPU or hang diagnosis.',
+                'Only one Finder invocation is allowed per Guided run. Finder does not establish ownership or recommend a process.',
                 'Start or reproduce the activity you want to investigate.',
                 'Type CAPTURE_ACTIVITY while it is running to take one snapshot.',
                 'INPUT REQUIRED: CAPTURE_ACTIVITY','Q/QUIT cancels.') -join [Environment]::NewLine) -InformationAction Continue
@@ -55,7 +59,7 @@ function Invoke-ActivityTargetFinder {
     if ($canReturn) {
         $returnText=if ($view.status -ceq 'FINDER_COMPLETED') {'Finder finished. Returning to normal candidate review.'}
             else {'Finder unavailable. Returning to normal review of the original discovery candidates.'}
-        Write-Information ($returnText+[Environment]::NewLine+'Enter candidate IDs for normal review.') -InformationAction Continue
+        Write-Information ($returnText+[Environment]::NewLine+'Use the original C candidate IDs to form a manual review set. A activity references are not selectable candidate IDs.') -InformationAction Continue
     }
     elseif ($view.status -ceq 'FINDER_FAILED') {Write-Information 'Finder unavailable. Guided interaction stopped.' -InformationAction Continue}
     [pscustomobject]@{status=$view.status;condition=$view.condition;can_return_to_review=$canReturn}

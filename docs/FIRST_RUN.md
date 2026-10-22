@@ -6,6 +6,10 @@ The standalone [CPU Activity Check](T18_2A_CPU_ACTIVITY_CHECK.md) is a separate
 human-operated workflow and does not require the `cra-incident` Skill. This guide
 covers setup and recovery; it does not add runtime capabilities.
 
+For manual candidate inspection, Finder and eligible Session, go directly to the
+[manual Guided/Finder walkthrough](#manual-guidedfinder-walkthrough). These manual
+workflows do not require Skill deployment.
+
 Version `v0.2.0-beta.7` includes the `FIRST_RUN_RECOVERY_BATCH` setup and recovery
 behavior below, including same-request STEP 2 correction before review acceptance.
 Use matching checkout, runtime and Skill. The
@@ -32,6 +36,112 @@ The standalone CPU Activity Check and eligible manual Finder/Session workflows
 remain available independently. Memory Trend, T18.3 AI interpretation and T18.1
 runtime ingestion remain unimplemented; see the
 [capability comparison](../README.md#choose-a-version-before-starting).
+
+## Manual Guided/Finder walkthrough
+
+This describes the current manual interaction. The fixed beta.7 checkout remains
+unchanged; development-main presentation may differ. Historical
+[Finder](T16_2_ISSUE_CENTRIC_ACTIVITY_TARGET_FINDER_SPEC.md) and
+[Session target/handoff](V0_1_1_GUIDED_SESSION_TARGET_AND_HANDOFF.md) phase documents
+are technical references, not the current step-by-step navigation guide.
+
+1. **Choose the version.** Use fixed `v0.2.0-beta.7` with matching files for its
+   historical Incident v1 workflow, or development `main` for development and
+   independently available manual workflows. Follow the
+   [checkout and verification commands](../README.md#quick-start) and record the
+   actual commit. On development main, Incident v2 remains `RELEASE_GATED` before
+   O0. `OBSERVATION_READY != RELEASE_AVAILABLE`; selecting Observe cannot open
+   the gate. Finder and eligible manual Session have separate availability rules.
+2. **Start manual Guided in your own interactive PowerShell 7 console**, from
+   your chosen checkout, outside Codex's execution environment:
+
+   ```powershell
+   .\codex-resource-audit.ps1 -Mode Guided
+   ```
+
+   Do not add `-PassThru` for this walkthrough. Live collection belongs to the
+   operator; AI does not launch it or answer prompts for you.
+3. **Inspect the candidate list.** C IDs refer only to this original discovery
+   snapshot. Groups and display order help navigation; they do not rank candidates.
+   Session and Observation readiness are separate captured eligibility checks.
+   READY proves neither ownership, identity continuity nor correctness. No candidate
+   is automatically selected or recommended; incomplete evidence stays uncertain.
+4. **Optionally open Finder at SELECT FOR REVIEW.** Enter literal `F` (case
+   insensitive), without surrounding spaces or other IDs, when reproducing activity
+   might expose new exact identities and bounded parent relationships. `F/Finder`
+   names the feature; the word `Finder` is not an accepted token. Finder reuses
+   the initial Guided snapshot and permits one invocation per Guided run.
+5. **Reproduce the activity, then enter `CAPTURE_ACTIVITY` while it is running.**
+   This takes exactly one additional activity snapshot. Use the token without
+   surrounding spaces; case does not matter. Other activity input repeats this
+   prompt without capturing. `Q/QUIT` cancels and stops Guided. Short-lived
+   processes can fall between snapshots. An existing process remaining active
+   does not establish CPU or hang diagnosis; Finder is not CPU measurement.
+6. **Interpret the result before choosing anything.**
+
+   | Finder result | Meaning and next step |
+   | --- | --- |
+   | Related candidates | Bounded exact observed parent chains reached original candidates. Manually form a review set from original C IDs; this is not a target recommendation or verified root. |
+   | No related candidates | This comparison established no relationship to an original candidate. It may have found no exact new identities, no candidate intersection, or unresolved identity evidence. `NO_MATCH != CLEAN_SYSTEM`; activity may have been missed. |
+   | Missing, incomplete or unavailable evidence | Retain uncertainty. Follow the displayed return/stop result. If return is permitted, review the original discovery candidates; do not treat unavailable evidence as absence or retry Finder in this run. |
+   | Cancelled or terminal failure | Guided has stopped; do not enter more IDs expecting this run to continue. A later attempt requires fresh discovery and new human choices. |
+
+   `C<n>` is an original Guided candidate reference. `A<n>` is Finder activity
+   evidence, not a selectable original candidate ID. Parent Hops is bounded
+   observed relationship distance; Supporting Identities is an evidence count,
+   not probability or ranking. Display order is navigation only.
+7. **When Finder explicitly returns, use original C IDs.** It does not replace
+   the original candidate list or select anything. A second `F` only tells you
+   Finder was already used; it does not collect again. A reader failure or invalid
+   candidate map can stop the interaction, whereas some unavailable comparisons
+   can return. Follow the actual message, not an assumption that every failure returns.
+8. **Select multiple candidates for review without selecting a final target.**
+   Enter a comma-separated set such as `C3,C9,C12`, using only IDs present in your
+   list. Include still-plausible candidates you cannot rule out, rather than
+   trialling them one at a time. C IDs are case insensitive; spaces/tabs around
+   individual IDs are allowed; duplicates retain their first occurrence. This
+   review set only determines the next comparison display.
+9. **Compare identities locally with independent current information.** At
+   COMPARE CAPTURED IDENTITIES, compare PID and Creation Time UTC with information
+   about the application/process instance you actually intend to inspect. Do not
+   rely on name, READY, ordering, group, PID alone or Finder relationship counts.
+   Creation time is identity evidence, not ownership. Keep private identity details
+   and paths local; do not paste the table into AI or issue reports.
+10. **Choose exactly one eligible target and action.** At CHOOSE TARGET AND ACTION,
+    enter one C ID from your review set, even if it contains only one candidate.
+    Choose `S/SESSION` only with Session eligibility, or `O/OBSERVE` only with
+    Observation eligibility and a version whose Incident runtime is available.
+    Main's gate still blocks Observe before O0. Neither eligibility nor selecting
+    a target establishes ownership; no eligible target means stop rather than guess.
+11. **Confirm Session only after inspecting its captured identity.** `Y/YES`
+    records operator confirmation; `N/NO` declines and stops without Session;
+    `Q/QUIT` cancels. These tokens are case insensitive and must have no surrounding
+    spaces. Other confirmation input stops with an input error. Confirmation is
+    not exact current identity revalidation: Session must still pass its existing
+    revalidation before it starts. No confirmation is inferred from a C ID or `S`.
+12. **Cancel rather than guess.** Enter `Q/QUIT` at an input prompt if the intended
+    identity or next step remains unclear. It ends this Guided interaction; it
+    does not go back to a prior menu. An uncertain or stopped attempt is not a clean
+    result, verified ownership or evidence that an observed process is residue.
+
+**Manual versus bridge/PassThru STEP 2 correction:** invalid manual review input
+stops with `GUIDED_REVIEW_INVALID`; it does not enter the same-request correction
+loop. Finder's activity-token retry and already-used `F` reminder are separate
+existing behaviors. Only bridge/PassThru offers STEP 2 complete-review-set
+correction; that path supports Incident Observation only and excludes Finder and
+Session. Later target/action failures retain their stop behavior in both paths.
+
+```text
+UNKNOWN != CODEX
+FINDER_RELATED != RECOMMENDED_TARGET
+FINDER_RELATED != VERIFIED_ROOT
+OBSERVATION_READY != RELEASE_AVAILABLE
+SESSION_READY != VERIFIED_ROOT
+TARGET_SELECTION != OPERATOR_CONFIRMATION
+OPERATOR_CONFIRMATION != EXACT_IDENTITY_REVALIDATION
+STILL_OBSERVED != RESIDUE
+NO_MATCH != CLEAN_SYSTEM
+```
 
 ## Skill deployment and recognition
 

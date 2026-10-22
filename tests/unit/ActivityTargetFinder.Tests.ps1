@@ -31,6 +31,53 @@ BeforeAll {
 
 Describe 'T16.3 pure Finder evidence contracts' {
     BeforeEach {New-FinderVector}
+    It 'DU3B related evidence explains references and manual review without changing rows values order or streams' {
+        $r=Resolve-FinderVector
+        $before=$r | ConvertTo-Json -Depth 20 -Compress
+        $all=@(Format-FinderVector $r *>&1)
+        $all.Count | Should -Be 1;$all[0] | Should -BeOfType [string]
+        $all[0] | Should -Match 'C<n>: original Guided candidate reference'
+        $all[0] | Should -Match 'A<n>: Finder activity evidence reference, not a selectable original candidate ID'
+        $all[0] | Should -Match 'Parent Hops: bounded observed relationship distance'
+        $all[0] | Should -Match 'Supporting Identities: evidence count, not probability or ranking'
+        $all[0] | Should -Match 'Display order is navigation only'
+        $all[0] | Should -Match 'Manually form a review set using original C IDs'
+        $all[0] | Should -Match 'FINDER_RELATED != RECOMMENDED_TARGET; FINDER_RELATED != VERIFIED_ROOT'
+        @($all[0] -split '\r?\n' | Where-Object {$_ -match '^C[0-9]+ \|'}) | Should -Be @(
+            'C9 | codex.exe | OBSERVATION READY | 1 | A3 | 3',
+            'C1 | ChatGPT.exe | OBSERVATION READY | 2 | A3 | 3')
+        $all[0] | Should -Not -Match 'PRIVATE_RUNNER|INPUT REQUIRED|Returning to normal'
+        ($r | ConvertTo-Json -Depth 20 -Compress) | Should -BeExactly $before
+    }
+    It 'DU3B empty or unresolved <variant> retains uncertainty and never claims a clean system' -ForEach @(
+        @{variant='noNew';condition='FINDER_NO_EXACT_NEW_IDENTITIES'},
+        @{variant='noIntersection';condition='FINDER_NO_CANDIDATE_INTERSECTION'},
+        @{variant='unresolved';condition='FINDER_DELTA_UNRESOLVED'}
+    ) {
+        $script:fa.processes=@($script:fc)
+        if ($variant -eq 'noIntersection') {$script:fa.processes+=@(New-IncidentTestRecord -Id 999 -Parent 0)}
+        if ($variant -eq 'unresolved') {$script:fa.processes=@($script:fc[8].PSObject.Copy());$script:fa.processes[0].creation_time=$null}
+        $r=Resolve-FinderVector;$r.condition | Should -BeExactly $condition
+        $text=Format-FinderVector $r
+        $text | Should -Match 'This comparison found no established relationship to an original candidate'
+        $text | Should -Match 'not proof of a clean system. NO_MATCH != CLEAN_SYSTEM'
+        $text | Should -Match 'Missing or incomplete evidence retains uncertainty'
+        $text | Should -Not -Match 'Manually form a review set|(?m)^C[0-9]+ \|'
+    }
+    It 'DU3B unavailable or cancelled <variant> never tells a stopped workflow to continue' -ForEach @(
+        @{variant='baseline';condition='FINDER_BASELINE_INCOMPLETE'},
+        @{variant='reader';condition='FINDER_READER_FAILED'},
+        @{variant='capture';condition='FINDER_ACTIVITY_CAPTURE_INCOMPLETE'},
+        @{variant='cancelled';condition=$null}
+    ) {
+        $r=if ($variant -eq 'cancelled') {New-ActivityFinderResult -Status FINDER_CANCELLED -Condition $null}
+            else {New-ActivityFinderResult -Condition $condition}
+        $text=Format-FinderVector $r
+        $text | Should -Match 'Missing or incomplete evidence retains uncertainty'
+        $text | Should -Not -Match 'Manually form a review set|Returning|Enter candidate|Use the original|(?m)^C[0-9]+ \|'
+        if ($variant -eq 'cancelled') {$text | Should -Match 'Finder cancelled. Guided interaction stopped'}
+        else {$text | Should -Match 'No related candidate result was established'}
+    }
     It 'AF01 V1 admits A1 A2 A3 and preserves both candidates with aggregated minimum distances' {
         $before=@($script:fb,$script:fa,$script:fc) | ConvertTo-Json -Depth 12 -Compress
         $r=Resolve-FinderVector
@@ -408,6 +455,48 @@ Describe 'T16.3 synchronous acquisition and manual Guided handoff' {
         $outcome.review_candidate_ids.Count | Should -Be 0;$outcome.selected_session_targets.Count | Should -Be 0
         $outcome.incident_action | Should -BeNullOrEmpty;$outcome.incident_target | Should -BeNullOrEmpty
         $outcome.selected_candidate_id | Should -BeNullOrEmpty;$outcome.operator_assertion_recorded | Should -BeFalse
+    }
+    It 'DU3B preparation precedes the unchanged activity prompt and one capture with no automatic selection' {
+        Set-FinderAnswers @('F','CAPTURE_ACTIVITY','F','Q')
+        $all=@(Invoke-GuidedDiscovery *>&1)
+        $outputs=@($all | Where-Object {$_ -isnot [Management.Automation.InformationRecord]})
+        $outputs.Count | Should -Be 1
+        $outputs[0].status | Should -BeExactly CANCELLED
+        $outputs[0].review_candidate_ids.Count | Should -Be 0
+        $outputs[0].selected_candidate_id | Should -BeNullOrEmpty
+        $outputs[0].operator_assertion_recorded | Should -BeFalse
+        $text=($all | Where-Object {$_ -is [Management.Automation.InformationRecord]} | ForEach-Object MessageData) -join "`n"
+        $text | Should -Match 'reuses the initial Guided discovery snapshot and takes exactly one additional activity snapshot'
+        $text | Should -Match 'newly observed exact identities and bounded parent relationships'
+        $text | Should -Match 'short-lived processes between snapshots can be missed'
+        $text | Should -Match 'does not establish CPU or hang diagnosis'
+        $text | Should -Match 'Only one Finder invocation is allowed per Guided run'
+        $text | Should -Match 'does not establish ownership or recommend a process'
+        $text | Should -Match 'Use the original C candidate IDs to form a manual review set'
+        $text | Should -Not -Match 'PRIVATE|OPERATOR_CONFIRMATION: RECORDED'
+        $text.IndexOf('reuses the initial Guided') | Should -BeLessThan $text.IndexOf('INPUT REQUIRED: CAPTURE_ACTIVITY')
+        $script:finderCaptures | Should -Be @('CANDIDATES','F1')
+        @($script:finderPrompts) | Should -Be @(
+            'Select one or more candidate IDs for review, e.g. C3,C9,C12 (Q/QUIT to cancel)',
+            'Type CAPTURE_ACTIVITY (Q/QUIT to cancel)',
+            'Select one or more candidate IDs for review, e.g. C3,C9,C12 (Q/QUIT to cancel)',
+            'Select one or more candidate IDs for review, e.g. C3,C9,C12 (Q/QUIT to cancel)')
+    }
+    It 'DU3B explanatory words do not become review tokens <token>' -ForEach @(@{token='Finder'},@{token='A3'},@{token='C9,A3'}) {
+        Set-FinderAnswers @($token)
+        {Invoke-GuidedDiscovery 6>$null} | Should -Throw '*GUIDED_REVIEW_INVALID*'
+        $script:finderCaptures | Should -Be @('CANDIDATES')
+        $script:finderPrompts.Count | Should -Be 1
+    }
+    It 'DU3B Finder and READY cannot bypass the production Incident release gate before O0' {
+        # Model the production provider's unset profile, not a benchmark profile.
+        Mock Get-IncidentCollectionProfile {$null}
+        Set-FinderAnswers @('F','CAPTURE_ACTIVITY','C9','C9','O')
+        $choice=Invoke-GuidedDiscovery 6>$null
+        $choice.status | Should -BeExactly INCIDENT_ACTION_SELECTED
+        {Invoke-IncidentObservation $choice 6>$null} | Should -Throw '*INCIDENT_POLICY_RELEASE_GATED*'
+        $script:finderCaptures | Should -Be @('CANDIDATES','F1')
+        $script:finderPrompts.Count | Should -Be 5
     }
     It 'AF21 Finder cancellation <answer> stops without another reader or F1' -ForEach @(
         @{answer='Q';status='CANCELLED'},@{answer='quit';status='CANCELLED'},@{answer=$null;status='CANCELLED'},@{answer='THROW';status='EVIDENCE_BLOCKED'}
