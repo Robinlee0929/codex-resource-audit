@@ -100,6 +100,8 @@ function Format-GuidedCandidateIndex {
         Format-OperatorLine Note -Value 'Discovery only. No candidate is trusted automatically.' -ColorCapability $ColorCapability
         Format-OperatorLine Note -Value 'COPY_READY != SESSION_READY; SESSION_READY != VERIFIED_ROOT. Readiness does not rank or recommend candidates.' -ColorCapability $ColorCapability
         Format-OperatorLine Note -Value 'OBSERVATION_READY != SESSION_READY; OBSERVATION_READY != CURRENT_IDENTITY_MATCHED. Each action requires an explicit choice.' -ColorCapability $ColorCapability
+        Format-OperatorLine Note -Value 'READY describes captured candidate eligibility only; it does not prove ownership, identity continuity or correctness. No candidate is automatically selected or recommended.' -ColorCapability $ColorCapability
+        Format-OperatorLine Note -Value 'OBSERVATION_READY != RELEASE_AVAILABLE. On development main, Incident v2 remains RELEASE_GATED before O0. Finder and eligible manual Session have separate availability rules.' -ColorCapability $ColorCapability
         Format-OperatorLine Note -Value 'CANDIDATE_ONLY != VERIFIED_ROOT; DISCOVERY_RESULT != OPERATOR_VERIFICATION' -ColorCapability $ColorCapability
         Format-OperatorLine Note -Value 'Groups describe how a candidate matched discovery criteria; they are not trust levels or recommendations.' -ColorCapability $ColorCapability
         Format-OperatorLine Note -Value 'Group order is presentation-only. IDs retain capture ordinals, apply only to this captured set, and are not process identity.' -ColorCapability $ColorCapability
@@ -208,7 +210,20 @@ function Format-GuidedOutcome {
         Format-OperatorLine KeyValue -Label 'NEXT' -Value $(if ($recorded) { 'Exact current identity revalidation is required before Session starts.' } else { 'Use -Mode Help for advanced modes, or start a new Guided capture when ready.' })
         if ($state -eq 'CANCELLED') { Format-OperatorLine Note -Value 'Cancelled. No Session target or confirmation retained; no Session started.' -ColorCapability $ColorCapability }
         if ($state -eq 'DECLINED') { Format-OperatorLine Note -Value 'Confirmation declined. No Session target or confirmation retained; no Session started.' -ColorCapability $ColorCapability }
-        if ($state -eq 'EVIDENCE_BLOCKED') { Format-OperatorLine Note -Value 'Captured identity is not Session-ready. No confirmation recorded; suppressed fields remain private.' -ColorCapability $ColorCapability }
+        if ($state -eq 'EVIDENCE_BLOCKED') {
+            $reason=Get-RootCandidateField $Outcome 'reason_code'
+            if ($reason -isnot [string]) {$reason=$null}
+            $explanation=switch -CaseSensitive ($reason) {
+                'GUIDED_ACTION_INVALID' {'The action input was not accepted.'}
+                'NO_READY_CANDIDATES' {'No eligible candidate was established in the review set.'}
+                'NO_SESSION_READY_CANDIDATES' {'No Session-eligible candidate was established in the review set.'}
+                'SESSION_TARGET_BLOCKED' {'Session eligibility was not established for the selected candidate.'}
+                'OBSERVATION_TARGET_BLOCKED' {'Observation eligibility was not established for the selected candidate.'}
+                'TARGET_BLOCKED' {'Neither Session nor Observation eligibility was established for the selected candidate.'}
+                default {'Guided could not proceed; eligibility or a valid action was not established.'}
+            }
+            Format-OperatorLine Note -Value ($explanation+' No confirmation recorded; suppressed fields remain private.') -ColorCapability $ColorCapability
+        }
         Format-OperatorLine Note -Value 'Operator confirmation alone does not establish a verified root or ownership.' -ColorCapability $ColorCapability
     )
     return $lines -join [Environment]::NewLine

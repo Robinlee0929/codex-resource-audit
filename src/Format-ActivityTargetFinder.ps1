@@ -99,6 +99,9 @@ function Format-ActivityTargetFinder {
             Get-ActivityFinderConditionText $view.condition
         }
         if ($view.status -ceq 'FINDER_COMPLETED') {
+            'C<n>: original Guided candidate reference. A<n>: Finder activity evidence reference, not a selectable original candidate ID.'
+            'Parent Hops: bounded observed relationship distance. Supporting Identities: evidence count, not probability or ranking.'
+            'Display order is navigation only; it does not rank or recommend candidates.'
             '{0} related candidates; {1}: NEWLY OBSERVED IN FINDER ACTIVITY CAPTURE.' -f
                 $view.rows.Count.ToString([cultureinfo]::InvariantCulture),$view.seed_count.ToString([cultureinfo]::InvariantCulture)
             if ($view.rows.Count -gt 10) {
@@ -116,7 +119,11 @@ function Format-ActivityTargetFinder {
             foreach ($code in $view.diagnostics) {$code}
             if ($view.unresolved_count -gt 0) {'Unresolved identity comparisons: '+$view.unresolved_count.ToString([cultureinfo]::InvariantCulture)}
             if ('FINDER_PARENT_TRACE_PARTIAL' -cin $view.diagnostics) {'Some parent traces stopped at the available evidence or trace limit.'}
+            if ($view.rows.Count) {'Manually form a review set using original C IDs; related evidence does not select a final target.'}
+            else {'This comparison found no established relationship to an original candidate; it is not proof of a clean system. NO_MATCH != CLEAN_SYSTEM.'}
         }
+        'Missing or incomplete evidence retains uncertainty; do not infer ownership or absence from unavailable evidence.'
+        'FINDER_RELATED != RECOMMENDED_TARGET; FINDER_RELATED != VERIFIED_ROOT.'
         'Navigation only. No ownership or causation has been established.'
     ) -join [Environment]::NewLine
 }

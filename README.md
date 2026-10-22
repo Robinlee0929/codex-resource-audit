@@ -325,11 +325,39 @@ is available in fixed beta.7; at reviewed main it reaches the Incident v2 releas
 gate, even if candidate readiness permits the action. You inspect local terminal
 evidence, choose candidates for review, select one target and explicitly choose
 an action. Readiness and ordering never choose or trust a target automatically.
-[Manual Finder](docs/T16_2_ISSUE_CENTRIC_ACTIVITY_TARGET_FINDER_SPEC.md).
+
+Follow the [current manual Guided/Finder walkthrough](docs/FIRST_RUN.md#manual-guidedfinder-walkthrough):
+
+1. Inspect the captured C candidate list and each action's readiness. READY is
+   captured eligibility, not ownership, identity continuity or release availability.
+2. At SELECT FOR REVIEW, enter literal `F` for Finder when you can reproduce
+   activity that may expose newly observed identities. `Finder` is the feature
+   name, not an accepted input token. Reproduce activity, then enter
+   `CAPTURE_ACTIVITY` while it is running. Finder reuses discovery and takes
+   exactly one additional snapshot; it can be invoked only once per Guided run.
+3. Read related, empty or unavailable results without inferring ownership or a
+   clean system. If Finder returns to review, use the **original C IDs**, never
+   its A evidence references. Cancellation or a terminal failure stops Guided.
+4. Enter a comma-separated review set, such as `C3,C9`, using IDs actually shown.
+   This selects candidates for comparison, not a final target. Compare local PID
+   and Creation Time UTC with independent current information about your intended
+   instance; name, READY, ordering or PID alone is insufficient.
+5. Choose exactly one eligible C ID from that review set and an available action.
+   For `S/SESSION`, inspect the captured identity before answering `Y/YES`,
+   `N/NO` or `Q/QUIT`. Yes records confirmation; exact current identity
+   revalidation is still required before Session starts. Cancel rather than guess.
+
+Finder can miss short-lived processes between snapshots and does not diagnose CPU
+or hangs when an existing process simply stays active. Related rows are evidence
+for manual review, not recommendations. On development main, Incident v2 remains
+`RELEASE_GATED` before O0; Finder and eligible manual Session have separate rules.
+The bridge/PassThru STEP 2 correction loop does **not** apply to manual Guided:
+invalid manual review input stops the attempt. See the walkthrough for result
+limits, exact input behavior and safe cancellation.
 
 ### Advanced Session
 
-Session is a separate manual workflow with recognition/confirmation and exact revalidation. It retains S0–S4, `TASK_END`, Task Delta and Process Branch Origin; its verification and classifications do not transfer to Incident Observation. See the [Session operator guide](docs/V0_1_1_GUIDED_SESSION_TARGET_AND_HANDOFF.md) and [sanitized demo](demo/v0.1.1/DEMO_NOTES.md). Choosing Session alone does not establish a verified root.
+Session is a separate manual workflow with recognition/confirmation and exact revalidation. It retains S0–S4, `TASK_END`, Task Delta and Process Branch Origin; its verification and classifications do not transfer to Incident Observation. Start with the [current manual walkthrough](docs/FIRST_RUN.md#manual-guidedfinder-walkthrough). Choosing Session alone does not establish a verified root.
 
 ### PowerShell structured-result API
 
@@ -349,6 +377,7 @@ Read `result_type` first: `GUIDED_INCIDENT_REQUEST` means no Incident run was pr
 ## Technical references
 
 - [First-run setup and troubleshooting](docs/FIRST_RUN.md)
+- Historical technical references: [Finder phase specification](docs/T16_2_ISSUE_CENTRIC_ACTIVITY_TARGET_FINDER_SPEC.md), [Session target and handoff phase document](docs/V0_1_1_GUIDED_SESSION_TARGET_AND_HANDOFF.md) and [sanitized Session demo](demo/v0.1.1/DEMO_NOTES.md). Use the current manual walkthrough above for navigation and input behavior.
 - [CPU Activity Check operator and validation guide](docs/T18_2A_CPU_ACTIVITY_CHECK.md)
 - [Incident Observation and timing](docs/T15_INCIDENT_OBSERVATION_SPEC.md)
 - [Canonical Codex Skill](skills/cra-incident/SKILL.md)
