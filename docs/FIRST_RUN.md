@@ -87,9 +87,20 @@ are technical references, not the current step-by-step navigation guide.
    | Cancelled or terminal failure | Guided has stopped; do not enter more IDs expecting this run to continue. A later attempt requires fresh discovery and new human choices. |
 
    `C<n>` is an original Guided candidate reference. `A<n>` is Finder activity
-   evidence, not a selectable original candidate ID. Parent Hops is bounded
-   observed relationship distance; Supporting Identities is an evidence count,
-   not probability or ranking. Display order is navigation only.
+   evidence, not a selectable original candidate ID. **Parent Hops** is the fewest
+   observed parent links from a newly observed exact activity identity to that
+   candidate, within the six-hop limit. **FROM** identifies the A reference
+   supporting that minimum distance. **Supporting Identities** counts the newly
+   observed exact activity identities whose observed parent chains reached the
+   candidate. These counts are not probability, ownership confidence or ranking.
+   Display order is navigation only.
+
+   `FINDER_PARENT_TRACE_PARTIAL` means the result does not establish a complete
+   ancestry: tracing uses available evidence and at most six hops. The current
+   resolver emits this diagnostic whenever it produces parent traces, including
+   when related candidates are found. It does not by itself identify a problem
+   process or mean that every trace reached six hops. Unresolved comparisons and
+   other diagnostics remain visible alongside the result summary.
 7. **When Finder explicitly returns, use original C IDs.** It does not replace
    the original candidate list or select anything. A second `F` only tells you
    Finder was already used; it does not collect again. A reader failure or invalid
@@ -130,6 +141,22 @@ loop. Finder's activity-token retry and already-used `F` reminder are separate
 existing behaviors. Only bridge/PassThru offers STEP 2 complete-review-set
 correction; that path supports Incident Observation only and excludes Finder and
 Session. Later target/action failures retain their stop behavior in both paths.
+
+**Reading the Guided display:** STEP 1 separates candidate eligibility from
+Incident availability. Session READY and Observation READY each describe captured
+eligibility for that action; BLOCKED means that eligibility was not established
+for that action. Neither READY establishes current identity continuity, ownership,
+correctness, or permission to skip confirmation/revalidation. Incident v2 on
+development main remains RELEASE_GATED before O0 even when Observation is READY.
+Groups describe discovery matches, not trust levels; C IDs retain capture ordinals
+and are not process identity. `COPY_READY` belongs to the advanced Candidates
+template output: `COPY_READY != SESSION_READY`, and neither means verified root.
+
+STEP 2 explains the review-set purpose before showing the existing input prompt.
+STEP 3 displays captured identities and any eligibility reasons; STEP 4 requires
+one explicit target and action. A stopped Guided Outcome shows its status and
+reason before NEXT. Use `-Mode Help` outside that interaction or consult this
+walkthrough; `HELP`, `?`, and `DETAILS` are not added STEP 1-4 input tokens.
 
 ```text
 UNKNOWN != CODEX

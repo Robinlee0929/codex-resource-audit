@@ -355,6 +355,14 @@ The bridge/PassThru STEP 2 correction loop does **not** apply to manual Guided:
 invalid manual review input stops the attempt. See the walkthrough for result
 limits, exact input behavior and safe cancellation.
 
+Guided separates **candidate eligibility** (Session/Observation READY or BLOCKED)
+from **Incident availability** (development main remains RELEASE_GATED before O0).
+Neither READY nor Finder relationship counts establish ownership or a problem
+process. Finder explains Parent Hops, FROM and Supporting Identities; Partial
+Trace describes limited ancestry evidence, not a diagnosis. Stopped outcomes show
+their reasons before NEXT. See the walkthrough for the full definitions; input
+tokens, explicit human choices and identity revalidation remain unchanged.
+
 ### Advanced Session
 
 Session is a separate manual workflow with recognition/confirmation and exact revalidation. It retains S0–S4, `TASK_END`, Task Delta and Process Branch Origin; its verification and classifications do not transfer to Incident Observation. Start with the [current manual walkthrough](docs/FIRST_RUN.md#manual-guidedfinder-walkthrough). Choosing Session alone does not establish a verified root.

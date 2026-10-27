@@ -101,13 +101,16 @@ function Invoke-GuidedDiscovery {
         'Not sure which process to inspect? Type F to find candidates related to a reproduced activity.'
     }
     $reviewSetGuidance = @(
-        Format-OperatorLine Note -Value 'STEP 2 selects one review set, not the final target.'
-        Format-OperatorLine Note -Value 'Include every candidate you cannot yet rule out as relevant to the intended process or activity; same-name candidates may be reviewed together.'
-        Format-OperatorLine Note -Value 'STEP 3 compares the review set with additional local identity information before STEP 4 asks the human to choose exactly one target from that set.'
-        Format-OperatorLine Note -Value 'Do not trial candidates one-by-one merely to identify them; Q/QUIT cancels safely if you cannot form a meaningful review set.'
+        'Purpose: Select one review set, not the final target.'
+        'Include every candidate you cannot yet rule out for the intended activity;'
+        'same-name candidates may be reviewed together.'
+        'Next: STEP 3 compares the review set using local identity information.'
+        'STEP 4 asks the human to choose exactly one target from that set.'
+        'Do not trial candidates one-by-one merely to identify them.'
+        'Q/QUIT cancels safely and ends Guided; it does not return to a prior menu.'
     ) -join [Environment]::NewLine
     Write-Information ((Format-OperatorLine Step -Step 2 -Label 'SELECT FOR REVIEW') + [Environment]::NewLine +
-        $reviewGuidance + [Environment]::NewLine + $reviewSetGuidance) -InformationAction Continue
+        $reviewSetGuidance + [Environment]::NewLine + $reviewGuidance) -InformationAction Continue
     $finderUsed=$false
     while ($true) {
         try {
@@ -158,7 +161,9 @@ function Invoke-GuidedDiscovery {
         $outcome.reason_code='NO_READY_CANDIDATES'
         return $outcome
     }
-    Write-Information (Format-OperatorLine Step -Step 4 -Label 'CHOOSE TARGET AND ACTION') -InformationAction Continue
+    Write-Information ((Format-OperatorLine Step -Step 4 -Label 'CHOOSE TARGET AND ACTION') + [Environment]::NewLine +
+        'Check readiness for the action you intend to choose.' + [Environment]::NewLine +
+        'O/OBSERVE remains RELEASE_GATED on development main before O0.') -InformationAction Continue
     try {
         $inputValue = Read-OperatorInput -Prompt 'Choose ONE READY candidate ID from the review set (Q/QUIT to cancel)' -Reader $Reader
     }

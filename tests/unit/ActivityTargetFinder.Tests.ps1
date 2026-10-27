@@ -37,9 +37,13 @@ Describe 'T16.3 pure Finder evidence contracts' {
         $all=@(Format-FinderVector $r *>&1)
         $all.Count | Should -Be 1;$all[0] | Should -BeOfType [string]
         $all[0] | Should -Match 'C<n>: original Guided candidate reference'
-        $all[0] | Should -Match 'A<n>: Finder activity evidence reference, not a selectable original candidate ID'
-        $all[0] | Should -Match 'Parent Hops: bounded observed relationship distance'
-        $all[0] | Should -Match 'Supporting Identities: evidence count, not probability or ranking'
+        $all[0] | Should -Match 'A<n>: Finder activity evidence reference; not a selectable candidate ID'
+        $all[0] | Should -Match 'Parent Hops: fewest observed parent links from a new activity identity'
+        $all[0] | Should -Match 'to this candidate, within the six-hop limit'
+        $all[0] | Should -Match 'FROM: the A reference supporting that minimum distance'
+        $all[0] | Should -Match 'Supporting Identities: count of new exact activity identities whose'
+        $all[0] | Should -Match 'observed parent chains reached this candidate'
+        $all[0] | Should -Match 'Counts are not probability, ownership confidence or ranking'
         $all[0] | Should -Match 'Display order is navigation only'
         $all[0] | Should -Match 'Manually form a review set using original C IDs'
         $all[0] | Should -Match 'FINDER_RELATED != RECOMMENDED_TARGET; FINDER_RELATED != VERIFIED_ROOT'
@@ -77,6 +81,27 @@ Describe 'T16.3 pure Finder evidence contracts' {
         $text | Should -Not -Match 'Manually form a review set|Returning|Enter candidate|Use the original|(?m)^C[0-9]+ \|'
         if ($variant -eq 'cancelled') {$text | Should -Match 'Finder cancelled. Guided interaction stopped'}
         else {$text | Should -Match 'No related candidate result was established'}
+    }
+    It 'DU3B partial trace qualifies <variant> results without changing the evidence or claiming a problem' -ForEach @(
+        @{variant='related'},@{variant='noIntersection'}
+    ) {
+        if ($variant -eq 'noIntersection') {
+            $script:fa.processes=@($script:fc)+@((New-IncidentTestRecord -Id 999 -Parent 0))
+        }
+        $r=Resolve-FinderVector
+        $r.diagnostics | Should -Contain 'FINDER_PARENT_TRACE_PARTIAL'
+        $before=$r | ConvertTo-Json -Depth 20 -Compress
+        $text=Format-FinderVector $r
+        $text | Should -Match 'Parent tracing uses available evidence and at most six hops'
+        $text | Should -Match 'This result does not establish a complete ancestry'
+        $text | Should -Match 'Partial tracing alone does not establish a problem process'
+        $text.IndexOf('FINDER_PARENT_TRACE_PARTIAL') | Should -BeLessThan $text.IndexOf('Parent Hops:')
+        ([regex]::Matches($text,'FINDER_PARENT_TRACE_PARTIAL')).Count | Should -Be 1
+        if ($variant -eq 'related') {
+            $text.IndexOf('FINDER_PARENT_TRACE_PARTIAL') | Should -BeLessThan $text.IndexOf('C9 |')
+            $text | Should -Match 'C9 \| codex.exe \| OBSERVATION READY \| 1 \| A3 \| 3'
+        } else {$text | Should -Match 'NO_MATCH != CLEAN_SYSTEM'}
+        ($r | ConvertTo-Json -Depth 20 -Compress) | Should -BeExactly $before
     }
     It 'AF01 V1 admits A1 A2 A3 and preserves both candidates with aggregated minimum distances' {
         $before=@($script:fb,$script:fa,$script:fc) | ConvertTo-Json -Depth 12 -Compress

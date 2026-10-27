@@ -99,11 +99,24 @@ function Format-ActivityTargetFinder {
             Get-ActivityFinderConditionText $view.condition
         }
         if ($view.status -ceq 'FINDER_COMPLETED') {
-            'C<n>: original Guided candidate reference. A<n>: Finder activity evidence reference, not a selectable original candidate ID.'
-            'Parent Hops: bounded observed relationship distance. Supporting Identities: evidence count, not probability or ranking.'
-            'Display order is navigation only; it does not rank or recommend candidates.'
             '{0} related candidates; {1}: NEWLY OBSERVED IN FINDER ACTIVITY CAPTURE.' -f
                 $view.rows.Count.ToString([cultureinfo]::InvariantCulture),$view.seed_count.ToString([cultureinfo]::InvariantCulture)
+            foreach ($code in $view.diagnostics) {$code}
+            if ($view.unresolved_count -gt 0) {'Unresolved identity comparisons: '+$view.unresolved_count.ToString([cultureinfo]::InvariantCulture)}
+            if ('FINDER_PARENT_TRACE_PARTIAL' -cin $view.diagnostics) {
+                'Parent tracing uses available evidence and at most six hops.'
+                'This result does not establish a complete ancestry.'
+                'Partial tracing alone does not establish a problem process.'
+            }
+            'C<n>: original Guided candidate reference; selectable for review.'
+            'A<n>: Finder activity evidence reference; not a selectable candidate ID.'
+            'Parent Hops: fewest observed parent links from a new activity identity'
+            '  to this candidate, within the six-hop limit.'
+            'FROM: the A reference supporting that minimum distance.'
+            'Supporting Identities: count of new exact activity identities whose'
+            '  observed parent chains reached this candidate.'
+            'Counts are not probability, ownership confidence or ranking.'
+            'Display order is navigation only; it does not rank or recommend candidates.'
             if ($view.rows.Count -gt 10) {
                 'The related set is still large: {0} candidates. All are shown below; ordering is navigation only.' -f $view.rows.Count.ToString([cultureinfo]::InvariantCulture)
             }
@@ -116,9 +129,6 @@ function Format-ActivityTargetFinder {
             if ($view.rows.Count -gt 0 -and @($view.rows | Where-Object readiness -CEQ 'OBSERVATION READY').Count -eq 0) {
                 'No related candidate is Observation READY.'
             }
-            foreach ($code in $view.diagnostics) {$code}
-            if ($view.unresolved_count -gt 0) {'Unresolved identity comparisons: '+$view.unresolved_count.ToString([cultureinfo]::InvariantCulture)}
-            if ('FINDER_PARENT_TRACE_PARTIAL' -cin $view.diagnostics) {'Some parent traces stopped at the available evidence or trace limit.'}
             if ($view.rows.Count) {'Manually form a review set using original C IDs; related evidence does not select a final target.'}
             else {'This comparison found no established relationship to an original candidate; it is not proof of a clean system. NO_MATCH != CLEAN_SYSTEM.'}
         }
