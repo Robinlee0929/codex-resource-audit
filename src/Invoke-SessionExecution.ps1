@@ -36,6 +36,9 @@ function Invoke-SessionExecution {
             $null = Resolve-SessionEvidence -Snapshots @($snapshots[0]) -RootAnchors @($anchor) -LifecycleContract $contract
         }
         [void](Read-Host 'Start the task, then press Enter to capture S1')
+        if ($null -ne $SessionProgressObserver) {
+            Write-Information 'Session capture S1 in progress. No input is required.' -InformationAction Continue
+        }
         $snapshots.Add((Get-ProcessSnapshot -AuditRunId $auditRunId -SnapshotId 'S1'))
         Write-Information (Format-SessionCaptureProgressNotification -Snapshot $snapshots[-1] -SnapshotId 'S1' -GuidedPresentation:($null -ne $SessionProgressObserver)) -InformationAction Continue
         if ($null -ne $SessionProgressObserver) { Send-SessionProgress -Observer $SessionProgressObserver -Event Capture -Stage S1 -Snapshot $snapshots[-1] }

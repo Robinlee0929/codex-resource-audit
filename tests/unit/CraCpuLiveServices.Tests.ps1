@@ -167,6 +167,65 @@ Describe 'T18.2A I5D production live composition seam' {
             }
         }
 
+        function New-I5DTimingCase {
+            param([long]$ReviewTick = 0L, [long]$StartTick = 0L,
+                [long]$ReviewDelay = 0L, [long]$StartDelay = 0L,
+                [string]$FaultPhase = '', [string]$Fault = '')
+            $native = New-I5DNativeOperations
+            $environment = New-I5DEnvironment -Native $native
+            $environment.context | Add-Member timing ([pscustomobject]@{
+                review_tick=$ReviewTick; start_tick=$StartTick
+                review_delay=$ReviewDelay; start_delay=$StartDelay
+                phase=''; fault_phase=$FaultPhase; fault=$Fault
+                input_ticks=[Collections.Generic.List[long]]::new()
+            })
+            $environment.read_input = {
+                param($c, $prompt)
+                $c.prompts.Add($prompt)
+                $t = $c.timing
+                $t.phase = ($prompt -split ' ')[0]
+                if ($t.phase -ceq 'GATE_A_REVIEW') { $c.now_tick = $t.review_tick }
+                if ($t.phase -ceq 'GATE_B_START') { $c.now_tick = $t.start_tick }
+                $t.input_ticks.Add($c.now_tick)
+                if ($t.phase -ceq $t.fault_phase) {
+                    switch ($t.fault) {
+                        cancel { return 'CANCEL' }
+                        invalid { return 'UNAPPROVED_TOKEN' }
+                        EOF { return $null }
+                        input { throw [OperationCanceledException]::new('SYNTHETIC_INPUT_INTERRUPTED') }
+                    }
+                }
+                if ($t.phase -ceq 'GATE_B_START') { 'START' } else { 'CONFIRM' }
+            }
+            $environment.get_timestamp = {
+                param($c)
+                if ($c.timing.phase -ceq $c.timing.fault_phase) {
+                    switch ($c.timing.fault) {
+                        missing { return $null }
+                        malformed { return '0' }
+                        negative { return -1L }
+                        multiple { return @(0L,0L) }
+                    }
+                }
+                $c.now_tick
+            }
+            $environment.write_information = {
+                param($c, $message)
+                $c.information.Add($message)
+                if ($message -ceq 'CPU input accepted. Continuing the check. No input is required.') {
+                    $t = $c.timing
+                    if ($t.phase -ceq $t.fault_phase -and $t.fault -ceq 'output') {
+                        throw [OperationCanceledException]::new('SYNTHETIC_OUTPUT_INTERRUPTED')
+                    }
+                    if ($t.phase -ceq 'GATE_A_REVIEW') { $c.now_tick += $t.review_delay }
+                    if ($t.phase -ceq 'GATE_B_START') { $c.now_tick += $t.start_delay }
+                }
+            }
+            $services = New-I5DServices $environment
+            $configuration = New-CraCpuLiveConfiguration 4242L 5L NO_ACTIVITY_ASSOCIATION $services
+            [pscustomobject]@{ services=$services; configuration=$configuration; environment=$environment; native=$native.context }
+        }
+
         function Invoke-I5DEntrypointChild {
             param(
                 [Parameter(Mandatory)][string] $ProcessId,
@@ -308,6 +367,113 @@ Describe 'T18.2A I5D production live composition seam' {
         $case = New-I5DCase -Inputs @('CANCEL')
         ($case.environment_context.information -join "`n") | Should -Match '4242'
         ($case.environment_context.information -join "`n") | Should -Match 'SINGLE_PROCESS|read-only'
+    }
+
+    It 'P1 timing <Case> uses input acceptance rather than output completion' -ForEach @(
+        @{Case='61s review output delay';Start=61000L;ADelay=61000L;BDelay=0L;Expired=$true},
+        @{Case='exactly 60s';Start=60000L;ADelay=60000L;BDelay=0L;Expired=$false},
+        @{Case='one tick beyond 60s';Start=60001L;ADelay=60001L;BDelay=0L;Expired=$true},
+        @{Case='ordinary zero delay';Start=0L;ADelay=0L;BDelay=0L;Expired=$false},
+        @{Case='START output latency';Start=60000L;ADelay=0L;BDelay=61000L;Expired=$false}
+    ) {
+        $case = New-I5DTimingCase -StartTick $Start -ReviewDelay $ADelay -StartDelay $BDelay
+        $result = Invoke-CpuActivityCheck $case.configuration $case.services
+        $case.environment.context.timing.input_ticks | Should -Be @(0L,0L,$Start)
+        @($case.environment.context.prompts | ForEach-Object { ($_ -split ' ')[0] }) |
+            Should -Be @('GATE_A_BIND','GATE_A_REVIEW','GATE_B_START')
+        $case.native.open_count | Should -Be 1
+        $case.native.close_count | Should -Be 1
+        $result.authorization.gate_a_to_b_elapsed_ticks | Should -Be $Start
+        if ($Expired) {
+            $result.status | Should -BeExactly FAILED
+            $result.reason_code | Should -BeExactly CPU_REVIEW_EXPIRED
+            $result.authorization.freshness | Should -BeExactly EXPIRED
+            $result.authorization.gate_b | Should -BeExactly NOT_CONFIRMED
+            $result.sampling_window.started | Should -BeFalse
+            $case.native.query_count | Should -Be 0
+        }
+        else {
+            $result.status | Should -BeExactly COMPLETED
+            $result.authorization.freshness | Should -BeExactly FRESH
+            $result.authorization.gate_b | Should -BeExactly CONFIRMED
+            $result.sampling_window.started | Should -BeTrue
+            $case.native.query_count | Should -Be 6
+            $case.services.context.wait_due_ticks | Should -Be @(
+                1000L,2000L,3000L,4000L,5000L | ForEach-Object { $_ + $Start + $BDelay })
+        }
+    }
+
+    It 'P1 <Phase> <Fault> cannot start sampling or retry a gate' -ForEach @(
+        foreach ($phase in 'GATE_A_BIND','GATE_A_REVIEW','GATE_B_START') {
+            foreach ($fault in 'cancel','invalid','EOF','input','output') { @{Phase=$phase;Fault=$fault} }
+        }
+    ) {
+        $case = New-I5DTimingCase -FaultPhase $Phase -Fault $Fault
+        if ($Fault -cin @('input','output')) {
+            { Invoke-CpuActivityCheck $case.configuration $case.services } | Should -Throw '*SYNTHETIC_*_INTERRUPTED*'
+        }
+        else {
+            $result = Invoke-CpuActivityCheck $case.configuration $case.services
+            $result.status | Should -BeExactly CANCELLED
+            $result.authorization.gate_b | Should -BeExactly NOT_CONFIRMED
+            $result.sampling_window.started | Should -BeFalse
+        }
+        $phases = @('GATE_A_BIND','GATE_A_REVIEW','GATE_B_START')
+        $last = [array]::IndexOf($phases, $Phase)
+        @($case.environment.context.prompts | ForEach-Object { ($_ -split ' ')[0] }) | Should -Be $phases[0..$last]
+        $case.native.query_count | Should -Be 0
+        $case.native.open_count | Should -Be $(if ($Phase -ceq 'GATE_A_BIND') {0} else {1})
+        $case.native.close_count | Should -Be $case.native.open_count
+        # A recovered output/clock provider must not resurrect a cancelled gate.
+        $case.environment.context.timing.fault_phase = ''
+        { & $case.services.read_clock $case.services.context } | Should -Throw '*CPU_TIMING_INVALID*'
+    }
+
+    It 'P1 <Phase> <Fault> timing fails closed before status and disposes the retained handle' -ForEach @(
+        foreach ($phase in 'GATE_A_REVIEW','GATE_B_START') {
+            foreach ($fault in 'missing','malformed','negative','multiple') { @{Phase=$phase;Fault=$fault} }
+        }
+    ) {
+        $case = New-I5DTimingCase -FaultPhase $Phase -Fault $Fault
+        { Invoke-CpuActivityCheck $case.configuration $case.services } | Should -Throw '*CPU_TIMING_INVALID*'
+        $case.native.query_count | Should -Be 0
+        $case.native.close_count | Should -Be 1
+        $case.environment.context.prompts.Count | Should -Be $(if ($Phase -ceq 'GATE_A_REVIEW') {2} else {3})
+        @($case.environment.context.information | Where-Object { $_ -match 'No input is required' }).Count |
+            Should -Be ($case.environment.context.prompts.Count - 1)
+        $case.environment.context.timing.fault_phase = ''
+        { & $case.services.read_clock $case.services.context } | Should -Throw '*CPU_TIMING_INVALID*'
+    }
+
+    It 'P1 regressed acceptance time fails closed with zero queries' {
+        $case = New-I5DTimingCase -ReviewTick 100L -StartTick 99L
+        { Invoke-CpuActivityCheck $case.configuration $case.services } | Should -Throw '*CPU_TIMING_INVALID*'
+        $case.native.query_count | Should -Be 0
+        $case.native.close_count | Should -Be 1
+        $case.environment.context.prompts.Count | Should -Be 3
+    }
+
+    It 'P1 acceptance time is single-use private state isolated from other contexts and supplied fields' {
+        $case = New-I5DTimingCase -ReviewDelay 61000L
+        $other = New-I5DTimingCase
+        $other.environment.context.now_tick = 17L
+        $details = [pscustomobject]@{process_id=4242L;duration_seconds=5L;plan_token='synthetic-plan';accepted_tick=999999L}
+        $case.services.context | Add-Member pending_tick 999999L
+        $decision = & $case.services.read_gate $case.services.context GATE_A_REVIEW $details
+        @($decision.PSObject.Properties.Name) | Should -Be @('decision','source','plan_token')
+        (& $other.services.read_clock $other.services.context) | Should -Be 17L
+        (& $case.services.read_clock $case.services.context) | Should -Be 0L
+        (& $case.services.read_clock $case.services.context) | Should -Be 61000L
+        $case.native.query_count | Should -Be 0
+        $other.native.query_count | Should -Be 0
+    }
+
+    It 'P1 clock regression during output cannot be hidden by the saved acceptance time' {
+        $case = New-I5DTimingCase -ReviewTick 100L -ReviewDelay -1L
+        { Invoke-CpuActivityCheck $case.configuration $case.services } | Should -Throw '*CPU_TIMING_INVALID*'
+        $case.native.query_count | Should -Be 0
+        $case.native.close_count | Should -Be 1
+        $case.environment.context.prompts.Count | Should -Be 2
     }
 
     It 'E01 uses the injected monotonic frequency and returns injected timestamps exactly' {
