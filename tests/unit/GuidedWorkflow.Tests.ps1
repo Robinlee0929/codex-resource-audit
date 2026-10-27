@@ -154,6 +154,22 @@ Describe 'Guided discover review compare target and assertion (offline only)' {
         $firstPrompt | Should -BeGreaterThan 0
         @($script:trace[0..($firstPrompt - 1)] | Where-Object { $_ -ceq 'display' }).Count | Should -Be 2
     }
+    It 'DU3B display guidance stays adjacent to unchanged input and preserves cancellation at STEP 4' {
+        Set-GuidedTestInput @('C3,C1','QUIT')
+        Invoke-CapturedGuided
+        $step2=$script:info[1]
+        $step2.IndexOf('Purpose:') | Should -BeLessThan $step2.IndexOf('Not sure which process')
+        $step2 | Should -Match 'Q/QUIT cancels safely and ends Guided; it does not return to a prior menu'
+        $step4=@($script:info | Where-Object {$_ -match '^STEP 4'})
+        $step4.Count | Should -Be 1
+        $step4[0] | Should -Match 'Check readiness for the action you intend to choose'
+        $step4[0] | Should -Match 'O/OBSERVE remains RELEASE_GATED on development main before O0'
+        Should -Invoke Read-Host -Times 2 -Exactly
+        Should -Invoke Invoke-GuidedSession -Times 0 -Exactly
+        $script:success[0] | Should -Match 'Outcome: CANCELLED'
+        $script:success[0] | Should -Match 'SESSION_TARGET: NONE'
+        $script:success[0] | Should -Match 'SESSION_CAPTURE: NOT_STARTED'
+    }
     It 'H03 Review grammar <label> preserves first occurrence order without duplicate state' -ForEach @(
         @{label='single'; reviewText='C2'; target='C2'; expected=@('C2')}
         @{label='multiple'; reviewText='C3,C1'; target='C1'; expected=@('C3','C1')}
@@ -472,16 +488,83 @@ Describe 'Guided pure projection comparison styling and stream boundaries' {
         $view = Get-GuidedCandidateView $snapshot $candidates
     }
     AfterEach { [Environment]::SetEnvironmentVariable('NO_COLOR',$script:oldNoColor) }
+    It 'DU3B incomplete capture warning precedes the candidate table and remains visible in both renderers' {
+        $view.capture_status='PARTIAL'
+        $plain=Format-GuidedCandidateIndex $view Plain
+        $plain.IndexOf('Capture is not complete.') | Should -BeGreaterThan $plain.IndexOf('Capture: PARTIAL')
+        $plain.IndexOf('assertion is blocked.') | Should -BeLessThan $plain.IndexOf('=== ROOT CANDIDATES ===')
+        $plain | Should -Match 'Counts cover supplied observations only'
+        Assert-TestOperatorDocumentPair $plain (Format-GuidedCandidateIndex $view Ansi)
+    }
+    It 'DU3B mixed and all blocked <variant> eligibility is not merged with availability' -ForEach @(
+        @{variant='mixed'},@{variant='allBlocked'}
+    ) {
+        # Deliberately supplied presentation combinations; no resolver rules change.
+        foreach ($row in $view.rows) {
+            $row.session_readiness.status='BLOCKED'
+            $row.session_readiness.reason_code='SESSION_BLOCKED_PATH_UNAVAILABLE'
+            $row.observation_readiness.status='BLOCKED'
+            $row.observation_readiness.reason_code='OBSERVATION_BLOCKED_CREATION_TIME_UNAVAILABLE'
+        }
+        if ($variant -eq 'mixed') {
+            $view.rows[0].session_readiness.status='READY'
+            $view.rows[0].session_readiness.reason_code='SESSION_READY'
+            $view.rows[1].observation_readiness.status='READY'
+            $view.rows[1].observation_readiness.reason_code='OBSERVATION_READY'
+        }
+        $before=$view | ConvertTo-Json -Depth 30 -Compress
+        $text=Format-GuidedCandidateIndex $view Plain
+        $rows=@($text -split '\r?\n' | Where-Object {$_ -match '^    C[1-9]'})
+        $rows.Count | Should -Be 3
+        if ($variant -eq 'mixed') {
+            $rows[0] | Should -Match '\| READY \| BLOCKED$'
+            $rows[1] | Should -Match '\| BLOCKED \| BLOCKED$'
+            $rows[2] | Should -Match '\| BLOCKED \| READY$'
+        } else { foreach ($row in $rows) {$row | Should -Match '\| BLOCKED \| BLOCKED$'} }
+        $text.IndexOf('=== CANDIDATE ELIGIBILITY ===') | Should -BeLessThan $text.IndexOf('=== INCIDENT AVAILABILITY ===')
+        $text | Should -Match 'UNKNOWN != CODEX'
+        $text | Should -Match 'candidates are not confirmed problem processes'
+        $comparison=Format-GuidedComparison $view.rows Plain
+        $comparison | Should -Match 'comparison and grouping do not\s+establish ownership'
+        $comparison | Should -Match 'Captured executable path is unavailable'
+        $comparison | Should -Match 'OBSERVATION_BLOCKED_CREATION_TIME_UNAVAILABLE'
+        ($view | ConvertTo-Json -Depth 30 -Compress) | Should -BeExactly $before
+        Format-OperatorLine Status -Label Test -Value RELEASE_GATED -ColorCapability Plain | Should -Match '<REDACTED_STATUS>'
+    }
+    It 'DU3B stopped <state> outcome explains the stop before NEXT in Plain Ansi and NO_COLOR' -ForEach @(
+        @{state='CANCELLED';reason=$null;message='Cancelled.'},
+        @{state='DECLINED';reason='OPERATOR_CONFIRMATION_DECLINED';message='Confirmation declined.'},
+        @{state='EVIDENCE_BLOCKED';reason='GUIDED_ACTION_INVALID';message='The action input was not accepted.'},
+        @{state='EVIDENCE_BLOCKED';reason='NO_READY_CANDIDATES';message='No eligible candidate was established in the review set.'}
+    ) {
+        $outcome=[pscustomobject]@{status=$state;reason_code=$reason;operator_assertion_recorded=$false;review_candidate_ids=@('C1')}
+        $before=$outcome | ConvertTo-Json -Compress
+        $plain=Format-GuidedOutcome $outcome Plain
+        $plain.IndexOf('Outcome: '+$state) | Should -BeLessThan $plain.IndexOf($message)
+        $plain.IndexOf($message) | Should -BeLessThan $plain.IndexOf('NEXT:')
+        if ($null -ne $reason) {$plain.IndexOf('Reason: '+$reason) | Should -BeLessThan $plain.IndexOf('NEXT:')}
+        $plain | Should -Match 'NEXT: Guided has stopped. Start a new Guided capture when ready.'
+        $plain | Should -Match 'SESSION_TARGET: NONE'
+        $plain | Should -Match 'OPERATOR_CONFIRMATION: NONE'
+        foreach ($field in 'SESSION_IDENTITY_REVALIDATION','SESSION_CAPTURE','S0_CAPTURE') {$plain | Should -Match ($field+': NOT_STARTED')}
+        Assert-TestOperatorDocumentPair $plain (Format-GuidedOutcome $outcome Ansi)
+        [Environment]::SetEnvironmentVariable('NO_COLOR','1')
+        Format-GuidedOutcome $outcome Ansi | Should -BeExactly $plain
+        ($outcome | ConvertTo-Json -Compress) | Should -BeExactly $before
+    }
     It 'DU3B readiness guidance separates captured eligibility from the main release gate without changing rows or streams' {
         $before=$view | ConvertTo-Json -Depth 30 -Compress
         $all=@(Format-GuidedCandidateIndex $view -ColorCapability Plain *>&1)
         $all.Count | Should -Be 1
         $all[0] | Should -BeOfType [string]
-        $all[0] | Should -Match 'READY describes captured candidate eligibility only'
+        $all[0] | Should -Match 'Session READY: captured Session eligibility requirements met'
+        $all[0] | Should -Match 'Observation READY: captured Observation eligibility requirements met'
+        $all[0] | Should -Match 'BLOCKED: eligibility was not established for that action'
+        $all[0] | Should -Match 'Session and Observation are separate; each needs an explicit choice'
         $all[0] | Should -Match 'does not prove ownership, identity continuity or correctness'
-        $all[0] | Should -Match 'No candidate is automatically selected or recommended'
+        $all[0] | Should -Match 'No candidate is automatically selected, trusted or recommended'
         $all[0] | Should -Match 'OBSERVATION_READY != RELEASE_AVAILABLE'
-        $all[0] | Should -Match 'On development main, Incident v2 remains RELEASE_GATED before O0'
+        $all[0] | Should -Match 'Development main: Incident v2 remains RELEASE_GATED before O0'
         $all[0] | Should -Match 'Finder and eligible manual Session have separate availability rules'
         $rows=@($all[0] -split '\r?\n' | Where-Object {$_ -match '^    C[1-9]'})
         @($rows | ForEach-Object {($_.Trim() -split ' \| ')[0]}) | Should -Be @('C1','C3','C2')

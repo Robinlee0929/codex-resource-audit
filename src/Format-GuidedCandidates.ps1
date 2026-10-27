@@ -85,6 +85,9 @@ function Format-GuidedCandidateIndex {
         Format-OperatorLine Step -Label 'DISCOVER' -Step 1 -ColorCapability $ColorCapability
         Format-OperatorLine KeyValue -Label 'Capture' -Value $View.capture_status
         Format-OperatorLine KeyValue -Label 'Candidates' -Value $(if ($View.available) { $View.rows.Count.ToString([cultureinfo]::InvariantCulture) } else { 'UNAVAILABLE' })
+        if ($View.capture_status -ne 'COMPLETE') {
+            Format-OperatorLine Note -Value 'Capture is not complete. Counts cover supplied observations only; assertion is blocked.' -ColorCapability $ColorCapability
+        }
         Format-OperatorLine Section -Label 'ROOT CANDIDATES' -ColorCapability $ColorCapability
         '  ID | PROCESS | PID | SESSION | OBSERVATION'
         foreach ($group in @('NAME_EQUALS_CHATGPT_EXE','NAME_EQUALS_CODEX_EXE','OTHER_NAME_CONTAINS_CODEX','PATH_ONLY_MATCH','UNAVAILABLE_OR_OTHER')) {
@@ -97,17 +100,24 @@ function Format-GuidedCandidateIndex {
         }
         if (-not $View.available) { '  UNAVAILABLE' }
         elseif ($View.rows.Count -eq 0) { '  NONE' }
-        Format-OperatorLine Note -Value 'Discovery only. No candidate is trusted automatically.' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'COPY_READY != SESSION_READY; SESSION_READY != VERIFIED_ROOT. Readiness does not rank or recommend candidates.' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'OBSERVATION_READY != SESSION_READY; OBSERVATION_READY != CURRENT_IDENTITY_MATCHED. Each action requires an explicit choice.' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'READY describes captured candidate eligibility only; it does not prove ownership, identity continuity or correctness. No candidate is automatically selected or recommended.' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'OBSERVATION_READY != RELEASE_AVAILABLE. On development main, Incident v2 remains RELEASE_GATED before O0. Finder and eligible manual Session have separate availability rules.' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'CANDIDATE_ONLY != VERIFIED_ROOT; DISCOVERY_RESULT != OPERATOR_VERIFICATION' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'Groups describe how a candidate matched discovery criteria; they are not trust levels or recommendations.' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'Group order is presentation-only. IDs retain capture ordinals, apply only to this captured set, and are not process identity.' -ColorCapability $ColorCapability
-        if ($View.capture_status -ne 'COMPLETE') {
-            Format-OperatorLine Note -Value 'Capture is not complete. Counts cover supplied observations only; assertion is blocked.' -ColorCapability $ColorCapability
-        }
+        Format-OperatorLine Section -Label 'CANDIDATE ELIGIBILITY' -ColorCapability $ColorCapability
+        '  Session READY: captured Session eligibility requirements met.'
+        '  Observation READY: captured Observation eligibility requirements met.'
+        '  BLOCKED: eligibility was not established for that action.'
+        '  Session and Observation are separate; each needs an explicit choice.'
+        '  Readiness does not rank or recommend candidates.'
+        Format-OperatorLine Section -Label 'INCIDENT AVAILABILITY' -ColorCapability $ColorCapability
+        '  Development main: Incident v2 remains RELEASE_GATED before O0.'
+        '  OBSERVATION_READY != RELEASE_AVAILABLE.'
+        '  Finder and eligible manual Session have separate availability rules.'
+        Format-OperatorLine Section -Label 'SAFETY' -ColorCapability $ColorCapability
+        '  READY does not prove ownership, identity continuity or correctness.'
+        '  No candidate is automatically selected, trusted or recommended.'
+        '  Discovery is not operator verification. SESSION_READY != VERIFIED_ROOT.'
+        '  UNKNOWN != CODEX; candidates are not confirmed problem processes.'
+        '  Groups describe discovery matches, not trust levels or recommendations.'
+        '  Group order is presentation-only. C IDs retain capture ordinals;'
+        '  they apply only to this captured set and are not process identity.'
     )
     return $lines -join [Environment]::NewLine
 }
@@ -140,10 +150,13 @@ function Format-GuidedComparison {
             if (-not $ready) { Format-OperatorLine KeyValue -Label 'Reason' -Value (Get-GuidedReadinessLabel (Get-RootCandidateField $readiness 'reason_code')) }
         }
         ''
-        Format-OperatorLine Note -Value 'Captured candidate identities only. Comparison is not exact Session identity revalidation.' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'REVIEW_SET != VERIFIED_ROOT; comparison and grouping do not establish ownership.' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'SESSION_READY != VERIFIED_ROOT. READY means captured identity fields are complete only; it is not a recommendation or a successful Session revalidation.' -ColorCapability $ColorCapability
-        Format-OperatorLine Note -Value 'Multi-select is for review only. Exactly one explicit target and action are required, even for a one-item review set.' -ColorCapability $ColorCapability
+        '  Captured candidate identities only; compare with independent current'
+        '  information. Comparison is not exact Session identity revalidation.'
+        '  REVIEW_SET != VERIFIED_ROOT; comparison and grouping do not'
+        '  establish ownership.'
+        '  SESSION_READY != VERIFIED_ROOT; READY is eligibility, not a recommendation.'
+        '  Multi-select is for review only. If eligible, STEP 4 requires one explicit'
+        '  target and action, even for a one-item review set. Q/QUIT stops safely.'
     )
     return $lines -join [Environment]::NewLine
 }
@@ -207,7 +220,6 @@ function Format-GuidedOutcome {
         Format-OperatorLine Status -Label 'SESSION_IDENTITY_REVALIDATION' -Value 'NOT_STARTED' -ColorCapability $ColorCapability
         Format-OperatorLine KeyValue -Label 'SESSION_CAPTURE' -Value 'NOT_STARTED'
         Format-OperatorLine KeyValue -Label 'S0_CAPTURE' -Value 'NOT_STARTED'
-        Format-OperatorLine KeyValue -Label 'NEXT' -Value $(if ($recorded) { 'Exact current identity revalidation is required before Session starts.' } else { 'Use -Mode Help for advanced modes, or start a new Guided capture when ready.' })
         if ($state -eq 'CANCELLED') { Format-OperatorLine Note -Value 'Cancelled. No Session target or confirmation retained; no Session started.' -ColorCapability $ColorCapability }
         if ($state -eq 'DECLINED') { Format-OperatorLine Note -Value 'Confirmation declined. No Session target or confirmation retained; no Session started.' -ColorCapability $ColorCapability }
         if ($state -eq 'EVIDENCE_BLOCKED') {
@@ -225,6 +237,8 @@ function Format-GuidedOutcome {
             Format-OperatorLine Note -Value ($explanation+' No confirmation recorded; suppressed fields remain private.') -ColorCapability $ColorCapability
         }
         Format-OperatorLine Note -Value 'Operator confirmation alone does not establish a verified root or ownership.' -ColorCapability $ColorCapability
+        Format-OperatorLine KeyValue -Label 'NEXT' -Value $(if ($recorded) { 'Exact current identity revalidation is required before Session starts.' } else { 'Guided has stopped. Start a new Guided capture when ready.' })
+        Format-OperatorLine KeyValue -Label 'Help' -Value 'Use -Mode Help outside this Guided interaction for advanced modes.'
     )
     return $lines -join [Environment]::NewLine
 }
