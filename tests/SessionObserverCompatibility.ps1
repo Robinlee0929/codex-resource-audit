@@ -93,7 +93,9 @@ function Assert-TestSharedSessionExecution {
     $guard=$export.Parent
     while ($null -ne $guard -and $guard -isnot [Management.Automation.Language.IfStatementAst]) { $guard=$guard.Parent }
     Assert-TestSessionCondition ($null -ne $guard -and $guard.Clauses[0].Item1.Extent.Text -ceq '$ExportIssueEvidence') 'export must remain opt-in'
-    Assert-TestSessionCondition ((Get-TestSessionSourceHash $Source) -ceq '1827397B2861D41093CC534BAAAE5073D987FC241C9AA5C7DBDC47622F29C7C3') 'reviewed shared execution changed'
+    # CLI input-state revision: one Guided-only information update after S1 input.
+    # Continue to pin the entire file; no presentation hooks are stripped here.
+    Assert-TestSessionCondition ((Get-TestSessionSourceHash $Source) -ceq 'C69D3387B2477178EC41623E85475215F49DD21A95009CCD7356A4B0BB19B7AD') 'reviewed shared execution changed'
 }
 
 function Assert-TestGuidedSessionDispatch {

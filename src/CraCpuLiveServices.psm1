@@ -16,6 +16,19 @@ $script:LiveContextNames = @(
     'live_context_type', 'environment', 'native_operations', 'clock_frequency_hz',
     'wait_due_ticks'
 )
+# Per-context, module-owned timing; never a caller-supplied gate/result field.
+# Weak keys avoid retaining finished invocation contexts.
+$script:LiveGateTiming = [System.Runtime.CompilerServices.ConditionalWeakTable[object,object]]::new()
+
+function Get-CraCpuLiveGateTiming {
+    param([Parameter(Mandatory)][object] $Context)
+    $timing = $null
+    if (-not $script:LiveGateTiming.TryGetValue($Context, [ref]$timing)) {
+        $timing = [pscustomobject]@{ pending_tick=$null; last_tick=$null; blocked=$false }
+        $script:LiveGateTiming.Add($Context, $timing)
+    }
+    $timing
+}
 
 function Test-CraCpuLivePlainRecord {
     param(
@@ -85,11 +98,29 @@ function Assert-CraCpuLiveEnvironment {
 function Get-CraCpuLiveTimestamp {
     param([Parameter(Mandatory)][object] $Context)
 
-    $value = & $Context.environment.get_timestamp $Context.environment.context
-    if (-not (Test-CraCpuLiveInteger $value 0 ([long]::MaxValue))) {
+    $timing = Get-CraCpuLiveGateTiming $Context
+    try { $value = & $Context.environment.get_timestamp $Context.environment.context }
+    catch { $timing.blocked = $true; throw }
+    if (-not (Test-CraCpuLiveInteger $value 0 ([long]::MaxValue)) -or
+        ($null -ne $timing.last_tick -and $value -lt $timing.last_tick)) {
+        $timing.blocked = $true
         throw 'CPU_TIMING_INVALID'
     }
+    $timing.last_tick = [long]$value
     [long]$value
+}
+
+function Read-CraCpuLiveClock {
+    param([Parameter(Mandatory)][object] $Context)
+    $timing = Get-CraCpuLiveGateTiming $Context
+    if ($timing.blocked) { throw 'CPU_TIMING_INVALID' }
+    # The first clock read after REVIEW/START consumes its acceptance time.
+    # Later reads (including sampling origin) use current monotonic time.
+    $accepted = $timing.pending_tick
+    $timing.pending_tick = $null
+    $now = Get-CraCpuLiveTimestamp $Context
+    if ($null -ne $accepted) { return $accepted }
+    $now
 }
 
 function Wait-CraCpuLiveUntil {
@@ -128,6 +159,9 @@ function Read-CraCpuLiveGate {
         [Parameter(Mandatory)][object] $Details
     )
 
+    $timing = Get-CraCpuLiveGateTiming $Context
+    $timing.pending_tick = $null
+    $timing.blocked = $true
     $expectedToken = $null
     switch ($Phase) {
         'GATE_A_BIND' {
@@ -162,6 +196,14 @@ function Read-CraCpuLiveGate {
     $prompt = "$Phase — type $expectedToken to continue or CANCEL"
     $inputValue = & $Context.environment.read_input $Context.environment.context $prompt
     if ($inputValue -is [string] -and $inputValue -ceq $expectedToken) {
+        $accepted = if ($Phase -cin @('GATE_A_REVIEW','GATE_B_START')) {
+            Get-CraCpuLiveTimestamp $Context
+        } else { $null }
+        Write-CraCpuLiveGateInformation $Context 'CPU input accepted. Continuing the check. No input is required.'
+        # Publish only after output succeeds. Cancellation/exception leaves the
+        # clock blocked, with no saved authorization available for reuse.
+        $timing.pending_tick = $accepted
+        $timing.blocked = $false
         return [pscustomobject][ordered]@{
             decision = 'CONFIRM'
             source = 'EXPLICIT_HUMAN'
@@ -212,7 +254,7 @@ function New-CraCpuLiveServicesCore {
         }
         read_clock = {
             param($c)
-            Get-CraCpuLiveTimestamp $c
+            Read-CraCpuLiveClock $c
         }
         wait_until = {
             param($c, $due, $slot)

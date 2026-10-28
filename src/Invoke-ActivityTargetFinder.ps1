@@ -37,6 +37,7 @@ function Invoke-ActivityTargetFinder {
                 }
             }
             if ($accepted) {
+                Write-Information 'Finder capture in progress. No input is required.' -InformationAction Continue
                 $activity=$null
                 try {
                     $start=[Diagnostics.Stopwatch]::GetTimestamp()
